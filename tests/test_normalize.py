@@ -306,5 +306,6 @@ class Decisions20261012(unittest.TestCase):
         self.assertEqual([u["name"] for u in hi["split"]], ["Emergency Prep", "Water Purification"])
         self.assertEqual(len(next(d for d in CFG["departments"] if d["name"] == "Home")["split"]), 5)
         sentinels = json.loads((Path(__file__).resolve().parent.parent / "data" / "sentinels.json").read_text())["sentinels"]
-        self.assertEqual(len(sentinels), 115)
+        self.assertEqual(len(sentinels), 114)
+        self.assertFalse(any("rain-x" in s["q"] for s in sentinels), "the Auto & Tires sentinel left with its department")
         self.assertFalse(any("onn" in s["q"] for s in sentinels), "the Electronics sentinel left with its department")

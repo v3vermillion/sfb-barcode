@@ -120,5 +120,4 @@ SENTINEL_ITEMS = [
     ("Ticonderoga #2 Wood-Cased Pencils, Pre-Sharpened, 24 Count", "Ticonderoga", 4.97, "072067139245", "Home Page/Office Supplies/Writing/Pencils"),
     ("Duracell Coppertop AA Alkaline Batteries, 24 Count", "Duracell", 17.97, "041333002033", "Home Page/Household Essentials/Batteries"),
     ("Great Value LED Light Bulb, 60W Equivalent, Soft White, 4 Pack", "Great Value", 5.97, "681131217361", "Home Page/Household Essentials/Light Bulbs"),
-    ("Rain-X Original Glass Water Repellent, 16 fl oz", "Rain-X", 6.97, "079118008000", "Home Page/Auto & Tires/Car Care/Car Wash & Wax"),
 ]
