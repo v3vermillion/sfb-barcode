@@ -516,6 +516,30 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 @media (min-width: 720px) { .stale { max-width: 720px; margin-inline: auto; } }
 @media print { .stale { display: none !important; } }
 
+/* ---------- scrolling ----------
+   The results list is the one scroller while a search is up; it is bottom-anchored (column-reverse), so scrollTop 0 is the
+   best match by the search box and scrolling up goes negative. */
+/* every row is laid out: with at most 40 rows, skipped layout only made the scroll height drift and rows paint late */
+.list > li { content-visibility: visible; contain-intrinsic-size: none; }
+/* rows rise in only when a search opens, not on every keystroke (a refinement must not blink the whole list) */
+.results .list:not(.is-entering) .row { animation: none; }
+/* iOS pans the page up when the keyboard opens (--vv-top, measured in app.js): keep the header, banner and the top of
+   the results inside what is actually visible, so the list can be scrolled all the way up with the keyboard open */
+:root { --vv-top: 0px; }
+.top { top: var(--vv-top); }
+.progress { top: calc(var(--vv-top) + var(--safe-t) + 56px); }
+.stale { top: calc(var(--vv-top) + var(--safe-t) + 56px); }
+.results { top: calc(var(--vv-top) + var(--safe-t) + 56px + var(--banner-h)); }
+.toasts { top: calc(var(--vv-top) + var(--safe-t) + 66px + var(--banner-h)); }
+/* wide screens: the scroller spans the whole width (a wheel anywhere beside the column scrolls it); the column stays 720px */
+@media (min-width: 720px) {
+  .results { max-width: none; margin-inline: 0; padding-inline: max(16px, calc((100% - 720px) / 2 + 16px)); }
+}
+/* a sheet, the tally, settings or the scanner is open: the page behind never scrolls (wheel over the backdrop, a short sheet) */
+html { scrollbar-gutter: stable; }
+html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
+.sheet-inner { overscroll-behavior-y: contain; }
+
 /* ---------- 2026-10-12: home readiness card, settings as a short page, About fold ----------
    The home screen answers "is this phone ready?" in one card, then the headline, common items, the Home Screen card
    and Recent. Settings shows what a volunteer can change and what they need to know about the prices; the rest is

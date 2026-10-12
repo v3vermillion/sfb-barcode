@@ -89,8 +89,13 @@ const vv = window.visualViewport;
 function keyboardInset() {
   if (!vv) return;
   // a pinch-zoomed page is not a keyboard: only an unscaled viewport that got shorter is
-  const inset = vv.scale > 1.01 ? 0 : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const zoomed = vv.scale > 1.01;
+  const inset = zoomed ? 0 : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  // iOS opens the keyboard by panning the page up (offsetTop) instead of resizing it: the fixed header and the top of the
+  // results would sit above the screen, out of reach of any scroll. Everything fixed follows the visible area instead.
+  const top = zoomed ? 0 : Math.max(0, Math.round(vv.offsetTop));
   document.documentElement.style.setProperty("--kb", `${inset}px`);
+  document.documentElement.style.setProperty("--vv-top", `${top}px`);
 }
 vv?.addEventListener("resize", keyboardInset);
 vv?.addEventListener("scroll", keyboardInset);
@@ -135,11 +140,12 @@ function grabToDismiss(dlg) {
   if (!grab) return;
   let y0 = null;
   grab.addEventListener("pointerdown", (e) => { y0 = e.clientY; grab.setPointerCapture(e.pointerId); dlg.style.transition = "none"; });
-  grab.addEventListener("pointermove", (e) => { if (y0 == null) return; const dy = Math.max(0, e.clientY - y0); dlg.style.transform = `translateY(${dy}px)`; });
+  // `translate`, not `transform`: on wide screens the sheet is centred with transform: translateX(-50%)
+  grab.addEventListener("pointermove", (e) => { if (y0 == null) return; const dy = Math.max(0, e.clientY - y0); dlg.style.translate = `0 ${dy}px`; });
   const end = (e) => {
     if (y0 == null) return;
     const dy = e.clientY - y0; y0 = null;
-    dlg.style.transition = ""; dlg.style.transform = "";
+    dlg.style.transition = ""; dlg.style.translate = "";
     if (dy > 90) modals.close(dlg); else inner.scrollTop = 0;
   };
   grab.addEventListener("pointerup", end); grab.addEventListener("pointercancel", end);
@@ -355,10 +361,16 @@ function showHome() {
   state.seq++;
   el.results.hidden = true; el.home.hidden = false;
   el.list.innerHTML = ""; el.resultsMeta.textContent = "";
-  state.last = null; state.codeHit = null; state.pending = null;
+  state.last = null; state.codeHit = null; state.pending = null; state.shownQuery = null;
   renderRecent();
+  homeToThumb();
   maybeApplyPending();
 }
+/** Home is bottom-anchored like the results: on a short phone the page opens at its thumb end (chips, Recent by the dock). */
+function homeToThumb() { requestAnimationFrame(() => { if (!el.home.hidden) window.scrollTo(0, document.documentElement.scrollHeight); }); }
+/** The best match sits at the bottom of the bottom-anchored results. scrollHeight lands there whether the engine counts
+ *  a column-reverse scroller's offset from the bottom (0, negative upward) or from the top. */
+function resultsToBest() { el.results.scrollTop = el.results.scrollHeight; }
 
 async function runSearch(q) {
   const t0 = performance.now();
@@ -371,6 +383,7 @@ async function runSearch(q) {
       : db.state === "error" ? "The price database couldn't be opened. Check for new prices in Settings." : "Opening the price database…";
     el.list.innerHTML = `<li class="empty">${msg}</li>`;
     el.resultsMeta.textContent = "";
+    state.shownQuery = null; resultsToBest();
     return;
   }
   const cls = classifyCode(q);
@@ -402,6 +415,7 @@ const FIRST_ROWS = 12;   // painted synchronously (more than a phone screen); th
 let moreTimer = 0;
 function cancelMore() { if (!moreTimer) return; ("cancelIdleCallback" in window ? cancelIdleCallback : clearTimeout)(moreTimer); moreTimer = 0; }
 function renderResults(res, code, q) {
+  const entering = el.results.hidden;
   el.home.hidden = true; el.results.hidden = false;
   const toks = tokenize(q);
   // a number that is a priced code is shown as the first row; an unknown code is not shouted over real matches
@@ -426,6 +440,11 @@ function renderResults(res, code, q) {
     if (res.relaxed) meta = `<span class="warn">Closest matches</span> — nothing had every word${res.dropped?.length ? ` (ignored “${esc(res.dropped.join(" "))}”)` : ""}`;
   }
   el.resultsMeta.innerHTML = meta;
+  // a new or refined query starts at its best match; the same query re-run (the database finished opening, more
+  // departments arrived) keeps the volunteer where they had scrolled to
+  if (entering || state.shownQuery !== q) resultsToBest();
+  state.shownQuery = q;
+  if (entering) { el.list.classList.add("is-entering"); clearTimeout(state.enterTimer); state.enterTimer = setTimeout(() => el.list.classList.remove("is-entering"), 600); }
 }
 
 el.list.addEventListener("click", (e) => {
@@ -695,7 +714,12 @@ function tallyHtml() {
 function openTally() { modals.open(el.tallySheet, tallyHtml()); }
 el.tallySheet.addEventListener("click", (e) => {
   const rm = e.target.closest("[data-remove]");
-  if (rm) { tally = tally.filter((t) => t.id !== rm.dataset.remove); writeJson(TALLY_KEY, tally); renderTallyPill(); el.tallySheet.innerHTML = tallyHtml(); el.tallySheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.tallySheet)); grabToDismiss(el.tallySheet); haptic(5); return; }
+  if (rm) {
+    tally = tally.filter((t) => t.id !== rm.dataset.remove); writeJson(TALLY_KEY, tally); renderTallyPill();
+    const y = el.tallySheet.querySelector(".sheet-inner")?.scrollTop || 0;   // removing a line deep in the list keeps the place
+    el.tallySheet.innerHTML = tallyHtml(); el.tallySheet.querySelector(".sheet-inner").scrollTop = y;
+    el.tallySheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.tallySheet)); grabToDismiss(el.tallySheet); haptic(5); return;
+  }
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "clear") { if (confirm(`Clear ${tally.length} ${tally.length === 1 ? "line" : "lines"} from the tally?`)) { tally = []; writeJson(TALLY_KEY, tally); renderTallyPill(); modals.close(el.tallySheet); toast("Tally cleared"); } }
   else if (act === "share") shareTally();
@@ -757,6 +781,7 @@ el.recentList.addEventListener("click", async (e) => {
   else toast("That item is from an older price list", { iconName: "info" });
 });
 renderRecent();
+homeToThumb();
 
 // ------------------------------------------------------------------ settings
 // What a volunteer can change (appearance, buzz, live check), what they need to know about the prices (date, source,
@@ -805,7 +830,7 @@ function fillStorage() {
   }).catch(() => {});
 }
 function openSettings() { modals.open(el.settings, settingsHtml()); fillStorage(); }
-function refreshSettings() { el.settings.innerHTML = settingsHtml(); el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); grabToDismiss(el.settings); fillStorage(); }
+function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")?.scrollTop || 0; el.settings.innerHTML = settingsHtml(); el.settings.querySelector(".sheet-inner").scrollTop = y; el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); grabToDismiss(el.settings); fillStorage(); }
 el.settings.addEventListener("click", async (e) => {
   const th = e.target.closest("[data-theme]");
   if (th) { prefs.theme = th.dataset.theme; writeJson(PREFS_KEY, prefs); applyTheme(); el.settings.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b === th))); return; }
@@ -919,6 +944,31 @@ document.addEventListener("visibilitychange", () => {
     if (state.scanOpen) startCamera(++state.scanGen);
   }
 });
+
+// ------------------------------------------------------------------ scrolling the results from anywhere
+// While a search is up the results are the only thing that scrolls. A wheel or trackpad over the header, the banner,
+// the dock or the margins of a wide screen scrolls them too, instead of nothing.
+const resultsScrollable = () => !el.results.hidden && !anyModalOpen() && !state.scanOpen;
+document.addEventListener("wheel", (e) => {
+  if (e.ctrlKey || !resultsScrollable() || el.results.contains(e.target) || e.target.closest?.(".toasts")) return;
+  const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * el.results.clientHeight : e.deltaY;
+  if (!dy) return;
+  e.preventDefault();
+  el.results.scrollTop += dy;
+}, { passive: false });
+// Page Up / Page Down from the search box page through the results (the caret keeps the arrows and Home/End)
+el.q.addEventListener("keydown", (e) => {
+  if ((e.key !== "PageUp" && e.key !== "PageDown") || !resultsScrollable()) return;
+  e.preventDefault();
+  el.results.scrollTop += (e.key === "PageUp" ? -1 : 1) * Math.round(el.results.clientHeight * 0.85);
+});
+// dragging the list on a phone puts the keyboard away, as native lists do: the whole list is then in reach
+let touchY = null;
+el.results.addEventListener("touchstart", (e) => { touchY = e.touches.length === 1 ? e.touches[0].clientY : null; }, { passive: true });
+el.results.addEventListener("touchmove", (e) => {
+  if (touchY == null || document.activeElement !== el.q) return;
+  if (Math.abs(e.touches[0].clientY - touchY) > 12) { touchY = null; el.q.blur(); }
+}, { passive: true });
 
 // ------------------------------------------------------------------ keyboard (desktop testing, external scanners that type digits + Enter)
 document.addEventListener("keydown", (e) => {

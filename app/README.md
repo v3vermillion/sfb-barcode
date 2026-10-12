@@ -29,6 +29,7 @@ app/
     serve.mjs        local static server that mirrors production headers
     measure.mjs      the performance numbers below (Playwright, 4× CPU throttle, fake camera); --browser webkit for iPhone's engine
     shots.mjs        phone-size screenshots (light/dark) + accessibility audit; --browser webkit too
+    scroll-check.mjs the scrolling rules (best match by the search box, wheel, keyboard pan, sheets); --browser webkit too
     make-barcode-clip.mjs  a UPC-A .y4m clip for Chromium's fake camera (measure.mjs --video)
     perf-table.mjs   markdown tables of measure/shots results: one browser, or Chromium vs WebKit (app-browsers.yml)
   tests/             node --test: barcode maths, tokenizer, resolution engine, staleness thresholds, storage persistence policy,
