@@ -264,3 +264,47 @@ class UpcE(unittest.TestCase):
         self.assertEqual(key, "00000011459708")
         key, _, _ = N.gtin14("40170725")              # EAN-8 (number system 4): never expanded
         self.assertEqual(key, "00000040170725")
+
+
+class Decisions20261012(unittest.TestCase):
+    """Decision of 2026-10-12 (issue #18): the durable scope is sized to the proven pack. Durable departments keep only
+    listings with a barcode priced at or under durable_rules.max_price; the departments a food bank rarely receives
+    leave the crawl and Home Improvement narrows to Emergency Prep and Water Purification."""
+
+    def item(self, name, **kw):
+        it = {"itemId": 7, "name": name, "brandName": kw.pop("brand", "Mainstays"), "salePrice": kw.pop("price", 12.0),
+              "upc": kw.pop("upc", "681131001199"), "categoryPath": kw.pop("path", "Home Page/Toys/Building Sets")}
+        it.update(kw)
+        return it
+
+    def test_durable_rows_need_a_barcode_and_a_price_under_the_cap(self):
+        toys = next(d for d in CFG["departments"] if d["name"] == "Toys")
+        cap = CFG["durable_rules"]["max_price"]
+        self.assertEqual(cap, 100); self.assertTrue(CFG["durable_rules"]["barcode_required"])
+        row, why = N.normalize(self.item("Lego Classic Bricks Set, 484 Pieces", price=cap), toys, CFG)
+        self.assertIsNone(why); self.assertEqual(row["price"], float(cap))
+        _, why = N.normalize(self.item("Power Wheels Ride-On Truck", price=cap + 0.01), toys, CFG)
+        self.assertEqual(why, "durable_over_cap")
+        _, why = N.normalize(self.item("Lego Classic Bricks Set, 484 Pieces", upc=None), toys, CFG)
+        self.assertEqual(why, "durable_without_upc")
+        _, why = N.normalize(self.item("Lego Classic Bricks Set, 484 Pieces", upc="deleted_681131001199"), toys, CFG)
+        self.assertIsNone(why, "a retired barcode is still a barcode: donors give old stock")
+
+    def test_consumable_departments_are_not_capped(self):
+        row, why = N.normalize(self.item("Similac Pro-Advance Infant Formula, 30.8 oz, Case of 4",
+                                         path="Home Page/Food/Baby Food", price=180.0), FOOD, CFG)
+        self.assertIsNone(why); self.assertEqual(row["price"], 180.0)
+        self.assertIsNone(N.junk_reason(self.item("Anything", upc=None, price=500.0), "Pets", CFG, consumable=True))
+
+    def test_crawl_scope_of_the_decision(self):
+        names = {d["name"] for d in CFG["departments"]}
+        for gone in ("Jewelry", "Cell Phones", "Electronics", "Sports & Outdoors", "Patio & Garden", "Arts Crafts & Sewing"):
+            self.assertNotIn(gone, names); self.assertIn(gone, CFG["not_crawled"].values())
+        for kept in ("Toys", "Office Supplies", "Party & Occasions", "Seasonal", "Home", "Home Improvement"):
+            self.assertIn(kept, names)
+        hi = next(d for d in CFG["departments"] if d["name"] == "Home Improvement")
+        self.assertEqual([u["name"] for u in hi["split"]], ["Emergency Prep", "Water Purification"])
+        self.assertEqual(len(next(d for d in CFG["departments"] if d["name"] == "Home")["split"]), 5)
+        sentinels = json.loads((Path(__file__).resolve().parent.parent / "data" / "sentinels.json").read_text())["sentinels"]
+        self.assertEqual(len(sentinels), 115)
+        self.assertFalse(any("onn" in s["q"] for s in sentinels), "the Electronics sentinel left with its department")

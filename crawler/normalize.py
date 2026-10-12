@@ -341,7 +341,7 @@ def variants(name: str):
     return sorted({w for w in VARIANT_WORDS if re.search(r"(?<![a-z])" + re.escape(w) + r"(?![a-z])", n)})
 
 
-def junk_reason(item: dict, dept_name: str, cfg: dict):
+def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True):
     name = (item.get("name") or "").strip()
     path = (item.get("categoryPath") or "").lower()
     if not name or name in {"-", "."}:
@@ -363,6 +363,15 @@ def junk_reason(item: dict, dept_name: str, cfg: dict):
         return why
     if dept_name == "Food" and not item.get("upc") and parse_quantity(name)[0] is None and not item.get("size"):
         return "food_without_upc_or_size"
+    if not consumable:
+        # durable departments carry only what a food bank can receive and the pack can hold (data/categories.json
+        # durable_rules, 2026-10-12): a barcode, and a price at or under the cap; the live check covers the rest online
+        rules = cfg.get("durable_rules") or {}
+        if rules.get("barcode_required") and not item.get("upc"):
+            return "durable_without_upc"
+        cap = rules.get("max_price")
+        if isinstance(cap, (int, float)) and not isinstance(cap, bool) and item["salePrice"] > cap:
+            return "durable_over_cap"
     return None
 
 
@@ -374,7 +383,7 @@ def category(item: dict, dept: dict, cfg: dict) -> str:
 
 def normalize(item: dict, dept: dict, cfg: dict):
     """Return (row, None) for a kept item, or (None, reason) for a rejected one."""
-    reason = junk_reason(item, dept["name"], cfg)
+    reason = junk_reason(item, dept["name"], cfg, dept.get("consumable", True))
     if reason:
         return None, reason
     raw_name = re.sub(r"\s+", " ", item["name"]).strip()
