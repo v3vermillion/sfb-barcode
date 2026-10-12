@@ -4,7 +4,7 @@ name: app-browsers
 # on the full-size synthetic fixture built exactly as deploy-app.yml builds it. Manual only (Actions -> app-browsers ->
 # Run workflow); nothing is deployed and no secret is used.
 #
-# Each browser job uploads its results (measure JSON + log, screenshots, audit.json) as the artifact
+# Each browser job uploads its results (measure JSON + log, screenshots, audit.json, scroll-check log) as the artifact
 # app-browsers-<browser> and writes its key metrics to the run summary; the compare job then writes a
 # Chromium-vs-WebKit table that flags any metric where WebKit is more than 25% slower, or that failed.
 #
@@ -130,6 +130,15 @@ jobs:
           mkdir -p build/results
           node tools/shots.mjs --browser "$BROWSER" --out "build/results/shots-${BROWSER}"
 
+      - name: Scrolling checks
+        id: scroll
+        if: ${{ !cancelled() && steps.site.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p build/results
+          node tools/scroll-check.mjs --browser "$BROWSER" | tee "build/results/scroll-${BROWSER}.log"
+
       - name: Summary
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
@@ -150,9 +159,9 @@ jobs:
           retention-days: 14
 
       - name: Fail when measuring or the screenshots failed
-        if: ${{ !cancelled() && (steps.measure.outcome != 'success' || steps.shots.outcome != 'success') }}
+        if: ${{ !cancelled() && (steps.measure.outcome != 'success' || steps.shots.outcome != 'success' || steps.scroll.outcome != 'success') }}
         run: |
-          echo "::error::measure: ${{ steps.measure.outcome }}, screenshots: ${{ steps.shots.outcome }} (${BROWSER}); the results that were written are in the artifact and the summary"
+          echo "::error::measure: ${{ steps.measure.outcome }}, screenshots: ${{ steps.shots.outcome }}, scrolling: ${{ steps.scroll.outcome }} (${BROWSER}); the results that were written are in the artifact and the summary"
           exit 1
 
   compare:
