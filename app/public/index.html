@@ -85,18 +85,12 @@
 
   <main id="main" class="main">
     <section id="home" class="home">
-      <section class="legend" aria-label="What the labels mean">
-        <ul>
-          <li><span class="kind" data-kind="exact">Exact item</span><span>The barcode or name is in the Walmart price snapshot</span></li>
-          <li><span class="kind" data-kind="store-label">Store price label</span><span>Scale labels from meat, deli and bakery carry their own price</span></li>
-          <li><span class="kind" data-kind="plu">Produce code</span><span>The 4-digit sticker on fruit and vegetables, priced by the pound or each</span></li>
-          <li><span class="kind" data-kind="equivalent">Equivalent value</span><span>Not sold at Walmart, so it takes the price of the closest Walmart item</span></li>
-        </ul>
-      </section>
+      <button class="ready-card" id="readyCard" type="button" aria-label="Price database status; opens Settings" data-tone="busy"></button>
       <div class="hero">
         <p class="eyebrow" id="heroEyebrow">Strongsville Emergency Food Bank</p>
         <h1 class="h1">Scan or type the item.<br><span class="muted">The price is here, offline.</span></h1>
-        <div class="quick" id="quick" aria-label="Try an example">
+        <h2 class="h2 quick-h" id="quickH">Common items</h2>
+        <div class="quick" id="quick" aria-labelledby="quickH">
           <button class="chip" type="button" data-q="peanut butter">peanut butter</button>
           <button class="chip" type="button" data-q="diapers size 4">diapers size 4</button>
           <button class="chip" type="button" data-q="canned corn">canned corn</button>

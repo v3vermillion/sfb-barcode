@@ -9,7 +9,7 @@ import { stalenessLevel, stalenessText, daysSince } from "./staleness.js";
 
 // ------------------------------------------------------------------ setup
 const $ = (id) => document.getElementById(id);
-const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "quick", "heroEyebrow"].map((k) => [k, $(k)]));
+const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "quick", "heroEyebrow", "readyCard"].map((k) => [k, $(k)]));
 
 const LIVE_URL = (document.querySelector('meta[name="sfb-live-check"]')?.content || "").trim().replace(/\/$/, "");
 const BUILD = document.querySelector('meta[name="sfb-build"]')?.content || "dev";
@@ -41,7 +41,6 @@ const bigMoney = (cents) => {
   return `<span class="price-big">$${d.toLocaleString("en-US")}<span class="cents">.${c}</span></span>`;
 };
 const fmtInt = (n) => Number(n || 0).toLocaleString("en-US");
-const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 const fmtDate = (iso, long = false) => { if (!iso) return ""; const d = new Date(`${iso}T12:00:00`); return d.toLocaleDateString(undefined, long ? { month: "long", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" }); };
 const fmtTime = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const icon = (name, cls = "ico") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -157,12 +156,28 @@ function setProgress(frac) {
 }
 function readyText() {
   const m = db.manifest; if (!m) return "Ready";
-  // the date is what a volunteer needs; the count can be dropped on a narrow header
-  // food and household first: until the other departments arrive the header says so (and the count is what is open)
-  const items = db.more ? db.stats?.items || m.items : m.items;
-  const more = db.storageFull ? ` · phone storage full: free about ${db.storageFull.needMB} MB`
-    : db.more ? ` · <span class="n">other departments </span>${navigator.onLine ? "loading" : "next time online"}` : "";
-  return `${navigator.onLine ? "" : "Offline · "}<span class="n">${compact(items)} items · </span>${esc(fmtDate(priceDate()))}${more}`;
+  // the date is what a volunteer needs (the wide header says "Prices"); food and household come first, and until the
+  // other departments arrive the header says so
+  const more = db.storageFull ? ` · storage full` : db.more ? ` · more ${navigator.onLine ? "loading" : "next time online"}` : "";
+  return `${navigator.onLine ? "" : "Offline · "}<span class="n">${m.fixture ? "Sample" : "Prices"} </span>${esc(fmtDate(priceDate()))}${more}`;
+}
+
+/** The card at the top of the home screen: is this phone ready to price a donation, in one glance. Tapping it opens Settings. */
+function renderReadyCard() {
+  const c = el.readyCard; if (!c) return;
+  const m = db.manifest;
+  let tone = "ready", ico = "check", title = "", sub = "";
+  if (m) {
+    const date = fmtDate(priceDate(), true);
+    if (m.fixture) { tone = "sample"; ico = "info"; title = "Sample prices for testing"; sub = `Real Walmart prices replace these automatically · ${fmtDate(priceDate())}`; }
+    else { title = "Prices ready"; sub = `${sourceText()} · ${date}${db.more ? " · more departments loading" : " · works offline"}`; }
+    if (db.storageFull) { tone = "problem"; ico = "info"; title = "Phone storage is full"; sub = `Free about ${db.storageFull.needMB} MB so the rest of the prices can download.`; }
+  } else if (db.state === "downloading") { tone = "busy"; ico = "refresh"; title = "Getting the prices"; sub = "One download, then everything works offline"; }
+  else if (db.state === "loading" || db.state === "idle") { tone = "busy"; ico = "refresh"; title = "Opening the prices"; sub = "A moment…"; }
+  else if (db.state === "offline-empty") { tone = "problem"; ico = "wifi-off"; title = "No prices on this phone yet"; sub = "Connect to the internet once; they stay on the phone after that."; }
+  else { tone = "problem"; ico = "info"; title = state.dbErrorStorage ? "Phone storage is full" : state.dbErrorNetwork ? "Download interrupted" : "Prices couldn't be opened"; sub = state.dbErrorNetwork ? "It continues on its own when the phone is back online." : "Tap for details."; }
+  c.dataset.tone = tone;
+  c.innerHTML = `<span class="rc-ico">${icon(ico)}</span><span class="rc-text"><b>${esc(title)}</b><span class="sub">${esc(sub)}</span></span>${icon("back", "ico chev")}`;
 }
 
 db.addEventListener("state", (e) => {
@@ -185,10 +200,11 @@ db.addEventListener("state", (e) => {
       break;
   }
   renderStale();
+  renderReadyCard();
 });
 // a full phone during a background download (other departments, a weekly update): the header says so until a later
 // download succeeds; the prices already on the phone keep working
-for (const ev of ["storage-full", "storage-ok"]) db.addEventListener(ev, () => { if (db.version) setStatus("ready", readyText()); });
+for (const ev of ["storage-full", "storage-ok"]) db.addEventListener(ev, () => { if (db.version) setStatus("ready", readyText()); renderReadyCard(); });
 db.addEventListener("progress", (e) => {
   const d = e.detail;
   if (d.phase === "download") {
@@ -201,16 +217,21 @@ db.addEventListener("ready", () => {
   perf.boot.dbReadyMs = Math.round(performance.now());
   perf.boot.loadMs = db.stats?.loadMs; perf.boot.wallMs = db.stats?.wallMs; perf.boot.downloadMs = db.stats?.downloadMs ?? null;
   requestAnimationFrame(() => { performance.mark("sfb:interactive"); perf.boot.interactiveMs = Math.round(performance.now()); document.documentElement.dataset.ready = "1"; });
-  if (db.manifest?.fixture) el.heroEyebrow.textContent = "Strongsville Food Bank · sample data";
+  el.heroEyebrow.textContent = db.manifest?.fixture ? "Strongsville Food Bank · sample data" : "Strongsville Emergency Food Bank";
   pruneRecent();
+  dropSampleLines();
   if (state.query.trim()) runSearch(state.query);
   if (new URLSearchParams(location.search).get("scan") === "1" && !state.scanOpen) { history.replaceState(null, "", location.pathname); openScanner(); }
 });
 db.addEventListener("more", () => {
   // the other departments joined the search: refresh the header and whatever is on screen
+  setProgress(null);
   if (db.version) setStatus("ready", readyText());
+  renderReadyCard();
   if (state.query.trim()) runSearch(state.query);
+  if (el.settings.open) refreshSettings();
 });
+db.addEventListener("more-paused", () => { setProgress(null); if (db.version) setStatus("ready", readyText()); renderReadyCard(); });
 db.addEventListener("progress", (e) => {
   const d = e.detail;
   if (d.phase === "download" && d.tier === "more" && db.version) setStatus("ready", `${readyText()} ${Math.round((d.doneBytes / (d.totalBytes || 1)) * 100)}%`);
@@ -246,9 +267,9 @@ function showInstallHint() {
   if (!h || standalone() || readJson(INSTALL_KEY, null)?.dismissed) return;
   if (!isIOS && !installPrompt) return;
   const how = isIOS
-    ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. Safari clears a website's saved prices after about a week without a visit; the Home Screen app keeps them and opens full screen.`
-    : "Install it so it opens full screen and the phone keeps the prices.";
-  h.innerHTML = `<div><b>Add this app to your Home Screen.</b> ${how}</div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
+    ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. Safari forgets a website's saved prices after a week away; the Home Screen app keeps them.`
+    : "It opens full screen and the phone keeps the prices.";
+  h.innerHTML = `<span class="rc-ico">${icon(isIOS ? "share" : "plus")}</span><div><b>Add to Home Screen</b><span class="sub">${how}</span></div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
   h.hidden = false;
 }
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; showInstallHint(); });
@@ -654,7 +675,7 @@ function addToTally(res) {
   const cents = lineTotal(res);
   const base = res.kind === "exact" || res.kind === "closest" ? titleOf(res.item) : res.title;
   const title = res.packOne && res.item?.pack > 1 ? `${base} (1 of ${res.item.pack})` : base;
-  tally.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, unitCents: unitCents(res), qty: state.qty, unit: res.unit, kind: res.kind, cents, at: Date.now(), key: res.key });
+  tally.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, unitCents: unitCents(res), qty: state.qty, unit: res.unit, kind: res.kind, cents, at: Date.now(), key: res.key, ...(db.manifest?.fixture ? { sample: true } : {}) });
   writeJson(TALLY_KEY, tally);
   renderTallyPill();
   haptic(15);
@@ -697,10 +718,21 @@ function pushRecent(res) {
   const entry = {
     key: res.key, kind: res.kind, title: res.kind === "exact" || res.kind === "closest" ? titleOf(res.item) : res.title, priceCents: res.priceCents, unit: res.unit,
     code: res.code || null, id: res.item?.id ?? null, rank: res.item?.rank ?? null, version: db.version, brand: res.brand || null, name: res.name || null, at: Date.now(),
+    ...(db.manifest?.fixture ? { sample: true } : {}),
   };
   recent = [entry, ...recent.filter((r) => r.key !== res.key)].slice(0, 8);
   writeJson(RECENT_KEY, recent);
   renderRecent();
+}
+/** Sample (fixture) prices never mix with real ones: when the real snapshot arrives, tally lines and recents priced from
+ * the sample go, and the volunteer is told once. */
+function dropSampleLines() {
+  if (!db.manifest || db.manifest.fixture) return;
+  const t = tally.filter((x) => !x.sample), r = recent.filter((x) => !x.sample);
+  if (t.length === tally.length && r.length === recent.length) return;
+  tally = t; recent = r; writeJson(TALLY_KEY, tally); writeJson(RECENT_KEY, recent);
+  renderTallyPill(); renderRecent();
+  toast("Real prices are in. The tally and recents from the sample prices were cleared.", { iconName: "info", ms: 7000 });
 }
 /** Rows that can only be reopened by row number belong to one snapshot: drop them when the snapshot changes. */
 function pruneRecent() {
@@ -727,39 +759,48 @@ el.recentList.addEventListener("click", async (e) => {
 renderRecent();
 
 // ------------------------------------------------------------------ settings
+// What a volunteer can change (appearance, buzz, live check), what they need to know about the prices (date, source,
+// whether the phone keeps them), the two actions (check for new prices, reset), and an About fold for everything else.
+const sourceText = () => (db.manifest?.storePriced ? `${storeLabel()} shelf prices, otherwise Walmart.com` : "Walmart.com prices");
+const mb = (bytes) => `${(bytes / 1048576).toFixed(bytes >= 10 * 1048576 ? 0 : 1)} MB`;
 function settingsHtml() {
-  const m = db.manifest, s = db.stats;
+  const m = db.manifest;
   const seg = ["auto", "light", "dark"].map((t) => `<button type="button" data-theme="${t}" aria-pressed="${prefs.theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("");
+  const notes = [];
+  if (db.pendingUpdate) notes.push(`<p class="note">Newer prices (${esc(fmtDate(db.pendingUpdate.manifest?.priceDate, true))}) are downloaded and will be used as soon as nothing is open.</p>`);
+  if (m?.fixture) notes.push(`<p class="note note--equiv">Sample prices for testing. They look real but are not. The real Walmart prices replace them on their own as soon as the food bank's pipeline publishes them.</p>`);
+  if (db.skipped?.length) notes.push(`<p class="note">Not on this phone (memory): ${esc(db.skipped.map((s) => s.name).join(", "))}. Those items still get a live Walmart price when online.</p>`);
+  notes.push(`<p class="note" id="storageNote"${state.persisted === false ? "" : " hidden"}>This phone may clear the prices to free space (they download again when online). Adding the app to the Home Screen keeps them.</p>`);
+  const problem = state.dbError ? (state.dbErrorPlain || state.dbErrorStorage ? state.dbError : `The database couldn't be opened: ${state.dbError}`)
+    : db.state === "offline-empty" ? "Prices haven't been downloaded yet. Connect once and they stay on this phone." : "The prices are still loading.";
+  const card = m
+    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Prices as of ${esc(fmtDate(priceDate(), true))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} on this phone · works offline</p></div></div>`
+    : `<div class="data-head data-head--warn">${icon("info", "ico data-ico")}<div><h3 class="data-title">${db.state === "offline-empty" ? "No prices on this phone yet" : state.dbError ? "The prices couldn't be opened" : "Getting the prices"}</h3><p class="data-sub">${esc(problem)}</p></div></div>`;
+  const legend = [["exact", "Exact item", "The barcode or name is in the Walmart price list"], ["store-label", "Store price label", "Scale labels from meat, deli and bakery carry their own price"],
+    ["plu", "Produce code", "The 4-digit sticker on fruit and vegetables, priced by the pound or each"], ["equivalent", "Equivalent value", "Not sold at Walmart, so it takes the price of the closest Walmart item"],
+    ["closest", "Closest match", "Nothing matched every word typed; check the type and size"], ["live", "Live Walmart price", "Not in the saved list, found on Walmart.com just now"]]
+    .map(([k, l, t]) => `<li><span class="kind" data-kind="${k}">${l}</span><span>${t}</span></li>`).join("");
   return `<div class="sheet-inner"><div class="grab" aria-hidden="true"></div>
     <div class="sheet-head"><h2 class="h2" id="settingsTitle">Settings</h2><button class="x-btn" type="button" aria-label="Close">${icon("x")}</button></div>
     <div class="setting"><div class="lab">Appearance<small>Auto follows the phone</small></div><div class="seg" role="group" aria-label="Appearance">${seg}</div></div>
     <div class="setting"><div class="lab">Vibrate on scan<small>A short buzz when a barcode is read</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.haptics}" data-pref="haptics" aria-label="Vibrate on scan"></button></div>
-    <div class="setting"><div class="lab">Live Walmart check<small>${LIVE_URL ? "When online, confirm a scanned item's price against Walmart.com right now" : "Not set up for this deployment"}</small></div>${LIVE_URL ? `<button class="switch" type="button" role="switch" aria-checked="${prefs.live}" data-pref="live" aria-label="Live Walmart check"></button>` : `<span class="fine">Off</span>`}</div>
-    <h2 class="h2">Price database</h2>
-    ${m ? `<dl class="kv">
-      <dt>Prices as of</dt><dd>${esc(fmtDate(priceDate(), true))}</dd>
-      <dt>Items</dt><dd>${fmtInt(m.items)}</dd>
-      <dt>Barcodes</dt><dd>${fmtInt(m.upcs)}</dd>
-      <dt>Equivalents</dt><dd>${fmtInt(m.equivalents)}</dd>
-      <dt>On this phone</dt><dd>${(m.totalGzBytes / 1048576).toFixed(1)} MB</dd>
-      <dt>Storage</dt><dd id="storageMode">${esc(storageText(state.persisted))}</dd>
-      <dt>Opened in</dt><dd>${s?.wallMs ?? "—"} ms</dd>
-      <dt>Snapshot</dt><dd class="mono">${esc(m.version)}</dd>
-      <dt>App build</dt><dd class="mono">${esc(BUILD)}</dd>
-    </dl>
-    <p class="note" id="storageNote"${state.persisted === false ? "" : " hidden"}>Storage is best-effort: the phone may clear the prices to free space (they re-download when online). Adding the app to the Home Screen keeps them.</p>` : `<p class="note${state.dbError ? " note--warn" : ""}">${esc(state.dbError ? (state.dbErrorPlain || state.dbErrorStorage ? state.dbError : `The database couldn't be opened: ${state.dbError}`) : db.state === "offline-empty" ? "Prices haven't been downloaded yet. Connect once and they stay on this phone." : "The price database hasn't finished loading.")}</p>`}
-    ${db.pendingUpdate ? `<p class="note">Newer prices (${esc(fmtDate(db.pendingUpdate.manifest?.priceDate, true))}) are downloaded and will be used as soon as nothing is open.</p>` : ""}
-    ${m?.fixture ? `<p class="note note--warn">Sample data. This snapshot is a synthetic, full-size stand-in built in the shape of the real crawl so speed and behaviour can be proven before the first published crawl. Prices are plausible, not real.</p>` : ""}
-    <div class="actions"><button class="btn btn--ghost" type="button" data-act="update">${icon("refresh")} Check for new prices</button><button class="btn btn--danger" type="button" data-act="reset">${icon("trash")} Reset app data</button></div>
-    <p class="fine">Prices are the Strongsville Walmart's own shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com's online price; the price note on each item says which. The food bank's price pipeline refreshes them every week. “Equivalent value” items aren't sold at Walmart; they take the price of the closest Walmart item by type and size. Everything works offline once the database is on the phone. Non-Walmart barcodes are identified with data from Open Food Facts, Open Beauty Facts and Open Products Facts (ODbL). Barcode decoding by zxing-cpp (Apache-2.0).</p>
+    ${LIVE_URL ? `<div class="setting"><div class="lab">Live Walmart check<small>When online, confirm a scanned item's price against Walmart right now</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.live}" data-pref="live" aria-label="Live Walmart check"></button></div>` : ""}
+    <h2 class="h2">Prices</h2>
+    <section class="data-card" aria-label="Price database">${card}${notes.join("")}
+      <button class="btn btn--ghost btn--block" type="button" data-act="update">${icon("refresh")} Check for new prices</button>
+    </section>
+    <details class="about">
+      <summary><span>About SFB Value</span>${icon("back", "ico chev")}</summary>
+      <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
+      <p class="fine">Prices are the Strongsville Walmart's own shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com's online price; the note under each price says which. The food bank's price pipeline refreshes them every week and the app updates itself when online. Everything else works offline. Non-Walmart barcodes are identified with data from Open Food Facts, Open Beauty Facts and Open Products Facts (ODbL). Barcode decoding by zxing-cpp (Apache-2.0).</p>
+      <p class="fine mono">Version ${esc(BUILD)}${m ? ` · prices ${esc(m.version)}` : ""}</p>
+    </details>
+    <button class="btn btn--danger btn--block" type="button" data-act="reset">${icon("trash")} Reset app data</button>
   </div>`;
 }
-/** "Persistent" means the browser promised not to evict the pack; "best-effort" means it may, under storage pressure. */
-const storageText = (p) => (p === true ? "Persistent" : p === false ? "Best-effort" : p === null ? "Not reported" : "Checking…");
 function fillStorage() {
   db.persistenceStatus().then((p) => {
     state.persisted = p;
-    const dd = el.settings.querySelector("#storageMode"); if (dd) dd.textContent = storageText(p);
     const note = el.settings.querySelector("#storageNote"); if (note) note.hidden = p !== false;
   }).catch(() => {});
 }
@@ -781,6 +822,7 @@ el.settings.addEventListener("click", async (e) => {
 });
 el.settingsBtn.addEventListener("click", openSettings);
 el.status.addEventListener("click", openSettings);
+el.readyCard?.addEventListener("click", openSettings);
 
 // ------------------------------------------------------------------ scanner
 let scannerMod = null;
@@ -901,6 +943,7 @@ if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("n
 }
 
 setStatus("loading", "Starting…");
+renderReadyCard();
 keyboardInset();
 showInstallHint();
 if (typeof DecompressionStream === "undefined") {
@@ -909,5 +952,6 @@ if (typeof DecompressionStream === "undefined") {
   state.dbErrorPlain = true;
   state.dbError = isIOS ? "This iPhone's software is too old to keep the prices offline. Update it to iOS 16.4 or newer (Settings › General › Software Update), then open the app again."
     : "This browser is too old to keep the prices offline. Update Chrome (or the phone's browser), then open the app again.";
+  db.state = "error"; renderReadyCard();
 } else db.start();
 perf.boot.scriptMs = Math.round(performance.now());
