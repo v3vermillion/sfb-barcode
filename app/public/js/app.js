@@ -86,19 +86,39 @@ applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 
 const vv = window.visualViewport;
+/** True while a text field has the focus: the only time a phone keyboard can be on screen. */
+const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"); };
 function keyboardInset() {
   if (!vv) return;
-  // a pinch-zoomed page is not a keyboard: only an unscaled viewport that got shorter is
+  // The inset and the pan are read from the visual viewport ONLY while a text field is focused. Safari in the browser
+  // (not installed) also shrinks and shifts the visual viewport when its toolbars collapse, on a rubber-band scroll and
+  // after a rotation: with nothing to type into, those are not a keyboard, and following them moved the header down the
+  // page and lifted the dock off the bottom. A pinch-zoomed page is not a keyboard either.
   const zoomed = vv.scale > 1.01;
-  const inset = zoomed ? 0 : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const keyboard = typing() && !zoomed;
+  const inset = keyboard ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
   // iOS opens the keyboard by panning the page up (offsetTop) instead of resizing it: the fixed header and the top of the
   // results would sit above the screen, out of reach of any scroll. Everything fixed follows the visible area instead.
-  const top = zoomed ? 0 : Math.max(0, Math.round(vv.offsetTop));
+  const top = keyboard ? Math.max(0, Math.round(vv.offsetTop)) : 0;
   document.documentElement.style.setProperty("--kb", `${inset}px`);
   document.documentElement.style.setProperty("--vv-top", `${top}px`);
 }
 vv?.addEventListener("resize", keyboardInset);
 vv?.addEventListener("scroll", keyboardInset);
+document.addEventListener("focusin", keyboardInset);
+document.addEventListener("focusout", () => setTimeout(keyboardInset, 0));
+// Safari can come back from a rotation with the page left zoomed in; the only remedy is to pin the scale for one frame
+const viewportMeta = document.querySelector('meta[name="viewport"]');
+function resetZoomAfterRotation() {
+  setTimeout(() => {
+    if (!vv || !viewportMeta || vv.scale <= 1.01) return;
+    const content = viewportMeta.content;
+    viewportMeta.content = `${content}, maximum-scale=1`;
+    requestAnimationFrame(() => { viewportMeta.content = content; keyboardInset(); });
+  }, 350);
+}
+window.addEventListener("orientationchange", resetZoomAfterRotation);
+screen.orientation?.addEventListener?.("change", resetZoomAfterRotation);
 
 // ------------------------------------------------------------------ modal stack (dialogs + scanner share history)
 // Every open pushes a history entry so the phone's Back closes the top-most layer. A close that owns the top

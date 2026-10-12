@@ -79,7 +79,7 @@
 
 /* ---------- base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { height: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html { height: 100%; background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }   /* the overscroll area is never white */
 body {
   margin: 0; min-height: 100%; background: var(--bg); color: var(--ink);
   font: 500 17px/1.35 var(--font); font-feature-settings: "ss01", "cv05"; font-variant-numeric: tabular-nums;
