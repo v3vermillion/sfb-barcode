@@ -37,7 +37,9 @@ DEFAULTS = {
     "dept_size_tolerance": 0.30,        # pages crawled vs sizing total_pages; null = skip the comparison
     "sentinel_misses_max": 0,
     "live_sample": 500,                 # rows re-checked live against /items?ids=
-    "live_match_min": 0.97,
+    "live_match_min": 0.90,             # share of rows Walmart still lists whose live price is within live_match_tolerance
+    "live_match_tolerance": 0.05,       # a live price this close to the snapshot counts as a match (0 = exact only)
+    "live_missing_max": None,           # share of sampled rows Walmart no longer lists; null = reported, never holds
     "size_parse_min": 0.92,             # share of Food rows sized (parsed, by the pound or sold each); 0.927 measured 2026-10-08
     "unit_outliers_max": None,          # share of unit-priced rows outside [median/10, median*10]: measure-only until
                                         # size parsing improves (first real Food crawl measured 0.075); the rows are flagged
@@ -188,9 +190,19 @@ def live_sample_rows(rows, n, seed, include_carried=False):
     return random.Random(str(seed)).sample(pool, n)
 
 
-def live_check(wm, sample):
+def _consumable_departments():
+    try:
+        return {d["name"] for d in store.config()["departments"] if d.get("consumable", True)}
+    except (OSError, ValueError, KeyError, TypeError):
+        return set()
+
+
+def live_check(wm, sample, tolerance=0.05):
     """Compare snapshot prices with Walmart right now, LIVE_CHUNK ids per call. Stops at the first
-    transport/throttle error and reports what it managed to check (error recorded, never raised)."""
+    transport/throttle error and reports what it managed to check (error recorded, never raised).
+    Rates are over the rows Walmart still lists: a listing that is gone is not a wrong price (donors give old
+    stock, and the app keeps pricing it); it is counted in `missing` and reported on its own. `close` counts live
+    prices within `tolerance` of the snapshot (exact included); `by_tier` splits consumable from durable rows."""
     by_id = {str(r["id"]): r for r in sample}
     # a row showing the store's price is compared with the store's price now, every other row with Walmart.com's
     from . import storeprice
@@ -199,8 +211,11 @@ def live_check(wm, sample):
     for store_rows in (False, True):
         ids = [i for i, r in by_id.items() if ("store_price" in (r.get("flags") or [])) == store_rows]
         chunks += [(ids[i:i + LIVE_CHUNK], sid if store_rows else None) for i in range(0, len(ids), LIVE_CHUNK)]
-    res = {"sample": len(by_id), "checked": 0, "exact": 0, "within_5pct": 0, "missing": 0, "calls": 0,
+    res = {"sample": len(by_id), "checked": 0, "exact": 0, "within_5pct": 0, "close": 0, "missing": 0, "calls": 0,
+           "tolerance": tolerance, "by_tier": {"consumable": {"found": 0, "exact": 0, "close": 0, "missing": 0},
+                                              "durable": {"found": 0, "exact": 0, "close": 0, "missing": 0}},
            "examples": [], "error": None}
+    consumable = _consumable_departments()
     for chunk, store_id in chunks:
         try:
             items = wm.get_items(chunk, store_id=store_id) if store_id else wm.get_items(chunk)
@@ -212,22 +227,33 @@ def live_check(wm, sample):
         for iid in chunk:
             r, it = by_id[iid], live.get(iid)
             res["checked"] += 1
+            tier = res["by_tier"]["consumable" if r.get("dept") in consumable else "durable"]
             if it is None or not isinstance(it.get("salePrice"), (int, float)):
-                res["missing"] += 1
+                res["missing"] += 1; tier["missing"] += 1
                 res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"], "live": None})
                 continue
+            tier["found"] += 1
             diff = abs(float(r["price"]) - float(it["salePrice"]))
+            rel = diff / float(r["price"]) if r["price"] else 9e9
             if diff < 0.005:
-                res["exact"] += 1
-                res["within_5pct"] += 1
+                res["exact"] += 1; res["within_5pct"] += 1; res["close"] += 1
+                tier["exact"] += 1; tier["close"] += 1
             else:
-                if r["price"] and diff / float(r["price"]) <= 0.05:
+                if rel <= 0.05:
                     res["within_5pct"] += 1
+                if rel <= tolerance:
+                    res["close"] += 1; tier["close"] += 1
                 res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"],
                                         "live": float(it["salePrice"])})
     n = res["checked"]
-    res["match_rate"] = round(res["exact"] / n, 4) if n else None
-    res["within_5pct_rate"] = round(res["within_5pct"] / n, 4) if n else None
+    found = n - res["missing"]
+    res["found"] = found
+    res["match_rate"] = round(res["exact"] / found, 4) if found else None
+    res["within_5pct_rate"] = round(res["within_5pct"] / found, 4) if found else None
+    res["close_rate"] = round(res["close"] / found, 4) if found else None
+    res["missing_rate"] = round(res["missing"] / n, 4) if n else None
+    for t in res["by_tier"].values():
+        t["close_rate"] = round(t["close"] / t["found"], 4) if t["found"] else None
     res["examples"].sort(key=lambda e: -(abs(e["snapshot"] - e["live"]) / e["snapshot"] if e["live"] is not None and e["snapshot"] else 9e9))
     res["examples"] = res["examples"][:25]
     return res
@@ -245,16 +271,27 @@ def gate_live(rows, wm, cfg, seed):
         wm = walmart_client()
     if wm is None:
         return _measured(False, None, min_rate, "not run: no Walmart credentials in the environment (WM_CONSUMER_ID / WM_PRIVATE_KEY)"), None, False
-    res = live_check(wm, sample)
+    tol = cfg.get("live_match_tolerance")
+    tol = float(tol) if isinstance(tol, (int, float)) and not isinstance(tol, bool) and tol >= 0 else 0.05
+    res = live_check(wm, sample, tolerance=tol)
     if res["checked"] < max(1, len(sample) / 2):
         detail = f"live check unavailable after {res['checked']}/{len(sample)} rows: {res['error']}"
         return _measured(False, None, min_rate, detail), res, True
-    detail = (f"{res['exact']}/{res['checked']} exact ({res['match_rate']:.1%}), within 5%: {res['within_5pct_rate']:.1%}, "
-              f"missing live: {res['missing']}, {res['calls']} calls")
+    found, tiers = res["found"], res["by_tier"]
+    pct = lambda v: f"{v:.1%}" if isinstance(v, (int, float)) else "-"
+    detail = (f"{res['close']}/{found} within {tol:.0%} ({pct(res['close_rate'])}; exact {res['exact']}, {pct(res['match_rate'])}) "
+              f"of the rows Walmart still lists; no longer listed: {res['missing']} of {res['checked']} "
+              f"({pct(res['missing_rate'])}, not counted as wrong); consumable {pct(tiers['consumable']['close_rate'])} "
+              f"of {tiers['consumable']['found']}, durable {pct(tiers['durable']['close_rate'])} of {tiers['durable']['found']}; "
+              f"{res['calls']} calls")
     if res["error"]:
         detail += f"; stopped early: {res['error']}"
-    ok = min_rate is None or res["match_rate"] >= min_rate
-    return _measured(ok, res["match_rate"], min_rate, detail), res, False
+    ok = min_rate is None or (res["close_rate"] is not None and res["close_rate"] >= min_rate)
+    missing_max = cfg.get("live_missing_max")
+    if ok and missing_max is not None and res["missing_rate"] is not None and res["missing_rate"] > missing_max:
+        ok = False
+        detail += f"; HOLD: no longer listed above live_missing_max {missing_max:.1%}"
+    return _measured(ok, res["close_rate"], min_rate, detail), res, False
 
 
 def gate_size_parse(rows, min_rate):

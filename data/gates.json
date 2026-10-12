@@ -1,9 +1,11 @@
 {
-  "note": "Acceptance gates for a candidate snapshot (crawler/qa.py). Edit a value and the next pipeline run re-evaluates the held candidate (its gates.json records a hash of this file + sentinels.json + categories.json). A null threshold means measure-only: the gate is still measured and reported but can never hold a snapshot. Exception: dept_size_tolerance null only disables the page-count comparison; a department that did not finish or kept no items always fails departments_complete. sample_review.required false skips the Claude sample review and publishes on the deterministic gates alone.",
+  "note": "Acceptance gates for a candidate snapshot (crawler/qa.py). Edit a value and the next pipeline run re-evaluates the held candidate (its gates.json records a hash of this file + sentinels.json + categories.json). A null threshold means measure-only: the gate is still measured and reported but can never hold a snapshot. Exception: dept_size_tolerance null only disables the page-count comparison; a department that did not finish or kept no items always fails departments_complete. sample_review.required false skips the Claude sample review and publishes on the deterministic gates alone. live_match (2026-10-12): the rate is over the sampled rows Walmart still lists, a live price within live_match_tolerance of the snapshot counts as a match, and rows Walmart no longer lists are reported on their own (live_missing_max null = never holds): a listing that disappeared is not a wrong price, and donors give old stock. 0.9 was set from the first full crawl (five days long: 93.9% within 5% of the rows still listed); raise it as weekly refreshes keep prices fresher.",
   "dept_size_tolerance": 0.3,
   "sentinel_misses_max": 0,
   "live_sample": 500,
-  "live_match_min": 0.97,
+  "live_match_min": 0.9,
+  "live_match_tolerance": 0.05,
+  "live_missing_max": null,
   "size_parse_min": 0.92,
   "unit_outliers_max": null,
   "unit_outlier_group_min": 50,

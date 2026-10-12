@@ -2,7 +2,7 @@
   "id": "./",
   "name": "SFB Value — Strongsville Emergency Food Bank",
   "short_name": "SFB Value",
-  "description": "Scan or type a donated item and see its exact Walmart price, offline.",
+  "description": "Strongsville Emergency Food Bank. Scan or type a donated item to see its Walmart price, offline.",
   "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",

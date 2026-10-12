@@ -71,7 +71,12 @@ def build():
         dept = depts.get(dept_id)
         if not dept:
             continue
-        for part in sorted((run_dir / dept_id).rglob("part-*.jsonl.gz")):   # split departments: one folder per node
+        # a split department reads only the child nodes data/categories.json lists now: a node removed after the crawl
+        # finished still has its pages on disk (crawl.sync prunes them only while a crawl runs) and must not be built
+        nodes = [str(u["id"]) for u in dept.get("split") or []]
+        parts = ([p for u in nodes for p in sorted((run_dir / dept_id / u).rglob("part-*.jsonl.gz"))] if nodes
+                 else sorted((run_dir / dept_id).rglob("part-*.jsonl.gz")))
+        for part in parts:
             for item in store.iter_jsonl_gz(part):
                 raw_counts[dept["name"]] += 1
                 iid = item.get("itemId")

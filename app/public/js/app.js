@@ -9,7 +9,7 @@ import { stalenessLevel, stalenessText, daysSince } from "./staleness.js";
 
 // ------------------------------------------------------------------ setup
 const $ = (id) => document.getElementById(id);
-const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "quick", "heroEyebrow", "readyCard"].map((k) => [k, $(k)]));
+const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "quick", "heroEyebrow", "readyCard", "statusLive", "tallyStrip", "tallyStripText", "tallyStripTotal"].map((k) => [k, $(k)]));
 
 const LIVE_URL = (document.querySelector('meta[name="sfb-live-check"]')?.content || "").trim().replace(/\/$/, "");
 const BUILD = document.querySelector('meta[name="sfb-build"]')?.content || "dev";
@@ -80,7 +80,7 @@ function applyTheme() {
   const root = document.documentElement;
   if (prefs.theme === "auto") delete root.dataset.theme; else root.dataset.theme = prefs.theme;
   const dark = prefs.theme === "dark" || (prefs.theme === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#141311" : "#f7f5f0"; });
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#0a0d0b" : "#f7f5f0"; });
 }
 applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
@@ -153,8 +153,11 @@ function grabToDismiss(dlg) {
 
 // ------------------------------------------------------------------ status / progress
 function setStatus(stateName, html) {
+  const changed = el.status.dataset.state !== stateName;
   el.status.dataset.state = stateName;
   el.statusText.innerHTML = html;
+  // a screen reader hears a change of state once, never every download percentage
+  if (changed && el.statusLive) el.statusLive.textContent = `Prices: ${el.statusText.textContent}`;
 }
 function setProgress(frac) {
   if (frac == null) { el.progress.hidden = true; el.progressBar.style.width = "0"; return; }
@@ -164,8 +167,8 @@ function readyText() {
   const m = db.manifest; if (!m) return "Ready";
   // the date is what a volunteer needs (the wide header says "Prices"); food and household come first, and until the
   // other departments arrive the header says so
-  const more = db.storageFull ? ` · storage full` : db.more ? ` · more ${navigator.onLine ? "loading" : "next time online"}` : "";
-  return `${navigator.onLine ? "" : "Offline · "}<span class="n">${m.fixture ? "Sample" : "Prices"} </span>${esc(fmtDate(priceDate()))}${more}`;
+  const more = db.storageFull ? " · storage full" : db.more ? ` · more ${navigator.onLine ? "loading" : "when online"}` : "";
+  return `${navigator.onLine ? "" : "Offline · "}<span class="n">Prices </span>${esc(fmtDate(priceDate()))}${more}`;
 }
 
 /** The card at the top of the home screen: is this phone ready to price a donation, in one glance. Tapping it opens Settings. */
@@ -175,13 +178,12 @@ function renderReadyCard() {
   let tone = "ready", ico = "check", title = "", sub = "";
   if (m) {
     const date = fmtDate(priceDate(), true);
-    if (m.fixture) { tone = "sample"; ico = "info"; title = "Sample prices for testing"; sub = `Real Walmart prices replace these automatically · ${fmtDate(priceDate())}`; }
-    else { title = "Prices ready"; sub = `${sourceText()} · ${date}${db.more ? " · more departments loading" : " · works offline"}`; }
-    if (db.storageFull) { tone = "problem"; ico = "info"; title = "Phone storage is full"; sub = `Free about ${db.storageFull.needMB} MB so the rest of the prices can download.`; }
-  } else if (db.state === "downloading") { tone = "busy"; ico = "refresh"; title = "Getting the prices"; sub = "One download, then everything works offline"; }
-  else if (db.state === "loading" || db.state === "idle") { tone = "busy"; ico = "refresh"; title = "Opening the prices"; sub = "A moment…"; }
-  else if (db.state === "offline-empty") { tone = "problem"; ico = "wifi-off"; title = "No prices on this phone yet"; sub = "Connect to the internet once; they stay on the phone after that."; }
-  else { tone = "problem"; ico = "info"; title = state.dbErrorStorage ? "Phone storage is full" : state.dbErrorNetwork ? "Download interrupted" : "Prices couldn't be opened"; sub = state.dbErrorNetwork ? "It continues on its own when the phone is back online." : "Tap for details."; }
+    title = "Prices ready"; sub = `${sourceText()} · ${date}${db.more ? " · More departments loading" : " · Works offline"}`;
+    if (db.storageFull) { tone = "problem"; ico = "info"; title = "Phone storage is full"; sub = `Free about ${db.storageFull.needMB} MB to finish downloading prices.`; }
+  } else if (db.state === "downloading") { tone = "busy"; ico = "refresh"; title = "Downloading prices"; sub = "A one-time download. The app works offline after this."; }
+  else if (db.state === "loading" || db.state === "idle") { tone = "busy"; ico = "refresh"; title = "Opening prices"; sub = "One moment."; }
+  else if (db.state === "offline-empty") { tone = "problem"; ico = "wifi-off"; title = "No prices on this phone yet"; sub = "Connect to the internet once. Prices stay on the phone after that."; }
+  else { tone = "problem"; ico = "info"; title = state.dbErrorStorage ? "Phone storage is full" : state.dbErrorNetwork ? "Download interrupted" : "Prices could not be opened"; sub = state.dbErrorNetwork ? "Resumes automatically when the connection returns." : "Tap for details."; }
   c.dataset.tone = tone;
   c.innerHTML = `<span class="rc-ico">${icon(ico)}</span><span class="rc-text"><b>${esc(title)}</b><span class="sub">${esc(sub)}</span></span>${icon("back", "ico chev")}`;
 }
@@ -189,19 +191,19 @@ function renderReadyCard() {
 db.addEventListener("state", (e) => {
   const d = e.detail;
   switch (d.state) {
-    case "downloading": setStatus("downloading", "Downloading prices…"); break;
-    case "loading": setStatus("loading", "Opening database…"); break;
+    case "downloading": setStatus("downloading", "Downloading prices"); break;
+    case "loading": setStatus("loading", "Opening prices"); break;
     case "ready": setStatus("ready", readyText()); setProgress(null); break;
-    case "offline-empty": setStatus("offline", "Offline — connect once to get prices"); setProgress(null); if (state.query.trim()) runSearch(state.query); break;
+    case "offline-empty": setStatus("offline", "Offline · no prices yet"); setProgress(null); if (state.query.trim()) runSearch(state.query); break;
     case "error":
       setProgress(null); state.dbError = d.message; state.dbErrorNetwork = !!d.network; state.dbErrorStorage = !!d.storage;
       if (d.network) {
         // the connection dropped mid-download: say so, and try again on our own (also on the "online" event)
-        setStatus("offline", "No connection — prices will download when it's back");
+        setStatus("offline", "Waiting for a connection");
         clearTimeout(state.retryTimer);
         state.retryTimer = setTimeout(() => { if (!db.version && navigator.onLine) db.start().catch(() => {}); }, 30_000);
-      } else if (d.storage) setStatus("error", "Phone storage is full — tap for details");
-      else setStatus("error", "Database problem — tap for details");
+      } else if (d.storage) setStatus("error", "Storage full · tap for details");
+      else setStatus("error", "Prices unavailable · tap for details");
       if (state.query.trim()) runSearch(state.query);
       break;
   }
@@ -215,7 +217,7 @@ db.addEventListener("progress", (e) => {
   const d = e.detail;
   if (d.phase === "download") {
     setProgress(d.totalBytes ? d.doneBytes / d.totalBytes : 0);
-    if (!d.background) setStatus("downloading", `Downloading prices… ${Math.round((d.doneBytes / (d.totalBytes || 1)) * 100)}%`);
+    if (!d.background) setStatus("downloading", `Downloading prices · ${Math.round((d.doneBytes / (d.totalBytes || 1)) * 100)}%`);
   } else if (!db.version) setProgress(0.9 + 0.1 * (d.done / d.total));
 });
 db.addEventListener("ready", () => {
@@ -223,7 +225,6 @@ db.addEventListener("ready", () => {
   perf.boot.dbReadyMs = Math.round(performance.now());
   perf.boot.loadMs = db.stats?.loadMs; perf.boot.wallMs = db.stats?.wallMs; perf.boot.downloadMs = db.stats?.downloadMs ?? null;
   requestAnimationFrame(() => { performance.mark("sfb:interactive"); perf.boot.interactiveMs = Math.round(performance.now()); document.documentElement.dataset.ready = "1"; });
-  el.heroEyebrow.textContent = db.manifest?.fixture ? "Strongsville Food Bank · sample data" : "Strongsville Emergency Food Bank";
   pruneRecent();
   dropSampleLines();
   if (state.query.trim()) runSearch(state.query);
@@ -247,7 +248,7 @@ db.addEventListener("update-available", () => { setProgress(null); maybeApplyPen
 function maybeApplyPending(offer = false) {
   if (!db.pendingUpdate) return;
   const idle = !anyModalOpen() && !state.scanOpen && !state.query.trim();
-  const apply = () => db.applyUpdate().then(() => { setStatus("ready", readyText()); toast(`Prices updated to ${fmtDate(db.manifest?.priceDate, true)}`); }).catch(() => toast("Couldn't switch to the new prices; the saved ones are still in use", { iconName: "info" }));
+  const apply = () => db.applyUpdate().then(() => { setStatus("ready", readyText()); toast(`Prices updated to ${fmtDate(db.manifest?.priceDate, true)}`); }).catch(() => toast("Could not switch to the new prices. The saved prices remain in use.", { iconName: "info" }));
   if (idle) apply();
   else if (offer) toast("Newer prices are ready", { action: "Use now", onAction: apply, ms: 8000, iconName: "refresh" });
 }
@@ -256,7 +257,7 @@ window.addEventListener("online", () => {
   renderStale();
   (db.version ? db.checkForUpdate() : db.start()).catch(() => {});
 });
-window.addEventListener("offline", () => { if (db.version) setStatus("ready", readyText()); renderStale(); toast("Offline — scanning and search still work", { iconName: "wifi-off" }); });
+window.addEventListener("offline", () => { if (db.version) setStatus("ready", readyText()); renderStale(); toast("Offline · scanning and search still work", { iconName: "wifi-off" }); });
 // an installed app (Android's "Add to Home screen") is what makes Chrome grant persistent storage: ask again right then
 window.addEventListener("appinstalled", () => { db.requestPersistence({ force: true }).catch(() => {}); hideInstallHint(); });
 
@@ -273,9 +274,9 @@ function showInstallHint() {
   if (!h || standalone() || readJson(INSTALL_KEY, null)?.dismissed) return;
   if (!isIOS && !installPrompt) return;
   const how = isIOS
-    ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. Safari forgets a website's saved prices after a week away; the Home Screen app keeps them.`
-    : "It opens full screen and the phone keeps the prices.";
-  h.innerHTML = `<span class="rc-ico">${icon(isIOS ? "share" : "plus")}</span><div><b>Add to Home Screen</b><span class="sub">${how}</span></div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
+    ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. The app opens full screen and keeps its prices.`
+    : "Opens full screen and keeps its prices on the phone.";
+  h.innerHTML = `<span class="rc-ico">${icon(isIOS ? "share" : "plus")}</span><div><b>${isIOS ? "Add to Home Screen" : "Install the app"}</b><span class="sub">${how}</span></div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
   h.hidden = false;
 }
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; showInstallHint(); });
@@ -316,18 +317,18 @@ setInterval(renderStale, 3600_000);
 
 /** Settings' "Check for new prices" and the banner's "Update now" share one path: check, download, apply, say what happened. */
 async function checkNow(btn = null) {
-  if (!navigator.onLine) { toast("You're offline — will check when back online", { iconName: "wifi-off" }); return; }
+  if (!navigator.onLine) { toast("Offline · will check when the connection returns", { iconName: "wifi-off" }); return; }
   if (state.staleBusy) { toast("Already checking"); return; }
   const wasStale = state.stale !== "fresh";
   state.staleBusy = true; if (btn) btn.disabled = true; renderStale();
-  const d = toast("Checking for new prices…", { ms: 0, iconName: "refresh" });
+  const d = toast("Checking for new prices", { ms: 0, iconName: "refresh" });
   try {
     const r = await db.checkForUpdate({ apply: true });
     d();
-    toast(r.upToDate ? (wasStale ? "No newer prices have been published yet" : "Prices are up to date") : r.applied || r.installed ? `Prices as of ${fmtDate(priceDate(), true)}` : r.busy ? "Already checking" : "Nothing new yet");
+    toast(r.upToDate ? (wasStale ? "No newer prices have been published yet" : "Prices are up to date") : r.applied || r.installed ? `Prices as of ${fmtDate(priceDate(), true)}` : r.busy ? "Already checking" : "No newer prices yet");
     if (db.version) setStatus("ready", readyText());
     if (el.settings.open) refreshSettings();
-  } catch (err) { d(); toast(`Couldn't check: ${err.message}`, { iconName: "info" }); }
+  } catch (err) { d(); toast(`Could not check: ${err.message}`, { iconName: "info" }); }
   finally { state.staleBusy = false; if (btn?.isConnected) btn.disabled = false; renderStale(); }
 }
 
@@ -363,11 +364,11 @@ function showHome() {
   el.list.innerHTML = ""; el.resultsMeta.textContent = "";
   state.last = null; state.codeHit = null; state.pending = null; state.shownQuery = null;
   renderRecent();
-  homeToThumb();
+  homeToTop();
   maybeApplyPending();
 }
-/** Home is bottom-anchored like the results: on a short phone the page opens at its thumb end (chips, Recent by the dock). */
-function homeToThumb() { requestAnimationFrame(() => { if (!el.home.hidden) window.scrollTo(0, document.documentElement.scrollHeight); }); }
+/** Home reads top-down (status, tally, headline, common items, Recent) and always comes back at the top. */
+function homeToTop() { requestAnimationFrame(() => { if (!el.home.hidden) window.scrollTo(0, 0); }); }
 /** The best match sits at the bottom of the bottom-anchored results. scrollHeight lands there whether the engine counts
  *  a column-reverse scroller's offset from the bottom (0, negative upward) or from the top. */
 function resultsToBest() { el.results.scrollTop = el.results.scrollHeight; }
@@ -378,9 +379,9 @@ async function runSearch(q) {
   state.last = null; state.codeHit = null;
   if (!db.version) {
     el.home.hidden = true; el.results.hidden = false;
-    const msg = db.state === "offline-empty" ? "Prices haven't been downloaded yet. Connect once and they stay on this phone."
-      : db.state === "error" && state.dbErrorNetwork ? "The connection dropped while the prices were downloading. They will finish on their own once the phone is back online."
-      : db.state === "error" ? "The price database couldn't be opened. Check for new prices in Settings." : "Opening the price database…";
+    const msg = db.state === "offline-empty" ? "Prices have not been downloaded yet. Connect to the internet once; they stay on this phone."
+      : db.state === "error" && state.dbErrorNetwork ? "The download was interrupted. It resumes automatically when the phone is back online."
+      : db.state === "error" ? "Prices could not be opened. Open Settings and tap Check for new prices." : "Opening prices";
     el.list.innerHTML = `<li class="empty">${msg}</li>`;
     el.resultsMeta.textContent = "";
     state.shownQuery = null; resultsToBest();
@@ -401,9 +402,9 @@ async function runSearch(q) {
 function rowHtml(it, toks) {
   const { pre, brand, rest } = splitTitle(it);
   const title = brand ? `${highlight(pre, toks)}<b>${highlight(brand, toks)}</b>${highlight(rest, toks)}` : highlight(rest, toks);
-  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "older barcode" : "", it.unavailable ? "out of stock at check" : ""].filter(Boolean);
+  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : "", it.unavailable ? "Out of stock when checked" : ""].filter(Boolean);
   const sub = it.basis === "lb" ? "<small>per lb</small>" : it.pack > 1 ? `<small>${money(Math.round(it.priceCents / it.pack))} each</small>` : "";
-  const value = it.priceWithheld ? `<small>equivalent value</small>` : sub;
+  const value = it.priceWithheld ? `<small>Equivalent value</small>` : sub;
   return `<li><button class="row${it.retired ? " is-retired" : ""}" type="button" data-rank="${it.rank}"><span class="name">${title}</span><span class="price">${money(it.priceCents)}${value}</span><span class="meta">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span></button></li>`;
 }
 function codeRowHtml(res) {
@@ -423,7 +424,7 @@ function renderResults(res, code, q) {
   let html = showCode ? codeRowHtml(code) : "";
   const first = res.items.slice(0, FIRST_ROWS), rest = res.items.slice(FIRST_ROWS);
   for (const it of first) html += rowHtml(it, toks);
-  if (!html) html = `<li class="empty">Nothing matches <b>${esc(q)}</b>. Try fewer words, the brand, or scan the barcode.</li>`;
+  if (!html) html = `<li class="empty">No results for <b>${esc(q)}</b>. Try fewer words, the brand name, or scan the barcode.</li>`;
   el.list.innerHTML = html;
   cancelMore();
   if (rest.length) {
@@ -433,11 +434,11 @@ function renderResults(res, code, q) {
     moreTimer = "requestIdleCallback" in window ? requestIdleCallback(append, { timeout: 400 }) : setTimeout(append, 150);
   }
   let meta = "";
-  if (res.notReady) meta = "Opening the price database…";
+  if (res.notReady) meta = "Opening prices";
   else if (res.items.length) {
-    meta = `<b>${fmtInt(res.total)}</b> ${res.total === 1 ? "match" : "matches"} · best one is next to the search box`;
+    meta = `<b>${fmtInt(res.total)}</b> ${res.total === 1 ? "match" : "matches"} · best match nearest the search box`;
     if (res.fuzzy) meta += " · spelling adjusted";
-    if (res.relaxed) meta = `<span class="warn">Closest matches</span> — nothing had every word${res.dropped?.length ? ` (ignored “${esc(res.dropped.join(" "))}”)` : ""}`;
+    if (res.relaxed) meta = `<span class="warn">Closest matches</span> · no item had every word${res.dropped?.length ? ` (“${esc(res.dropped.join(" "))}” ignored)` : ""}`;
   }
   el.resultsMeta.innerHTML = meta;
   // a new or refined query starts at its best match; the same query re-run (the database finished opening, more
@@ -460,7 +461,7 @@ async function openRank(rank, { closest = false, source = "search" } = {}) {
 }
 async function openCode(raw, { source = "typed", format, scanned = false, preferId = null } = {}) {
   const res = await resolveCode(db, raw, format, { scanned, preferId });
-  if (!res) { toast("That isn't a barcode number", { iconName: "info" }); return null; }
+  if (!res) { toast("That is not a barcode number", { iconName: "info" }); return null; }
   openResolution(res, { source });
   return res;
 }
@@ -487,10 +488,10 @@ function sheetHtml(res) {
   const notes = notesFor(res, { priceDateLong: fmtDate(priceDate(), true) });
   const title = res.kind === "exact" || res.kind === "closest" ? boldTitle(it) : res.kind === "live" ? boldTitle({ brand: res.brand, name: res.name }) : esc(res.title);
   const checked = res.kind === "live" ? `${liveSource(res.live)} price, checked ${res.live?.checkedAt ? `at ${fmtTime(res.live.checkedAt)}` : "today"}`
-    : res.kind === "store-label" ? "Read from the scale label, not a Walmart catalog price"
+    : res.kind === "store-label" ? "Price read from the store's scale label"
     : res.kind === "plu" && res.entry.source === "typical" ? "Typical Walmart price"
-    : res.kind === "not-ready" ? "The price database is still opening"
-    : res.priceCents == null ? "No saved price for this barcode"
+    : res.kind === "not-ready" ? "Prices are still opening"
+    : res.priceCents == null ? "No price on file for this barcode"
     : res.livePrice != null ? `${liveSource(res.live)} price, checked ${res.live?.checkedAt ? `at ${fmtTime(res.live.checkedAt)}` : "today"}`
     : it?.storePrice ? `${storeLabel()} shelf price, as of ${fmtDate(priceDate(), true)}`
     : `Walmart.com price, checked ${fmtDate(priceDate(), true)}`;
@@ -510,8 +511,8 @@ function sheetHtml(res) {
     : res.priceCents == null
       ? `<button class="btn btn--accent btn--block" type="button" data-act="find">${icon("search")} Find it by name</button>`
       : res.kind === "store-label" && res.label.needsConfirm
-        ? `<button class="btn btn--accent btn--block" type="button" data-act="add">${icon("check")} Label says <span id="addTotal" class="counting">${money(lineTotal(res))}</span>: add to tally</button>`
-        : `<button class="btn btn--accent btn--block" type="button" data-act="add">${icon("receipt")} Add <span id="addTotal" class="counting">${money(lineTotal(res))}</span> to tally</button>`;
+        ? `<button class="btn btn--accent btn--block" type="button" data-act="add" autofocus>${icon("check")} Confirm <span id="addTotal" class="counting">${money(lineTotal(res))}</span> and add to tally</button>`
+        : `<button class="btn btn--accent btn--block" type="button" data-act="add" autofocus>${icon("receipt")} Add <span id="addTotal" class="counting">${money(lineTotal(res))}</span> to tally</button>`;
   const secondary = state.source === "scan"
     ? `<button class="btn btn--ghost" type="button" data-act="scan">${icon("scan")} Scan next</button><button class="btn btn--ghost" type="button" data-act="close">Done scanning</button>`
     : `<button class="btn btn--ghost" type="button" data-act="scan">${icon("scan")} Scan</button><button class="btn btn--ghost" type="button" data-act="close">Back to search</button>`;
@@ -523,11 +524,10 @@ function sheetHtml(res) {
   const facts = [];
   if (res.gtin && res.kind !== "not-ready") facts.push(["Barcode", `<span class="mono">${esc(formatGtin(res.gtin))}</span>`]);
   if (it) {
-    facts.push(["Walmart item number", esc(String(it.id))]);
+    facts.push(["Walmart item", esc(String(it.id))]);
     if (it.catName) facts.push(["Department", esc(it.catName)]);
   }
   facts.push(["Prices as of", esc(fmtDate(priceDate(), true) || "—")]);
-  if (db.manifest?.fixture) facts.push(["Data", "Sample snapshot (synthetic)"]);
 
   return `<div class="sheet-inner">
     <div class="grab" aria-hidden="true"></div>
@@ -622,20 +622,20 @@ const liveSource = (j) => (j?.priceSource === "store" ? storeLabel() : "Walmart.
 async function liveCheck(res) {
   const row = el.sheet.querySelector(".live-row");
   if (!row || !LIVE_URL || !prefs.live || !res.gtin) return;
-  if (!navigator.onLine) { row.hidden = false; row.dataset.state = "off"; row.innerHTML = `${icon("wifi-off")}<span>Offline — showing the saved price.</span>`; return; }
+  if (!navigator.onLine) { row.hidden = false; row.dataset.state = "off"; row.innerHTML = `${icon("wifi-off")}<span>Offline · showing the saved price</span>`; return; }
   row.hidden = false; row.dataset.state = "checking";
-  row.innerHTML = `${icon("refresh")}<span>Checking Walmart's price right now…</span>`;
+  row.innerHTML = `${icon("refresh")}<span>Checking the current Walmart price</span>`;
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 8000);
-  const unavailable = () => { row.dataset.state = "error"; row.innerHTML = `${icon("info")}<span>Live check unavailable right now. The saved price is shown.</span>`; };
+  const unavailable = () => { row.dataset.state = "error"; row.innerHTML = `${icon("info")}<span>Live price check unavailable. Showing the saved price.</span>`; };
   try {
     const r = await fetch(`${LIVE_URL}/v1/price/${res.gtin}`, { signal: ctrl.signal, headers: { accept: "application/json" }, cache: "no-store" });
     clearTimeout(timer);
     if (state.sheetRes !== res || !el.sheet.open) return;
-    if (r.status === 429) { row.dataset.state = "error"; row.innerHTML = `${icon("info")}<span>Live check is busy right now. The saved price is shown.</span>`; return; }
+    if (r.status === 429) { row.dataset.state = "error"; row.innerHTML = `${icon("info")}<span>Live price check is busy. Showing the saved price.</span>`; return; }
     const j = await r.json().catch(() => null);
     if (r.status >= 500 || !j) { unavailable(); return; }
     if (!r.ok || !j.ok) {
-      if (j?.reason === "not found" || j?.reason === "not sold by walmart") { row.dataset.state = "none"; row.innerHTML = `${icon("info")}<span>Walmart.com has no live price for this barcode right now.</span>`; }
+      if (j?.reason === "not found" || j?.reason === "not sold by walmart") { row.dataset.state = "none"; row.innerHTML = `${icon("info")}<span>Walmart.com has no current price for this barcode.</span>`; }
       else unavailable();
       return;
     }
@@ -663,7 +663,7 @@ async function liveCheck(res) {
     }
     const diff = live - res.priceCents;
     row.dataset.state = "ok";
-    if (diff === 0) row.innerHTML = `${icon("bolt")}<span>${esc(src)} ${when}: <b>${money(live)}</b> — same as saved</span>`;
+    if (diff === 0) row.innerHTML = `${icon("bolt")}<span>${esc(src)} ${when}: <b>${money(live)}</b> · matches the saved price</span>`;
     else {
       row.innerHTML = `${icon("bolt")}<span>${esc(src)} ${when}: <b>${money(live)}</b></span><span class="delta ${diff > 0 ? "up" : "down"}">${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}</span><button class="btn btn--ghost btn--sm" type="button">Use it</button>`;
       row.querySelector("button").addEventListener("click", () => {
@@ -671,7 +671,7 @@ async function liveCheck(res) {
         if (res.packOne && res.item?.pack > 1) res.unitCents = Math.round(live / res.item.pack); else res.unitCents = live;
         refreshPrice(el.sheet, res);
         const pn = el.sheet.querySelector(".price-note"); if (pn) pn.textContent = `${src} price, checked ${when}`;
-        row.innerHTML = `${icon("check")}<span>Using ${esc(src)}'s price <b>${money(live)}</b></span>`;
+        row.innerHTML = `${icon("check")}<span>Using the ${esc(src)} price, <b>${money(live)}</b></span>`;
       });
     }
   } catch {
@@ -688,7 +688,12 @@ function renderTallyPill() {
   el.tallyBtn.hidden = tally.length === 0;
   el.tallyCount.textContent = String(count);
   el.tallyTotal.textContent = money(total);
-  el.tallyBtn.setAttribute("aria-label", `Running tally: ${count} ${count === 1 ? "item" : "items"}, ${money(total)}`);
+  el.tallyBtn.setAttribute("aria-label", `Tally: ${count} ${count === 1 ? "item" : "items"}, ${money(total)}`);
+  if (el.tallyStrip) {
+    el.tallyStripText.textContent = tally.length ? `Tally · ${count} ${count === 1 ? "item" : "items"}` : "Tally is empty";
+    el.tallyStripTotal.textContent = money(total);
+    el.tallyStrip.dataset.empty = String(tally.length === 0);
+  }
 }
 function addToTally(res) {
   const cents = lineTotal(res);
@@ -704,11 +709,12 @@ function tallyHtml() {
   const total = tally.reduce((a, t) => a + t.cents, 0);
   const rows = tally.slice().reverse().map((t) => `<li><span class="tn">${esc(t.title)}<small>${t.unit === "lb" ? `${fmtNum(t.qty)} lb × ${money(t.unitCents)}` : `${t.qty} × ${money(t.unitCents)}`} · ${esc(kindLabel({ kind: t.kind }))}</small></span><span class="tp">${money(t.cents)}</span><button class="x-btn" type="button" data-remove="${t.id}" aria-label="Remove ${esc(t.title)}">${icon("trash")}</button></li>`).join("");
   return `<div class="sheet-inner"><div class="grab" aria-hidden="true"></div>
-    <div class="sheet-head"><h2 class="h2" id="tallyTitle">Running tally</h2><button class="x-btn" type="button" aria-label="Close">${icon("x")}</button></div>
-    ${tally.length ? `<ul class="tally-list">${rows}</ul>` : `<p class="empty">Nothing in the tally yet. Open an item and tap <b>Add to tally</b>.</p>`}
+    <div class="sheet-head"><h2 class="h2" id="tallyTitle">Tally</h2><button class="x-btn" type="button" aria-label="Close">${icon("x")}</button></div>
+    ${tally.length ? `<ul class="tally-list">${rows}</ul>` : `<p class="empty">The tally is empty. Open an item and tap <b>Add to tally</b>.</p>`}
     <div class="tally-total-row"><span>${tally.length} ${tally.length === 1 ? "line" : "lines"}</span><b class="counting">${money(total)}</b></div>
     <div class="actions"><button class="btn btn--accent" type="button" data-act="share" ${tally.length ? "" : "disabled"}>${icon("share")} Share</button><button class="btn btn--danger" type="button" data-act="clear" ${tally.length ? "" : "disabled"}>${icon("trash")} Clear</button></div>
-    <p class="fine">The tally stays on this phone until you clear it. Totals use Walmart prices as of ${esc(fmtDate(priceDate(), true) || "the last check")}.</p>
+    <p class="fine">Stays on this phone until cleared. Totals use Walmart prices as of ${esc(fmtDate(priceDate(), true) || "the last check")}.</p>
+    <p class="verse">1 John 4:19</p>
   </div>`;
 }
 function openTally() { modals.open(el.tallySheet, tallyHtml()); }
@@ -727,13 +733,14 @@ el.tallySheet.addEventListener("click", (e) => {
 async function shareTally() {
   const total = tally.reduce((a, t) => a + t.cents, 0);
   const lines = tally.map((t) => `${t.unit === "lb" ? `${fmtNum(t.qty)} lb` : `${t.qty}×`} ${t.title} — ${money(t.cents)}`);
-  const text = `SFB donation value · ${new Date().toLocaleDateString()}\n${lines.join("\n")}\nTotal: ${money(total)}\n(Walmart prices as of ${fmtDate(priceDate(), true)})`;
+  const text = `Strongsville Emergency Food Bank · Donation value · ${new Date().toLocaleDateString()}\n${lines.join("\n")}\nTotal: ${money(total)}\nWalmart prices as of ${fmtDate(priceDate(), true)}\n1 John 4:19`;
   try {
-    if (navigator.share) await navigator.share({ title: "SFB donation value", text });
-    else { await navigator.clipboard.writeText(text); toast("Copied the tally"); }
-  } catch (err) { if (err?.name !== "AbortError") { try { await navigator.clipboard.writeText(text); toast("Copied the tally"); } catch { toast("Couldn't share on this device", { iconName: "info" }); } } }
+    if (navigator.share) await navigator.share({ title: "Donation value", text });
+    else { await navigator.clipboard.writeText(text); toast("Tally copied"); }
+  } catch (err) { if (err?.name !== "AbortError") { try { await navigator.clipboard.writeText(text); toast("Tally copied"); } catch { toast("Sharing is not available on this device", { iconName: "info" }); } } }
 }
 el.tallyBtn.addEventListener("click", openTally);
+el.tallyStrip?.addEventListener("click", openTally);
 renderTallyPill();
 
 // ------------------------------------------------------------------ recent (reopened by barcode, never by a snapshot's row number)
@@ -756,7 +763,7 @@ function dropSampleLines() {
   if (t.length === tally.length && r.length === recent.length) return;
   tally = t; recent = r; writeJson(TALLY_KEY, tally); writeJson(RECENT_KEY, recent);
   renderTallyPill(); renderRecent();
-  toast("Real prices are in. The tally and recents from the sample prices were cleared.", { iconName: "info", ms: 7000 });
+  toast("Prices were updated. Earlier tally lines and recent items were cleared.", { iconName: "info", ms: 7000 });
 }
 /** Rows that can only be reopened by row number belong to one snapshot: drop them when the snapshot changes. */
 function pruneRecent() {
@@ -766,6 +773,7 @@ function pruneRecent() {
 }
 function renderRecent() {
   el.recent.hidden = recent.length === 0;
+  const how = $("howtoCard"); if (how) how.hidden = recent.length > 0;   // the first-launch steps give way to Recent
   el.recentList.innerHTML = recent.slice(0, 4).map((r, i) => `<li><button class="row" type="button" data-recent="${i}"><span class="name">${esc(r.title)}</span><span class="price">${money(r.priceCents)}${r.unit === "lb" ? "<small>per lb</small>" : ""}</span><span class="meta"><span class="tag">${esc(kindLabel({ kind: r.kind }))}</span></span></button></li>`).join("");
 }
 el.recentList.addEventListener("click", async (e) => {
@@ -781,7 +789,7 @@ el.recentList.addEventListener("click", async (e) => {
   else toast("That item is from an older price list", { iconName: "info" });
 });
 renderRecent();
-homeToThumb();
+homeToTop();
 
 // ------------------------------------------------------------------ settings
 // What a volunteer can change (appearance, buzz, live check), what they need to know about the prices (date, source,
@@ -792,32 +800,38 @@ function settingsHtml() {
   const m = db.manifest;
   const seg = ["auto", "light", "dark"].map((t) => `<button type="button" data-theme="${t}" aria-pressed="${prefs.theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("");
   const notes = [];
-  if (db.pendingUpdate) notes.push(`<p class="note">Newer prices (${esc(fmtDate(db.pendingUpdate.manifest?.priceDate, true))}) are downloaded and will be used as soon as nothing is open.</p>`);
-  if (m?.fixture) notes.push(`<p class="note note--equiv">Sample prices for testing. They look real but are not. The real Walmart prices replace them on their own as soon as the food bank's pipeline publishes them.</p>`);
-  if (db.skipped?.length) notes.push(`<p class="note">Not on this phone (memory): ${esc(db.skipped.map((s) => s.name).join(", "))}. Those items still get a live Walmart price when online.</p>`);
-  notes.push(`<p class="note" id="storageNote"${state.persisted === false ? "" : " hidden"}>This phone may clear the prices to free space (they download again when online). Adding the app to the Home Screen keeps them.</p>`);
+  if (db.pendingUpdate) notes.push(`<p class="note">Newer prices (${esc(fmtDate(db.pendingUpdate.manifest?.priceDate, true))}) are downloaded and will be applied when the app is idle.</p>`);
+  if (db.skipped?.length) notes.push(`<p class="note">Not stored on this phone (memory limit): ${esc(db.skipped.map((s) => s.name).join(", "))}. Those items are priced live when online.</p>`);
+  notes.push(`<p class="note" id="storageNote"${state.persisted === false ? "" : " hidden"}>The phone may clear the prices to free space; they download again when online. Adding the app to the Home Screen keeps them.</p>`);
   const problem = state.dbError ? (state.dbErrorPlain || state.dbErrorStorage ? state.dbError : `The database couldn't be opened: ${state.dbError}`)
-    : db.state === "offline-empty" ? "Prices haven't been downloaded yet. Connect once and they stay on this phone." : "The prices are still loading.";
+    : db.state === "offline-empty" ? "Prices have not been downloaded yet. Connect to the internet once; they stay on this phone." : "Prices are still loading.";
   const card = m
-    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Prices as of ${esc(fmtDate(priceDate(), true))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} on this phone · works offline</p></div></div>`
-    : `<div class="data-head data-head--warn">${icon("info", "ico data-ico")}<div><h3 class="data-title">${db.state === "offline-empty" ? "No prices on this phone yet" : state.dbError ? "The prices couldn't be opened" : "Getting the prices"}</h3><p class="data-sub">${esc(problem)}</p></div></div>`;
-  const legend = [["exact", "Exact item", "The barcode or name is in the Walmart price list"], ["store-label", "Store price label", "Scale labels from meat, deli and bakery carry their own price"],
-    ["plu", "Produce code", "The 4-digit sticker on fruit and vegetables, priced by the pound or each"], ["equivalent", "Equivalent value", "Not sold at Walmart, so it takes the price of the closest Walmart item"],
-    ["closest", "Closest match", "Nothing matched every word typed; check the type and size"], ["live", "Live Walmart price", "Not in the saved list, found on Walmart.com just now"]]
+    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Prices as of ${esc(fmtDate(priceDate(), true))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} on this phone · Works offline</p></div></div>`
+    : `<div class="data-head data-head--warn">${icon("info", "ico data-ico")}<div><h3 class="data-title">${db.state === "offline-empty" ? "No prices on this phone yet" : state.dbError ? "Prices could not be opened" : "Downloading prices"}</h3><p class="data-sub">${esc(problem)}</p></div></div>`;
+  const legend = [["exact", "Exact item", "Found in the Walmart price list by barcode or name"], ["store-label", "Store price label", "A store scale label (meat, deli, bakery) that carries its own price"],
+    ["plu", "Produce code", "The four-digit sticker on produce, priced by the pound or each"], ["equivalent", "Equivalent value", "Not sold at Walmart, so priced at the closest Walmart item"],
+    ["closest", "Closest match", "No item matched every word typed; check the type and size"], ["live", "Live Walmart price", "Not in the saved list; found on Walmart.com just now"]]
     .map(([k, l, t]) => `<li><span class="kind" data-kind="${k}">${l}</span><span>${t}</span></li>`).join("");
   return `<div class="sheet-inner"><div class="grab" aria-hidden="true"></div>
     <div class="sheet-head"><h2 class="h2" id="settingsTitle">Settings</h2><button class="x-btn" type="button" aria-label="Close">${icon("x")}</button></div>
-    <div class="setting"><div class="lab">Appearance<small>Auto follows the phone</small></div><div class="seg" role="group" aria-label="Appearance">${seg}</div></div>
-    <div class="setting"><div class="lab">Vibrate on scan<small>A short buzz when a barcode is read</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.haptics}" data-pref="haptics" aria-label="Vibrate on scan"></button></div>
-    ${LIVE_URL ? `<div class="setting"><div class="lab">Live Walmart check<small>When online, confirm a scanned item's price against Walmart right now</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.live}" data-pref="live" aria-label="Live Walmart check"></button></div>` : ""}
+    <div class="setting"><div class="lab">Appearance<small>Auto matches the phone</small></div><div class="seg" role="group" aria-label="Appearance">${seg}</div></div>
+    <div class="setting"><div class="lab">Vibrate on scan<small>A short vibration when a barcode is read</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.haptics}" data-pref="haptics" aria-label="Vibrate on scan"></button></div>
+    ${LIVE_URL ? `<div class="setting"><div class="lab">Live price check<small>When online, compare a scanned item with Walmart's current price</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.live}" data-pref="live" aria-label="Live price check"></button></div>` : ""}
     <h2 class="h2">Prices</h2>
     <section class="data-card" aria-label="Price database">${card}${notes.join("")}
       <button class="btn btn--ghost btn--block" type="button" data-act="update">${icon("refresh")} Check for new prices</button>
     </section>
+    <h2 class="h2">How to use</h2>
+    <ol class="howto">
+      <li>Scan the barcode, or type the item name and size.</li>
+      <li>Check the item and price, then tap <b>Add to tally</b>.</li>
+      <li>Share the tally once the donation is valued.</li>
+    </ol>
     <details class="about">
-      <summary><span>About SFB Value</span>${icon("back", "ico chev")}</summary>
+      <summary><span>About</span>${icon("back", "ico chev")}</summary>
       <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
-      <p class="fine">Prices are the Strongsville Walmart's own shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com's online price; the note under each price says which. The food bank's price pipeline refreshes them every week and the app updates itself when online. Everything else works offline. Non-Walmart barcodes are identified with data from Open Food Facts, Open Beauty Facts and Open Products Facts (ODbL). Barcode decoding by zxing-cpp (Apache-2.0).</p>
+      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Prices are refreshed weekly and the app updates itself when online. Barcodes Walmart does not sell are identified with Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL). Barcode reading by zxing-cpp (Apache-2.0).</p>
+      <p class="fine verse-full">“We love because he first loved us.” — 1 John 4:19</p>
       <p class="fine mono">Version ${esc(BUILD)}${m ? ` · prices ${esc(m.version)}` : ""}</p>
     </details>
     <button class="btn btn--danger btn--block" type="button" data-act="reset">${icon("trash")} Reset app data</button>
@@ -839,7 +853,7 @@ el.settings.addEventListener("click", async (e) => {
   const actBtn = e.target.closest("[data-act]"), act = actBtn?.dataset.act;
   if (act === "update") await checkNow(actBtn);
   else if (act === "reset") {
-    if (!confirm("Remove the downloaded prices, tally and recents from this phone? The app will re-download prices when online.")) return;
+    if (!confirm("Remove the downloaded prices, tally and recent items from this phone? Prices download again when online.")) return;
     await db.reset(); tally = []; recent = [];
     for (const k of [TALLY_KEY, RECENT_KEY, PREFS_KEY]) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
     location.reload();   // the app shell stays cached, so this works offline too
@@ -857,7 +871,7 @@ async function openScanner() {
   state.scanOpen = true;
   const gen = ++state.scanGen;
   el.scanner.hidden = false; el.scanner.classList.remove("is-hit");
-  el.scanHint.textContent = "Line the barcode up in the frame";
+  el.scanHint.textContent = "Center the barcode in the frame";
   el.scanTypeForm.hidden = true; el.scanTypeBtn.hidden = false; el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false");
   el.scanner.querySelector(".scan-denied")?.remove(); el.reticle.hidden = false;
   setBackgroundInert(true);
@@ -866,14 +880,14 @@ async function openScanner() {
   await startCamera(gen);
 }
 async function startCamera(gen) {
-  if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) { scanDenied("The camera needs a secure (https) page. Type the barcode digits instead."); return; }
+  if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) { scanDenied("The camera needs a secure (https) page. Enter the barcode manually."); return; }
   try {
     scannerMod ||= await import("./scanner.js");
     const scan = await scannerMod.startScanner(el.video, el.overlay, (hit) => { if (gen === state.scanGen) onScanHit(hit); }, (info) => {
       if (gen !== state.scanGen) return;
       if (info.engine) state.engine = info.engine;
       if (info.torch != null) el.torchBtn.hidden = !info.torch;
-      if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader couldn't start on this phone. Type the barcode digits instead."); }
+      if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader could not start on this phone. Enter the barcode manually."); }
       else if (info.error) console.warn("scanner:", info.error);
     });
     if (gen !== state.scanGen || !state.scanOpen) { scan.stop(); return; }   // closed (or reopened) while the camera was starting
@@ -883,7 +897,7 @@ async function startCamera(gen) {
   } catch (err) {
     if (gen !== state.scanGen) return;
     console.warn("camera", err);
-    scanDenied(err?.name === "NotAllowedError" ? "Camera access was turned off for this site. Allow it in the browser's site settings, or type the barcode." : err?.name === "NotFoundError" ? "No camera was found on this device. Type the barcode instead." : "The camera couldn't start. Type the barcode instead.");
+    scanDenied(err?.name === "NotAllowedError" ? "Camera access is turned off for this site. Allow it in the browser's site settings, or enter the barcode manually." : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually." : "The camera could not start. Enter the barcode manually.");
   }
 }
 function scanDenied(msg) {
@@ -907,7 +921,7 @@ function closeScanner({ fromPop = false } = {}) {
 }
 function resumeScan() {
   if (!state.scanOpen || !state.scan) return;
-  el.scanner.classList.remove("is-hit"); el.scanHint.textContent = "Line the barcode up in the frame";
+  el.scanner.classList.remove("is-hit"); el.scanHint.textContent = "Center the barcode in the frame";
   state.scan.resume();
 }
 async function onScanHit(hit) {
@@ -918,8 +932,8 @@ async function onScanHit(hit) {
   let res = null;
   try { res = await resolveCode(db, hit.raw, hit.format, { scanned: true }); } catch (err) { console.warn("resolve", err); }
   if (!state.scanOpen) return;
-  if (!res) { el.scanHint.textContent = "That barcode isn't a product code"; setTimeout(resumeScan, 900); return; }
-  if (res.kind === "not-ready") { el.scanHint.textContent = "Prices are still loading — hold on"; setTimeout(resumeScan, 1200); return; }
+  if (!res) { el.scanHint.textContent = "That barcode is not a product code"; setTimeout(resumeScan, 900); return; }
+  if (res.kind === "not-ready") { el.scanHint.textContent = "Prices are still loading"; setTimeout(resumeScan, 1200); return; }
   state.source = "scan";
   openResolution(res, { source: "scan" });
   requestAnimationFrame(() => perf.scans.push({ code: hit.raw, kind: res.kind, decodeMs: hit.ms, engine: hit.engine, toPriceMs: Math.round((performance.now() - t0) * 10) / 10 }));
@@ -931,7 +945,7 @@ el.scanTypeBtn.addEventListener("click", showScanType);
 el.scanTypeForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const v = el.scanTypeInput.value.trim(); if (!v) return;
-  if (!db.version) { toast("Prices are still loading — try again in a moment", { iconName: "info" }); return; }
+  if (!db.version) { toast("Prices are still loading. Try again in a moment.", { iconName: "info" }); return; }
   const res = await openCode(v, { source: "scan" });
   if (res) { state.source = "scan"; el.scanTypeInput.value = ""; }
 });
@@ -992,16 +1006,16 @@ if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("n
   });
 }
 
-setStatus("loading", "Starting…");
+setStatus("loading", "Starting");
 renderReadyCard();
 keyboardInset();
 showInstallHint();
 if (typeof DecompressionStream === "undefined") {
   // the price database is unpacked with DecompressionStream: Safari 16.4 (iOS 16.4, March 2023) and Chrome 80 or newer
-  setStatus("error", "This phone needs an update — tap for details");
+  setStatus("error", "Update required · tap for details");
   state.dbErrorPlain = true;
-  state.dbError = isIOS ? "This iPhone's software is too old to keep the prices offline. Update it to iOS 16.4 or newer (Settings › General › Software Update), then open the app again."
-    : "This browser is too old to keep the prices offline. Update Chrome (or the phone's browser), then open the app again.";
+  state.dbError = isIOS ? "This iPhone's software is too old to keep prices offline. Update to iOS 16.4 or later (Settings › General › Software Update), then open the app again."
+    : "This browser is too old to keep prices offline. Update Chrome or the phone's browser, then open the app again.";
   db.state = "error"; renderReadyCard();
 } else db.start();
 perf.boot.scriptMs = Math.round(performance.now());

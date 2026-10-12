@@ -33,7 +33,7 @@
   --danger: oklch(55% 0.19 25);
   --shadow: 0 1px 2px oklch(20% 0.02 70 / .06), 0 8px 24px -12px oklch(20% 0.02 70 / .18);
   --shadow-lg: 0 -1px 0 oklch(20% 0.02 70 / .04), 0 -24px 60px -24px oklch(20% 0.02 70 / .35);
-  --r-s: 10px; --r-m: 16px; --r-l: 24px; --r-xl: 30px;
+  --r-s: 10px; --r-m: 16px; --r-l: 20px; --r-xl: 28px;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
   --spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001);
   --dur: 240ms;
@@ -109,7 +109,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
   border-bottom: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
 }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; margin-right: auto; min-height: 44px; }
-.mark { width: 26px; height: 26px; border-radius: 8px; }
+.mark { width: 28px; height: 28px; border-radius: 7px; display: block; }   /* the app icon itself (icons/icon-192.png) */
 .wordmark { font-size: 17px; letter-spacing: -0.01em; font-weight: 500; }
 .wordmark b { font-weight: 700; }
 .status {
@@ -139,7 +139,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
   padding: calc(var(--safe-t) + 72px) 16px calc(var(--dock-h) + var(--safe-b) + var(--kb) + 20px);
   min-height: 100dvh; display: flex; flex-direction: column;
 }
-.home { display: flex; flex-direction: column; justify-content: flex-end; flex: 1; gap: 28px; }
+.home { display: flex; flex-direction: column; justify-content: flex-start; flex: 1; gap: 28px; }
 .hero { padding: 24px 2px 6px; }
 .hero .muted { color: var(--ink-3); }
 .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
@@ -611,5 +611,99 @@ html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 .about .fine { margin-top: 14px; }
 .about .fine.mono { font-size: 12.5px; margin-top: 10px; word-break: break-all; }
 .h1 { font-size: clamp(26px, 7.4vw, 40px); }
-/* a tablet on the intake table: the home content sits in the middle rather than leaving the top two thirds empty */
-@media (min-height: 900px) and (min-width: 600px) { .home { justify-content: center; } }
+
+/* ---------- 2026-10-12: top-anchored home, tally strip, verse, Scan label, one radius scale ----------
+   Home reads top-down: status card, tally, headline, common items, Home Screen card, Recent. No empty screen above the
+   content; the headline is one size everywhere. Cards share --r-l, sheets --r-xl. */
+.home { gap: 16px; }
+.h1 { font-size: clamp(24px, 6.4vw, 30px); line-height: 1.12; }
+.hero { padding-top: 10px; }
+.quick-h { margin-top: 20px; }
+.ready-card { background: var(--surface); }
+.ready-card[data-tone="problem"] { background: var(--surface); }
+.tally-strip {
+  display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; width: 100%; text-align: left;
+  min-height: 56px; padding: 8px 12px 8px 14px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface);
+  box-shadow: var(--shadow); color: var(--ink); font-size: 15px; font-weight: 500; transition: transform .15s var(--ease-out);
+}
+.tally-strip:active { transform: scale(.985); }
+.tally-strip .ico { color: var(--accent); }
+.tally-strip .ts-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tally-strip .ts-total { font-weight: 650; font-size: 17px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.tally-strip[data-empty="true"] { color: var(--ink-2); }
+.tally-strip[data-empty="true"] .ts-total { color: var(--ink-3); font-weight: 500; }
+.tally-strip .chev { width: 20px; height: 20px; color: var(--ink-3); transform: rotate(180deg); }
+.scan-btn { text-transform: none; letter-spacing: 0; }
+.scan-btn span { font-size: 14px; font-weight: 650; }
+.verse { margin: 18px 0 0; text-align: center; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.verse-full { font-style: italic; color: var(--ink-2); font-size: 14.5px; }
+.howto { margin: 4px 0 0; padding-left: 22px; color: var(--ink-2); font-size: 15px; line-height: 1.45; }
+.howto li { margin: 6px 0; padding-left: 4px; }
+.howto b { color: var(--ink); font-weight: 600; }
+.eyebrow { display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 2px; }
+.eyebrow .ref { white-space: nowrap; }
+.howto-card { padding: 14px 16px 12px; border-radius: var(--r-l); border: 1px dashed var(--line-2); background: color-mix(in oklab, var(--surface) 60%, transparent); }
+.howto-card .h2 { margin-bottom: 4px; }
+.howto-card .howto { font-size: 14.5px; padding-left: 20px; }
+
+/* ---------- 2026-10-12: colour scheme ----------
+   Dark: neon green on black, the app icon's own green and gloss (owner). Light: warm paper, deep green, the same gloss.
+   --glow is the dark theme's halo on the primary controls and the ready dot; it is transparent in light. */
+:root {
+  --accent: oklch(46% 0.16 150); --exact: oklch(46% 0.16 150);
+  --accent-soft: oklch(93% 0.05 150); --accent-line: oklch(78% 0.1 150);
+  --surface: oklch(99.6% 0.002 90);
+  --gloss-hi: color-mix(in oklab, var(--accent) 78%, white);
+  --gloss-lo: color-mix(in oklab, var(--accent) 80%, black);
+  --glow: 0 0 0 0 transparent;
+  --glow-dot: 0 0 0 0 transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(11.5% 0.012 150); --bg-2: oklch(9% 0.01 150);
+    --surface: oklch(16% 0.014 150); --surface-2: oklch(21.5% 0.018 150);
+    --line: oklch(26% 0.022 150); --line-2: oklch(34% 0.03 150);
+    --ink: oklch(97% 0.012 150); --ink-2: oklch(80% 0.03 150); --ink-3: oklch(68% 0.035 150);
+    --accent: oklch(87% 0.24 148); --exact: oklch(87% 0.24 148);
+    --accent-ink: oklch(15% 0.05 150); --accent-soft: oklch(24% 0.07 150); --accent-line: oklch(50% 0.15 150);
+    --label: oklch(80% 0.13 250); --plu: oklch(88% 0.17 125); --equiv: oklch(86% 0.16 78); --closest: oklch(78% 0.16 35); --live: oklch(82% 0.13 205); --danger: oklch(72% 0.19 25);
+    --gloss-hi: color-mix(in oklab, var(--accent) 70%, white);
+    --gloss-lo: color-mix(in oklab, var(--accent) 72%, black);
+    --glow: 0 0 30px -6px color-mix(in oklab, var(--accent) 65%, transparent);
+    --glow-dot: 0 0 12px 1px color-mix(in oklab, var(--accent) 55%, transparent);
+    --toast-accent: oklch(44% 0.15 150);
+    --shadow: 0 1px 2px oklch(0% 0 0 / .5), 0 8px 24px -12px oklch(0% 0 0 / .7);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: oklch(11.5% 0.012 150); --bg-2: oklch(9% 0.01 150);
+  --surface: oklch(16% 0.014 150); --surface-2: oklch(21.5% 0.018 150);
+  --line: oklch(26% 0.022 150); --line-2: oklch(34% 0.03 150);
+  --ink: oklch(97% 0.012 150); --ink-2: oklch(80% 0.03 150); --ink-3: oklch(68% 0.035 150);
+  --accent: oklch(87% 0.24 148); --exact: oklch(87% 0.24 148);
+  --accent-ink: oklch(15% 0.05 150); --accent-soft: oklch(24% 0.07 150); --accent-line: oklch(50% 0.15 150);
+  --label: oklch(80% 0.13 250); --plu: oklch(88% 0.17 125); --equiv: oklch(86% 0.16 78); --closest: oklch(78% 0.16 35); --live: oklch(82% 0.13 205); --danger: oklch(72% 0.19 25);
+  --gloss-hi: color-mix(in oklab, var(--accent) 70%, white);
+  --gloss-lo: color-mix(in oklab, var(--accent) 72%, black);
+  --glow: 0 0 30px -6px color-mix(in oklab, var(--accent) 65%, transparent);
+  --glow-dot: 0 0 12px 1px color-mix(in oklab, var(--accent) 55%, transparent);
+  --toast-accent: oklch(44% 0.15 150);
+  --shadow: 0 1px 2px oklch(0% 0 0 / .5), 0 8px 24px -12px oklch(0% 0 0 / .7);
+}
+/* gloss: a lit top edge, a deeper foot, a halo in the dark */
+.scan-btn, .btn--accent, .tally-pill, .stale .btn {
+  background-image: linear-gradient(180deg, var(--gloss-hi) 0%, var(--accent) 46%, var(--gloss-lo) 100%);
+  background-color: var(--accent); color: var(--accent-ink); border: 0;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 40%, transparent), inset 0 -1px 0 color-mix(in oklab, black 22%, transparent),
+              0 8px 22px -10px color-mix(in oklab, var(--accent) 70%, transparent), var(--glow);
+}
+.scan-btn:active, .btn--accent:active { filter: brightness(.94); }
+.stale .btn { background-image: none; background-color: var(--ink); color: var(--bg); box-shadow: none; }
+.tally-pill { font-weight: 700; }
+.tally-pill .ico { color: var(--accent-ink); }
+.status[data-state="ready"] .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent), var(--glow-dot); }
+.rc-ico, .data-ico, .tally-strip .ico, .live-row .ico { filter: drop-shadow(0 0 0 transparent); }
+.switch[aria-checked="true"] { background-image: linear-gradient(180deg, var(--gloss-hi), var(--accent) 60%); box-shadow: var(--glow-dot); }
+.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent), var(--glow-dot); }
+.reticle .laser { background: linear-gradient(90deg, transparent, oklch(87% 0.24 148), transparent); box-shadow: 0 0 14px oklch(87% 0.24 148); }
+.scanner.is-hit .reticle i { border-color: oklch(87% 0.24 148); }
