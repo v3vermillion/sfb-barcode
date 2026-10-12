@@ -58,11 +58,14 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
 | Not in database | unknown barcode, nothing online | "Find it by name" (search focused) — never a silent blank |
 
-Also: a **readiness card** at the top of the home screen (prices ready / sample prices / downloading / offline / a
-problem, in one line each; tapping it opens Settings), running tally (count, total, share/copy), recent lookups,
-settings (appearance, haptics, live check; a Prices card with the date, the source and the size on the phone, Check for
-new prices; an About fold with the result-label legend, the small print and the build; Reset app data), scanner with
-torch, typed-barcode fallback for denied cameras and keyboard-wedge scanners.
+Also: the home screen reads top-down and never leaves empty space above the content: a **status card** (prices ready /
+downloading / offline / a problem, one line each; tapping it opens Settings), a **tally strip** (count and total, always
+visible, opens the tally), the headline, common items, the Home Screen card and Recent. The tally (lines, total,
+share/copy, clear), settings (appearance, vibration, live price check; a Prices card with the date, the source and the
+size on the phone, Check for new prices; a three-step How to use; an About fold with the result-label legend, the small
+print and the build; Reset app data), scanner with torch, manual barcode entry for denied cameras and keyboard-wedge
+scanners. The eyebrow line names the Strongsville Emergency Food Bank and 1 John 4:19 (reference only; the verse is
+printed once under About and closes the tally). Nothing in the interface refers to sample data.
 
 ## Visual direction
 

@@ -1,7 +1,7 @@
 // scroll-check.mjs — the scrolling rules of the real app, checked in a browser: the results open (and every refined
 // search reopens) at the best match by the search box; a wheel scrolls them from the header, the dock and the margins of
 // a wide screen; they can be scrolled all the way up, also when iOS pans the page for the keyboard; the page behind an
-// open sheet never scrolls; removing a tally line keeps the place; Home comes back at its thumb end.
+// open sheet never scrolls; removing a tally line keeps the place; Home comes back at the top.
 // Exit code 1 when any check fails. --browser webkit runs the same checks in iPhone's engine.
 //   node tools/scroll-check.mjs [--browser chromium|webkit] [--url http://127.0.0.1:8787/]
 import { chromium, webkit } from "playwright";
@@ -97,7 +97,7 @@ try {
       await page.click("#sheet [data-act=add]"); await page.waitForSelector("#sheet:not([open])", { state: "attached" }); await settle(page, 300);
     }
     const home = await page.evaluate(() => ({ y: scrollY, max: document.documentElement.scrollHeight - innerHeight }));
-    check("Home comes back at its thumb end", home.max <= 0 || Math.abs(home.y - home.max) <= 1, JSON.stringify(home));
+    check("Home comes back at the top", home.y === 0, JSON.stringify(home));
     await page.click("#tallyBtn"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);
     await page.mouse.move(180, 500); await page.mouse.wheel(0, 300); await settle(page, 300);
     const before = await page.evaluate(() => document.querySelector("#tallySheet .sheet-inner").scrollTop);

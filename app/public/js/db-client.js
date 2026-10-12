@@ -219,7 +219,7 @@ export class DbClient extends EventTarget {
 
   #explain(err) {
     if (err?.storage) return `This phone is out of storage space for the prices (about ${err.needMB || "?"} MB more is needed). Free some space (old photos, videos or apps), then open the app again.`;
-    if (err?.network || !navigator.onLine) return "The connection dropped while downloading prices. They will download again as soon as the phone is back online.";
+    if (err?.network || !navigator.onLine) return "The download was interrupted. It resumes automatically when the phone is back online.";
     return String(err?.message || err);
   }
 

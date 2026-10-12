@@ -33,7 +33,7 @@
   --danger: oklch(55% 0.19 25);
   --shadow: 0 1px 2px oklch(20% 0.02 70 / .06), 0 8px 24px -12px oklch(20% 0.02 70 / .18);
   --shadow-lg: 0 -1px 0 oklch(20% 0.02 70 / .04), 0 -24px 60px -24px oklch(20% 0.02 70 / .35);
-  --r-s: 10px; --r-m: 16px; --r-l: 24px; --r-xl: 30px;
+  --r-s: 10px; --r-m: 16px; --r-l: 20px; --r-xl: 28px;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
   --spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001);
   --dur: 240ms;
@@ -139,7 +139,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
   padding: calc(var(--safe-t) + 72px) 16px calc(var(--dock-h) + var(--safe-b) + var(--kb) + 20px);
   min-height: 100dvh; display: flex; flex-direction: column;
 }
-.home { display: flex; flex-direction: column; justify-content: flex-end; flex: 1; gap: 28px; }
+.home { display: flex; flex-direction: column; justify-content: flex-start; flex: 1; gap: 28px; }
 .hero { padding: 24px 2px 6px; }
 .hero .muted { color: var(--ink-3); }
 .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
@@ -611,5 +611,37 @@ html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 .about .fine { margin-top: 14px; }
 .about .fine.mono { font-size: 12.5px; margin-top: 10px; word-break: break-all; }
 .h1 { font-size: clamp(26px, 7.4vw, 40px); }
-/* a tablet on the intake table: the home content sits in the middle rather than leaving the top two thirds empty */
-@media (min-height: 900px) and (min-width: 600px) { .home { justify-content: center; } }
+
+/* ---------- 2026-10-12: top-anchored home, tally strip, verse, Scan label, one radius scale ----------
+   Home reads top-down: status card, tally, headline, common items, Home Screen card, Recent. No empty screen above the
+   content; the headline is one size everywhere. Cards share --r-l, sheets --r-xl. */
+.home { gap: 16px; }
+.h1 { font-size: clamp(24px, 6.4vw, 30px); line-height: 1.12; }
+.hero { padding-top: 10px; }
+.quick-h { margin-top: 20px; }
+.ready-card { background: var(--surface); }
+.ready-card[data-tone="problem"] { background: var(--surface); }
+.tally-strip {
+  display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; width: 100%; text-align: left;
+  min-height: 56px; padding: 8px 12px 8px 14px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface);
+  box-shadow: var(--shadow); color: var(--ink); font-size: 15px; font-weight: 500; transition: transform .15s var(--ease-out);
+}
+.tally-strip:active { transform: scale(.985); }
+.tally-strip .ico { color: var(--accent); }
+.tally-strip .ts-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tally-strip .ts-total { font-weight: 650; font-size: 17px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.tally-strip[data-empty="true"] { color: var(--ink-2); }
+.tally-strip[data-empty="true"] .ts-total { color: var(--ink-3); font-weight: 500; }
+.tally-strip .chev { width: 20px; height: 20px; color: var(--ink-3); transform: rotate(180deg); }
+.scan-btn { text-transform: none; letter-spacing: 0; }
+.scan-btn span { font-size: 14px; font-weight: 650; }
+.verse { margin: 18px 0 0; text-align: center; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.verse-full { font-style: italic; color: var(--ink-2); font-size: 14.5px; }
+.howto { margin: 4px 0 0; padding-left: 22px; color: var(--ink-2); font-size: 15px; line-height: 1.45; }
+.howto li { margin: 6px 0; padding-left: 4px; }
+.howto b { color: var(--ink); font-weight: 600; }
+.eyebrow { display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 2px; }
+.eyebrow .ref { white-space: nowrap; }
+.howto-card { padding: 14px 16px 12px; border-radius: var(--r-l); border: 1px dashed var(--line-2); background: color-mix(in oklab, var(--surface) 60%, transparent); }
+.howto-card .h2 { margin-bottom: 4px; }
+.howto-card .howto { font-size: 14.5px; padding-left: 20px; }

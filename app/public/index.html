@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>SFB Value</title>
-  <meta name="description" content="Strongsville Emergency Food Bank — scan or type a donated item and see its exact Walmart price, offline.">
+  <meta name="description" content="Strongsville Emergency Food Bank. Scan or type a donated item to see its Walmart price, offline.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f5f0">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141311">
@@ -56,7 +56,7 @@
       <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><path d="M9 10v12M13 10v12M17 10v12M21 10v12M24 10v12" stroke="var(--accent-ink)" stroke-width="2.2" stroke-linecap="round"/></svg>
       <span class="wordmark">SFB <b>Value</b></span>
     </a>
-    <button class="status" id="status" type="button" aria-live="polite">
+    <button class="status" id="status" type="button">
       <span class="dot" aria-hidden="true"></span>
       <span class="sr-only">Price database: </span><span class="status-text" id="statusText">Starting…</span>
     </button>
@@ -67,6 +67,7 @@
     </button>
     <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg></button>
   </header>
+  <span class="sr-only" id="statusLive" aria-live="polite"></span>
 
   <div class="progress" id="progress" hidden aria-hidden="true"><div class="bar" id="progressBar"></div></div>
   <div class="stale" id="stale" role="status" hidden></div>
@@ -74,7 +75,7 @@
   <footer class="dock" id="dock">
     <form class="search" id="searchForm" role="search" autocomplete="off">
       <svg class="ico search-ico" aria-hidden="true"><use href="#i-search"/></svg>
-      <input id="q" class="q" type="search" name="q" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Type the item or barcode" aria-label="Search by item name, brand, or barcode number">
+      <input id="q" class="q" type="search" name="q" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Item name or barcode" aria-label="Search by item name, brand or barcode number">
       <button class="clear-btn" id="clearBtn" type="button" aria-label="Clear search" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
     </form>
     <button class="scan-btn" id="scanBtn" type="button" aria-label="Scan a barcode with the camera">
@@ -85,10 +86,11 @@
 
   <main id="main" class="main">
     <section id="home" class="home">
-      <button class="ready-card" id="readyCard" type="button" aria-label="Price database status; opens Settings" data-tone="busy"></button>
+      <button class="ready-card" id="readyCard" type="button" aria-label="Price status; opens Settings" data-tone="busy"></button>
+      <button class="tally-strip" id="tallyStrip" type="button" data-empty="true" aria-label="Open the tally"><svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg><span class="ts-text" id="tallyStripText">Tally is empty</span><span class="ts-total" id="tallyStripTotal">$0.00</span><svg class="ico chev" aria-hidden="true"><use href="#i-back"/></svg></button>
       <div class="hero">
-        <p class="eyebrow" id="heroEyebrow">Strongsville Emergency Food Bank</p>
-        <h1 class="h1">Scan or type the item.<br><span class="muted">The price is here, offline.</span></h1>
+        <p class="eyebrow" id="heroEyebrow"><span>Strongsville Emergency Food Bank</span><span class="ref">1 John 4:19</span></p>
+        <h1 class="h1">Scan or type the item.<br><span class="muted">Its price is here, even offline.</span></h1>
         <h2 class="h2 quick-h" id="quickH">Common items</h2>
         <div class="quick" id="quick" aria-labelledby="quickH">
           <button class="chip" type="button" data-q="peanut butter">peanut butter</button>
@@ -98,6 +100,14 @@
         </div>
         <div class="note install" id="installHint" hidden></div>
       </div>
+      <section class="howto-card" id="howtoCard" aria-labelledby="howtoH">
+        <h2 class="h2" id="howtoH">How it works</h2>
+        <ol class="howto">
+          <li>Scan the barcode, or type the item name and size.</li>
+          <li>Check the item and price, then tap <b>Add to tally</b>.</li>
+          <li>Share the tally once the donation is valued.</li>
+        </ol>
+      </section>
       <section class="recent" id="recent" hidden aria-labelledby="recentH">
         <h2 class="h2" id="recentH">Recent</h2>
         <ol class="list list--compact" id="recentList"></ol>
@@ -124,12 +134,12 @@
     </div>
     <div class="reticle" id="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="laser"></span></div>
     <div class="scan-bottom">
-      <p class="scan-hint" id="scanHint">Line the barcode up in the frame</p>
+      <p class="scan-hint" id="scanHint">Center the barcode in the frame</p>
       <form class="scan-type" id="scanTypeForm" hidden>
-        <input id="scanTypeInput" class="q" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="off" placeholder="Barcode digits" aria-label="Barcode digits">
+        <input id="scanTypeInput" class="q" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="off" placeholder="Barcode number" aria-label="Barcode number">
         <button type="submit" class="btn btn--accent">Look up</button>
       </form>
-      <button class="btn btn--ghost" id="scanTypeBtn" type="button"><svg class="ico" aria-hidden="true"><use href="#i-keypad"/></svg> Type the barcode instead</button>
+      <button class="btn btn--ghost" id="scanTypeBtn" type="button"><svg class="ico" aria-hidden="true"><use href="#i-keypad"/></svg> Enter the barcode manually</button>
     </div>
   </div>
 
