@@ -7,9 +7,10 @@ question: does this sample show a *class* of bad rows that the deterministic che
 
 ## What a valid row looks like
 
-- A sellable consumer item sold by Walmart itself (not a marketplace seller): groceries, health and
-  pharmacy items, personal care and beauty, baby, pet, household, home, office and craft supplies,
-  toys, books, seasonal and party goods, auto, electronics, jewelry, sports and outdoors.
+- A sellable consumer item sold by Walmart itself (not a marketplace seller) from a department the
+  crawl covers (data/categories.json): groceries, health and pharmacy items, personal care and beauty,
+  baby, pet, household, kitchen, bedding, bath, storage and small appliances, emergency prep and water
+  purification, office and school supplies, toys, seasonal and party goods.
 - A sensible product name, usually with a brand; the name reads like a shelf label, not like a
   search query, a placeholder ("-", "."), a SKU dump or a publisher's catalogue line.
 - A size the name states is parsed: `size`/`unit`/`pack` match the name ("15.25 oz Can" -> 15.25 oz,
@@ -25,8 +26,7 @@ question: does this sample show a *class* of bad rows that the deterministic che
 
 ## What is NOT a valid row (junk)
 
-- Media and entertainment: music albums, films, video games, e-books, audiobooks, magazines misfiled
-  outside the Books department.
+- Media and entertainment: books, music albums, films, video games, e-books, audiobooks, magazines.
 - Apparel and shoes; alcohol; tobacco and vaping; gift cards, prepaid cards, subscriptions, services,
   warranties, digital codes, memberships.
 - Third-party marketplace listings (prices 5-10x retail), wholesale lots, bundles priced per case while
