@@ -58,8 +58,11 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
 | Not in database | unknown barcode, nothing online | "Find it by name" (search focused) — never a silent blank |
 
-Also: running tally (count, total, share/copy), recent lookups, settings (appearance, haptics, live check, database
-facts, check for new prices, reset), scanner with torch, typed-barcode fallback for denied cameras and keyboard-wedge scanners.
+Also: a **readiness card** at the top of the home screen (prices ready / sample prices / downloading / offline / a
+problem, in one line each; tapping it opens Settings), running tally (count, total, share/copy), recent lookups,
+settings (appearance, haptics, live check; a Prices card with the date, the source and the size on the phone, Check for
+new prices; an About fold with the result-label legend, the small print and the build; Reset app data), scanner with
+torch, typed-barcode fallback for denied cameras and keyboard-wedge scanners.
 
 ## Visual direction
 
@@ -165,8 +168,15 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
   Screen" keeps iOS from evicting storage.
 - Every later open: shell from the service worker, pack from Cache Storage, interactive in well under a second,
   no network needed. `navigator.storage.persist()` is requested after every successful load (and again when the
-  app is installed to the Home Screen, which is what makes Chrome on Android grant it); Settings shows
-  **Storage: Persistent / Best-effort** from `navigator.storage.persisted()`.
+  app is installed to the Home Screen, which is what makes Chrome on Android grant it); when `navigator.storage.persisted()`
+  says best-effort, Settings says the phone may clear the prices and how to keep them.
+- Memory budget: the search worker keeps every open shard in memory (about 131 bytes per item measured on the 760k
+  fixture), so `db-client.js` opens every core shard and then the durable ("more") shards in manifest order only while
+  the estimate stays under a budget for the phone (`memoryBudget()`: ~100 MB per GB of `navigator.deviceMemory`,
+  clamped to 250–640 MB; 400 MB when the browser does not say, as Safari does not). Shards past the budget are not
+  downloaded; Settings names those departments and their barcodes still get a live Walmart price when online.
+- Sample → real: tally lines and recents made on the synthetic fixture carry `sample: true`; the first load of a real
+  snapshot drops them and says so once, so sample prices never mix into a real tally.
 - Online: `current.json` is checked; a new snapshot is fetched in the background and applied when idle.
 - Prices as of: the header pill and every sheet carry the snapshot's price date. From 14 days a banner under the
   header says "Prices are N days old" (amber), from 45 days "values may be out of date" (red), with an **Update now**

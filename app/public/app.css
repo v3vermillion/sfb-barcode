@@ -539,3 +539,77 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 html { scrollbar-gutter: stable; }
 html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 .sheet-inner { overscroll-behavior-y: contain; }
+
+/* ---------- 2026-10-12: home readiness card, settings as a short page, About fold ----------
+   The home screen answers "is this phone ready?" in one card, then the headline, common items, the Home Screen card
+   and Recent. Settings shows what a volunteer can change and what they need to know about the prices; the rest is
+   folded under About. The legend of result labels lives there now, not on the home screen. */
+.home { gap: 22px; }
+.hero { padding: 0 2px 4px; }
+.hero .h1 { margin-top: 0; }
+.quick-h { margin: 26px 0 10px; }
+.quick { margin-top: 0; }
+.chip { background: var(--surface); border-color: var(--line); box-shadow: 0 1px 0 color-mix(in oklab, var(--line) 60%, transparent); color: var(--ink); font-weight: 500; padding: 0 16px; }
+.chip:active { background: var(--accent-soft); border-color: var(--accent-line); }
+
+/* the card: tone-coloured icon tile, bold line, one quiet line, chevron. It is a button that opens Settings. */
+.ready-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; width: 100%; text-align: left;
+  padding: 14px 12px 14px 14px; border-radius: var(--r-l); border: 1px solid var(--line);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--accent-soft) 55%, var(--surface)), var(--surface) 70%);
+  box-shadow: var(--shadow); color: var(--ink); transition: transform .15s var(--ease-out), background .15s;
+}
+.ready-card:active { transform: scale(.985); }
+.rc-ico { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+.rc-ico .ico { width: 24px; height: 24px; }
+.ready-card .rc-text { min-width: 0; }
+.ready-card b, .install > div > b { display: block; font-size: 16.5px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; }
+.install .sub b { color: var(--ink); font-weight: 600; }
+.ready-card .sub, .install .sub { display: block; font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.38; }
+.ready-card .chev, .about summary .chev { width: 20px; height: 20px; color: var(--ink-3); transform: rotate(180deg); }
+.ready-card[data-tone="sample"] { background: linear-gradient(135deg, color-mix(in oklab, var(--equiv) 14%, var(--surface)), var(--surface) 70%); }
+.ready-card[data-tone="sample"] .rc-ico { background: color-mix(in oklab, var(--equiv) 18%, transparent); color: var(--equiv); }
+.ready-card[data-tone="busy"] { background: var(--surface); }
+.ready-card[data-tone="busy"] .rc-ico { background: var(--surface-2); color: var(--ink-2); }
+.ready-card[data-tone="busy"] .rc-ico .ico { animation: spin 1.2s linear infinite; }
+.ready-card[data-tone="problem"] { background: linear-gradient(135deg, color-mix(in oklab, var(--danger) 12%, var(--surface)), var(--surface) 70%); }
+.ready-card[data-tone="problem"] .rc-ico { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
+@media (prefers-reduced-motion: reduce) { .ready-card[data-tone="busy"] .rc-ico .ico { animation: none; } }
+
+/* Home Screen card: the same shape as the readiness card, quieter */
+.install { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin-top: 18px; padding: 12px 8px 12px 12px; border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--ink-2); font-size: 14px; }
+.install > div { flex: none; min-width: 0; }
+.install .rc-ico { width: 40px; height: 40px; border-radius: 13px; }
+.install .rc-ico .ico { width: 20px; height: 20px; }
+.install .sub .ico { width: 16px; height: 16px; vertical-align: -3px; }
+.install b { font-size: 15.5px; }
+.install .btn--sm { grid-column: 2; justify-self: start; margin-top: 6px; }
+.install .x-btn { grid-column: 3; grid-row: 1; background: transparent; }
+
+/* settings: the prices card */
+.panel .sheet-inner > .h2 { margin-top: 22px; }
+.data-card { margin-top: 2px; padding: 14px 14px 14px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+.data-head { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+.data-ico { width: 40px; height: 40px; padding: 8px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); }
+.data-head--warn .data-ico { background: color-mix(in oklab, var(--equiv) 18%, transparent); color: var(--equiv); }
+.data-title { margin: 2px 0 0; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; }
+.data-sub { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); line-height: 1.4; }
+.data-card .note { margin-top: 12px; }
+.data-card .btn { margin-top: 14px; }
+.panel .btn--danger { margin-top: 14px; }
+
+/* About: a fold that stays closed unless asked; the result-label legend and the small print live here */
+.about { margin-top: 14px; border-top: 1px solid var(--line); }
+.about summary { list-style: none; display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 6px 0; font-size: 16px; font-weight: 500; cursor: pointer; }
+.about summary::-webkit-details-marker { display: none; }
+.about summary .chev { transition: transform .2s var(--ease-out); }
+.about[open] summary .chev { transform: rotate(270deg); }
+.about summary:focus-visible { outline-offset: 0; }
+.legend-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.legend-list li { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; font-size: 14px; line-height: 1.35; color: var(--ink-2); }
+.legend-list .kind { height: 28px; font-size: 13px; white-space: nowrap; }
+.about .fine { margin-top: 14px; }
+.about .fine.mono { font-size: 12.5px; margin-top: 10px; word-break: break-all; }
+.h1 { font-size: clamp(26px, 7.4vw, 40px); }
+/* a tablet on the intake table: the home content sits in the middle rather than leaving the top two thirds empty */
+@media (min-height: 900px) and (min-width: 600px) { .home { justify-content: center; } }

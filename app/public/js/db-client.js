@@ -44,6 +44,36 @@ export function fileList(manifest, version) {
 }
 const shardIds = (manifest) => (manifest.shards ? manifest.shards.map((s) => s.id) : ["all"]);
 
+// ---- how much of the pack this phone can hold open
+// The search worker keeps every open shard in memory (typed arrays over the inflated files plus the word dictionary):
+// measured 99.6 MB for the 760k-item fixture, about 131 bytes per item. A pack of several million durable items
+// would be killed by the phone's memory limit before it ever answered, so the consumable (core) departments always
+// open and the durable (more) departments are added in manifest order only while the estimate stays under a budget
+// for this device. Shards past the budget are not downloaded either; Settings names them.
+export const BYTES_PER_ITEM = 140;
+const MB = 1048576;
+/** Worker memory the whole pack may take: ~100 MB per GB of device memory (Chrome reports it, capped at 8), clamped to
+ * 250–640 MB; a browser that does not say (Safari) is treated as a 4 GB phone. */
+export function memoryBudget(deviceMemoryGB = (typeof navigator !== "undefined" ? navigator.deviceMemory : undefined)) {
+  const gb = Number(deviceMemoryGB);
+  if (!Number.isFinite(gb) || gb <= 0) return 400 * MB;
+  return Math.min(640 * MB, Math.max(250 * MB, Math.round(gb * 100 * MB)));
+}
+/** The shard ids to open on this phone: every core shard, then the "more" shards in manifest order while the estimated
+ * worker memory stays under the budget. Returns { open: [ids], skipped: [{ id, name, items }] }. */
+export function pickShards(manifest, budgetBytes = memoryBudget()) {
+  const shards = manifest.shards || [{ id: "all", tier: "core", items: manifest.items || 0 }];
+  const open = [], skipped = [];
+  let used = 0;
+  for (const sh of shards) if ((sh.tier || "core") === "core") { open.push(sh.id); used += (sh.items || 0) * BYTES_PER_ITEM; }
+  for (const sh of shards) {
+    if ((sh.tier || "core") === "core") continue;
+    const cost = (sh.items || 0) * BYTES_PER_ITEM;
+    if (used + cost <= budgetBytes) { open.push(sh.id); used += cost; } else skipped.push({ id: sh.id, name: sh.name || sh.id, items: sh.items || 0 });
+  }
+  return { open, skipped };
+}
+
 /** A download that failed: `network` when the phone lost its connection (worth retrying), `storage` when the phone
  * refused to save it (full), else the server's answer. */
 class DownloadError extends Error {
@@ -72,6 +102,7 @@ export class DbClient extends EventTarget {
     this.stats = null;
     this.pendingUpdate = null;
     this.more = null;             // { loaded: [shard ids], pending: [shard ids] } while other departments are still arriving
+    this.skipped = [];            // durable shards this phone does not open (memory budget): [{ id, name, items }]
     this.persisted = undefined;   // true | false | null (the browser cannot say) | undefined (not asked yet)
     this.ready = new Promise((r) => (this.#resolveReady = r));
   }
@@ -121,13 +152,16 @@ export class DbClient extends EventTarget {
     for (const s of missing) have.delete(s);
     return { base, shards: [...have] };
   }
+  /** The shards this phone opens for a manifest (core always; "more" within the memory budget). */
+  #wanted(manifest) { return new Set(pickShards(manifest).open); }
   /** The core shards of a version are all on the phone: it can open offline. */
   async #usable(version) {
     const manifest = await this.#manifestOf(version);
     if (!manifest) return null;
     const p = await this.#present(version, manifest);
     const core = (manifest.shards || [{ id: "all", tier: "core" }]).filter((s) => (s.tier || "core") === "core").map((s) => s.id);
-    return p.base && core.every((id) => p.shards.includes(id)) ? { manifest, shards: p.shards, complete: p.shards.length === shardIds(manifest).length } : null;
+    const want = this.#wanted(manifest);
+    return p.base && core.every((id) => p.shards.includes(id)) ? { manifest, shards: p.shards, complete: [...want].every((id) => p.shards.includes(id)) } : null;
   }
   /** Versions with a usable bucket on this device (newest first), for when localStorage is gone. */
   async #cachedVersions() {
@@ -226,7 +260,8 @@ export class DbClient extends EventTarget {
     if (!background) this.#setState("downloading", { version });
     const t0 = performance.now();
     const manifest = await this.#fetchManifest(version);
-    const files = fileList(manifest, version).filter((f) => tier === "all" || f.tier === tier);
+    const want = this.#wanted(manifest);
+    const files = fileList(manifest, version).filter((f) => (tier === "all" || f.tier === tier) && (f.shard == null || want.has(f.shard)));
     const totalBytes = files.reduce((a, f) => a + f.bytes, 0);
     let doneBytes = 0, failed = null;
     const queue = files.slice();
@@ -279,13 +314,17 @@ export class DbClient extends EventTarget {
     const t0 = performance.now();
     const p = await this.#present(version, manifest);
     if (!p.base || !p.shards.length) throw new Error("the price database on this phone is incomplete");
+    const picked = pickShards(manifest);
+    const only = p.shards.filter((id) => picked.open.includes(id));
+    if (!only.length) throw new Error("the price database on this phone is incomplete");
     const stats = await this.call({ type: "load", root: new URL(DB_ROOT, location.href).href, base: new URL(`${DB_ROOT}${version}/`, location.href).href,
-      manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only: p.shards });
+      manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only });
     this.manifest = manifest;
     this.stats = { ...stats, wallMs: Math.round(performance.now() - t0), downloadMs: this.#lastDownloadMs };
     this.#lastDownloadMs = null;
     this.version = version;
-    this.more = stats.pending?.length ? { loaded: stats.shards, pending: stats.pending } : null;
+    this.skipped = picked.skipped;
+    this.more = this.#pendingOf(stats, picked);
     if (!quiet) {
       this.#setState("ready", { version, manifest, stats: this.stats, more: this.more });
       this.#emit("ready", { stats: this.stats, manifest });
@@ -293,6 +332,12 @@ export class DbClient extends EventTarget {
     }
     this.#cleanup().catch(() => {});
     this.requestPersistence().catch(() => {});
+  }
+
+  /** What is still to come for this phone: the worker's pending list minus the shards the budget leaves out. */
+  #pendingOf(stats, picked) {
+    const pending = (stats.pending || []).filter((id) => picked.open.includes(id));
+    return pending.length ? { loaded: stats.shards, pending } : null;
   }
 
   /** The other departments of the open version: download what is missing (when online) and add it to the search. */
@@ -304,13 +349,22 @@ export class DbClient extends EventTarget {
       await this.#download(version, { background: true, tier: "more" });
       if (this.version !== version) return;
       const p = await this.#present(version, this.manifest);
+      const picked = pickShards(this.manifest);
       const stats = await this.call({ type: "load", root: new URL(DB_ROOT, location.href).href, base: new URL(`${DB_ROOT}${version}/`, location.href).href,
-        manifest: this.manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only: p.shards });
+        manifest: this.manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only: p.shards.filter((id) => picked.open.includes(id)) });
       this.stats = { ...this.stats, ...stats };
-      this.more = stats.pending?.length ? { loaded: stats.shards, pending: stats.pending } : null;
-      this.#emit("more", { loaded: stats.shards, pending: stats.pending || [], items: stats.items });
-    })().catch((err) => { console.warn("other departments not downloaded yet", err); }).finally(() => { this.#moreTask = null; });
+      this.skipped = picked.skipped;
+      this.more = this.#pendingOf(stats, picked);
+      this.#emit("more", { loaded: stats.shards, pending: this.more?.pending || [], items: stats.items });
+    })().catch((err) => { console.warn("other departments not downloaded yet", err); this.#emit("more-paused", { message: String(err?.message || err) }); }).finally(() => { this.#moreTask = null; });
     return this.#moreTask;
+  }
+
+  /** Bytes of the open version that are on this phone (the shards it opens plus the per-version files), from the manifest. */
+  installedBytes() {
+    if (!this.manifest || !this.version) return 0;
+    const have = new Set(this.stats?.shards || []);
+    return fileList(this.manifest, this.version).reduce((a, f) => a + (f.shard == null || have.has(f.shard) ? f.bytes : 0), 0);
   }
 
   /**
@@ -425,6 +479,6 @@ export class DbClient extends EventTarget {
     await this.call({ type: "unload" }).catch(() => {});
     for (const n of await caches.keys()) if (n.startsWith(CACHE_PREFIX)) await caches.delete(n);
     this.#writeKey(KEY, null); this.#writeKey(PENDING_KEY, null);
-    this.version = null; this.manifest = null; this.stats = null; this.pendingUpdate = null; this.more = null;
+    this.version = null; this.manifest = null; this.stats = null; this.pendingUpdate = null; this.more = null; this.skipped = [];
   }
 }
