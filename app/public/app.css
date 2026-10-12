@@ -109,7 +109,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
   border-bottom: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
 }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; margin-right: auto; min-height: 44px; }
-.mark { width: 26px; height: 26px; border-radius: 8px; }
+.mark { width: 28px; height: 28px; border-radius: 7px; display: block; }   /* the app icon itself (icons/icon-192.png) */
 .wordmark { font-size: 17px; letter-spacing: -0.01em; font-weight: 500; }
 .wordmark b { font-weight: 700; }
 .status {
