@@ -74,7 +74,9 @@ def run(wm=None, n=None) -> dict:
         res = {"status": "skipped", "reason": "no eligible rows in the published snapshot", "alert": False}
         print(res["reason"])
         return res
-    live = qa.live_check(wm, sample)
+    tol = cfg.get("live_match_tolerance")
+    tol = float(tol) if isinstance(tol, (int, float)) and not isinstance(tol, bool) and tol >= 0 else 0.05
+    live = qa.live_check(wm, sample, tolerance=tol)
     if live["checked"] < max(1, len(sample) / 2):
         res = {"status": "error", "alert": False, "checked_rows": live["checked"], "sample": len(sample),
                "reason": f"live check unavailable after {live['checked']}/{len(sample)} rows: {live['error']}"}
@@ -86,15 +88,18 @@ def run(wm=None, n=None) -> dict:
         "published": manifest.get("published"), "sample": len(sample), "checked_rows": live["checked"],
         "calls": live["calls"], "exact": live["exact"], "missing": live["missing"],
         "match_rate": live["match_rate"], "within_5pct": live["within_5pct_rate"],
+        "close_rate": live["close_rate"], "tolerance": tol, "found": live["found"], "by_tier": live["by_tier"],
         "drift_examples": live["examples"], "live_error": live["error"],
         "outlier_share": share, "outlier_rows": len(outliers), "unit_priced_rows": total, "outlier_examples": outliers[:25],
         "audit_match_min": min_rate,
-        "alert": bool(min_rate is not None and live["match_rate"] is not None and live["match_rate"] < min_rate),
+        "alert": bool(min_rate is not None and live["close_rate"] is not None and live["close_rate"] < min_rate),
     }
     store.write_json(AUDIT / f"{date}.json", res)
     store.write_json(AUDIT / "latest.json", res)
-    print(f"audit {date} of {res['version']}: exact {res['match_rate']:.1%}, within 5% {res['within_5pct']:.1%}, "
-          f"missing {res['missing']}, unit outliers {share:.2%}" + (" -> ALERT" if res["alert"] else ""))
+    fmt = lambda v: f"{v:.1%}" if isinstance(v, (int, float)) else "-"
+    print(f"audit {date} of {res['version']}: within {tol:.0%} {fmt(res['close_rate'])}, exact {fmt(res['match_rate'])} of "
+          f"{res['found']} still listed, no longer listed {res['missing']}, unit outliers {share:.2%}"
+          + (" -> ALERT" if res["alert"] else ""))
     return res
 
 

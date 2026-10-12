@@ -102,17 +102,45 @@ class Gates(StoreCase, unittest.TestCase):
         self.assertEqual(live["examples"][0]["live"], changed[live["examples"][0]["id"]])
         self.assertIn("Live price differences", (self.qa.CAND / "report.md").read_text())
 
-    def test_items_walmart_no_longer_knows_count_as_mismatches(self):
+    def test_items_walmart_no_longer_lists_are_not_wrong_prices(self):
+        # 2026-10-12: a listing that disappeared is reported on its own, never counted against the match rate
         missing = [r["id"] for r in self.rows[:10]]
+        self.assertEqual(self.qa.check(wm=FakeWM(self.rows, missing=missing)), "review")
+        x = self.gates()["gates"]["live_match"]
+        self.assertTrue(x["pass"]); self.assertEqual(x["value"], 1.0)
+        self.assertIn("no longer listed: 10 of 181", x["detail"]); self.assertIn("not counted as wrong", x["detail"])
+        live = self.gates()["extras"]["live"]
+        self.assertEqual((live["found"], live["missing"], live["missing_rate"]), (171, 10, round(10 / 181, 4)))
+        self.assertEqual(live["by_tier"]["consumable"]["found"] + live["by_tier"]["durable"]["found"], 171)
+        # ... unless the owner sets live_missing_max
+        self.write_gates(live_missing_max=0.02)
         self.assertEqual(self.qa.check(wm=FakeWM(self.rows, missing=missing)), "hold")
         x = self.gates()["gates"]["live_match"]
-        self.assertAlmostEqual(x["value"], 171 / 181, places=3); self.assertIn("missing live: 10", x["detail"])
+        self.assertFalse(x["pass"]); self.assertIn("live_missing_max", x["detail"])
 
-    def test_small_differences_count_as_within_5pct_only(self):
+    def test_small_differences_count_as_matches_within_the_tolerance(self):
         changed = {r["id"]: round(r["price"] + 0.02, 2) for r in self.rows[:3]}
-        self.qa.check(wm=FakeWM(self.rows, prices=changed))
+        self.assertEqual(self.qa.check(wm=FakeWM(self.rows, prices=changed)), "review")
         live = self.gates()["extras"]["live"]
-        self.assertEqual(live["exact"], 178); self.assertEqual(live["within_5pct"], 181)
+        self.assertEqual((live["exact"], live["within_5pct"], live["close"], live["tolerance"]), (178, 181, 181, 0.05))
+        x = self.gates()["gates"]["live_match"]
+        self.assertEqual(x["value"], 1.0); self.assertIn("within 5%", x["detail"]); self.assertIn("exact 178", x["detail"])
+        self.write_gates(live_match_tolerance=0)                           # exact only
+        self.qa.check(wm=FakeWM(self.rows, prices=changed))
+        x = self.gates()["gates"]["live_match"]
+        self.assertAlmostEqual(x["value"], 178 / 181, places=4); self.assertIn("within 0%", x["detail"])
+        self.assertEqual(self.gates()["extras"]["live"]["close"], 178)
+
+    def test_consumable_and_durable_rates_are_reported_separately(self):
+        rows = self.rows + [row(7000 + i, dept="Toys", cat="21", path="Home Page/Toys/Dolls", size=None, base_qty=None,
+                                unit_price=None, price=9.0) for i in range(20)]
+        self.write_candidate(rows)
+        changed = {7000 + i: 20.0 for i in range(10)}                        # half the durable rows moved a lot
+        self.qa.check(wm=FakeWM(rows, prices=changed))
+        live = self.gates()["extras"]["live"]
+        self.assertEqual(live["by_tier"]["durable"], {"found": 20, "exact": 10, "close": 10, "missing": 0, "close_rate": 0.5})
+        self.assertEqual(live["by_tier"]["consumable"]["close_rate"], 1.0)
+        self.assertIn("durable 50.0% of 20", self.gates()["gates"]["live_match"]["detail"])
 
     def test_live_check_not_run_without_credentials_holds(self):
         self.assertEqual(self.qa.check(), "hold")
