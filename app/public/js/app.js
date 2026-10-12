@@ -80,7 +80,7 @@ function applyTheme() {
   const root = document.documentElement;
   if (prefs.theme === "auto") delete root.dataset.theme; else root.dataset.theme = prefs.theme;
   const dark = prefs.theme === "dark" || (prefs.theme === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#141311" : "#f7f5f0"; });
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#0a0d0b" : "#f7f5f0"; });
 }
 applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);

@@ -645,3 +645,65 @@ html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 .howto-card { padding: 14px 16px 12px; border-radius: var(--r-l); border: 1px dashed var(--line-2); background: color-mix(in oklab, var(--surface) 60%, transparent); }
 .howto-card .h2 { margin-bottom: 4px; }
 .howto-card .howto { font-size: 14.5px; padding-left: 20px; }
+
+/* ---------- 2026-10-12: colour scheme ----------
+   Dark: neon green on black, the app icon's own green and gloss (owner). Light: warm paper, deep green, the same gloss.
+   --glow is the dark theme's halo on the primary controls and the ready dot; it is transparent in light. */
+:root {
+  --accent: oklch(46% 0.16 150); --exact: oklch(46% 0.16 150);
+  --accent-soft: oklch(93% 0.05 150); --accent-line: oklch(78% 0.1 150);
+  --surface: oklch(99.6% 0.002 90);
+  --gloss-hi: color-mix(in oklab, var(--accent) 78%, white);
+  --gloss-lo: color-mix(in oklab, var(--accent) 80%, black);
+  --glow: 0 0 0 0 transparent;
+  --glow-dot: 0 0 0 0 transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(11.5% 0.012 150); --bg-2: oklch(9% 0.01 150);
+    --surface: oklch(16% 0.014 150); --surface-2: oklch(21.5% 0.018 150);
+    --line: oklch(26% 0.022 150); --line-2: oklch(34% 0.03 150);
+    --ink: oklch(97% 0.012 150); --ink-2: oklch(80% 0.03 150); --ink-3: oklch(68% 0.035 150);
+    --accent: oklch(87% 0.24 148); --exact: oklch(87% 0.24 148);
+    --accent-ink: oklch(15% 0.05 150); --accent-soft: oklch(24% 0.07 150); --accent-line: oklch(50% 0.15 150);
+    --label: oklch(80% 0.13 250); --plu: oklch(88% 0.17 125); --equiv: oklch(86% 0.16 78); --closest: oklch(78% 0.16 35); --live: oklch(82% 0.13 205); --danger: oklch(72% 0.19 25);
+    --gloss-hi: color-mix(in oklab, var(--accent) 70%, white);
+    --gloss-lo: color-mix(in oklab, var(--accent) 72%, black);
+    --glow: 0 0 30px -6px color-mix(in oklab, var(--accent) 65%, transparent);
+    --glow-dot: 0 0 12px 1px color-mix(in oklab, var(--accent) 55%, transparent);
+    --toast-accent: oklch(44% 0.15 150);
+    --shadow: 0 1px 2px oklch(0% 0 0 / .5), 0 8px 24px -12px oklch(0% 0 0 / .7);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: oklch(11.5% 0.012 150); --bg-2: oklch(9% 0.01 150);
+  --surface: oklch(16% 0.014 150); --surface-2: oklch(21.5% 0.018 150);
+  --line: oklch(26% 0.022 150); --line-2: oklch(34% 0.03 150);
+  --ink: oklch(97% 0.012 150); --ink-2: oklch(80% 0.03 150); --ink-3: oklch(68% 0.035 150);
+  --accent: oklch(87% 0.24 148); --exact: oklch(87% 0.24 148);
+  --accent-ink: oklch(15% 0.05 150); --accent-soft: oklch(24% 0.07 150); --accent-line: oklch(50% 0.15 150);
+  --label: oklch(80% 0.13 250); --plu: oklch(88% 0.17 125); --equiv: oklch(86% 0.16 78); --closest: oklch(78% 0.16 35); --live: oklch(82% 0.13 205); --danger: oklch(72% 0.19 25);
+  --gloss-hi: color-mix(in oklab, var(--accent) 70%, white);
+  --gloss-lo: color-mix(in oklab, var(--accent) 72%, black);
+  --glow: 0 0 30px -6px color-mix(in oklab, var(--accent) 65%, transparent);
+  --glow-dot: 0 0 12px 1px color-mix(in oklab, var(--accent) 55%, transparent);
+  --toast-accent: oklch(44% 0.15 150);
+  --shadow: 0 1px 2px oklch(0% 0 0 / .5), 0 8px 24px -12px oklch(0% 0 0 / .7);
+}
+/* gloss: a lit top edge, a deeper foot, a halo in the dark */
+.scan-btn, .btn--accent, .tally-pill, .stale .btn {
+  background-image: linear-gradient(180deg, var(--gloss-hi) 0%, var(--accent) 46%, var(--gloss-lo) 100%);
+  background-color: var(--accent); color: var(--accent-ink); border: 0;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 40%, transparent), inset 0 -1px 0 color-mix(in oklab, black 22%, transparent),
+              0 8px 22px -10px color-mix(in oklab, var(--accent) 70%, transparent), var(--glow);
+}
+.scan-btn:active, .btn--accent:active { filter: brightness(.94); }
+.stale .btn { background-image: none; background-color: var(--ink); color: var(--bg); box-shadow: none; }
+.tally-pill { font-weight: 700; }
+.tally-pill .ico { color: var(--accent-ink); }
+.status[data-state="ready"] .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent), var(--glow-dot); }
+.rc-ico, .data-ico, .tally-strip .ico, .live-row .ico { filter: drop-shadow(0 0 0 transparent); }
+.switch[aria-checked="true"] { background-image: linear-gradient(180deg, var(--gloss-hi), var(--accent) 60%); box-shadow: var(--glow-dot); }
+.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent), var(--glow-dot); }
+.reticle .laser { background: linear-gradient(90deg, transparent, oklch(87% 0.24 148), transparent); box-shadow: 0 0 14px oklch(87% 0.24 148); }
+.scanner.is-hit .reticle i { border-color: oklch(87% 0.24 148); }
