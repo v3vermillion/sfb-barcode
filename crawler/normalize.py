@@ -341,6 +341,9 @@ def variants(name: str):
     return sorted({w for w in VARIANT_WORDS if re.search(r"(?<![a-z])" + re.escape(w) + r"(?![a-z])", n)})
 
 
+PAPER_WEIGHT_RX = re.compile(r"\b(?:cardstock|card\s+stock|paper|parchment|bond|vellum|bristol|envelopes?)\b", re.I)
+
+
 def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True):
     name = (item.get("name") or "").strip()
     path = (item.get("categoryPath") or "").lower()
@@ -372,6 +375,11 @@ def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True):
         cap = rules.get("max_price")
         if isinstance(cap, (int, float)) and not isinstance(cap, bool) and item["salePrice"] > cap:
             return "durable_over_cap"
+    else:
+        # a consumable priced like a pallet is a listing error ("Anti-Diarrheal 100 Caps" at $1,600.52), 2026-10-13
+        cap = (cfg.get("consumable_rules") or {}).get("max_price")
+        if isinstance(cap, (int, float)) and not isinstance(cap, bool) and item["salePrice"] > cap:
+            return "consumable_over_cap"
     return None
 
 
@@ -406,6 +414,8 @@ def normalize(item: dict, dept: dict, cfg: dict):
         size, unit, pack = parse_quantity(name)
         if size is None:
             fs, fu, fp = parse_quantity(item.get("size") or "")
+    if unit == "lb" and PAPER_WEIGHT_RX.search(name):
+        size, unit = None, None                   # "Cardstock, 65 lb." is the paper's basis weight, not a size
     if size is None and fs is not None:
         size, unit, src = fs, fu, "size_field"
     elif size is not None and fs is not None:

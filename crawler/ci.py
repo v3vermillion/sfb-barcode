@@ -780,9 +780,10 @@ def _audit():
         return res          # skipped: waits a full period, no alert
     resolve("audit-failed")
     if res.get("alert"):
-        rate = res.get("match_rate")
-        shown = f"{rate} ({rate:.0%})" if isinstance(rate, (int, float)) and not isinstance(rate, bool) else "?"
-        alert("audit-regression", f"live audit: only {shown} of sampled prices still match",
+        rate = res.get("close_rate")
+        shown = f"{rate:.1%}" if isinstance(rate, (int, float)) and not isinstance(rate, bool) else "?"
+        alert("audit-regression", f"live audit: only {shown} of the sampled prices Walmart still lists are within "
+                                  f"{res.get('tolerance', 0.05):.0%}",
               "The weekly live re-check of published prices fell below the threshold in data/gates.json "
               "(audit_match_min). A core refresh is the usual fix; it starts by itself when due, or run the workflow "
               "with plan=core.\n\n" + body)

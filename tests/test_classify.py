@@ -103,12 +103,38 @@ class Exclusions(unittest.TestCase):
         self.assertIsNone(self.ex("Estrella Galicia 0,0 Non-Alcoholic Beer 15 Pack", "Home Page/Food/Alcohol/Beer"))
         self.assertIsNone(self.ex("Coco Lopez Pina Colada Drink Mix, 12 oz", "Home Page/Food/Alcohol/Pre-Mixed Cocktails"))
 
+    def test_pantyhose_is_apparel_whatever_the_hose_exemption_says(self):
+        self.assertEqual(self.ex("Women's Plus-Size Backseam Fishnet Pantyhose, Black, Plus Size",
+                                 "Home Page/Party & Occasions/Halloween", "Party & Occasions"), "apparel")
+        self.assertIsNone(self.ex("Flexon Garden Hose, 50 ft", "Home Page/Patio & Garden", "Patio & Garden"))
+
+    def test_vehicle_parts_are_not_carried_wherever_they_are_filed(self):
+        self.assertEqual(self.ex("Front Left Door Lock Actuator LH Driver For Dodge Ram Truck 931-636 55276791AE",
+                                 "Home Page/Baby/Shop by Age", "Baby"), "auto_part")
+        self.assertEqual(self.ex("Bumper Retainer Compatible With 2011-2020 Toyota Sienna Front, Right Passenger",
+                                 "Home Page/Toys/All Toys & Games", "Toys"), "auto_part")
+        for name in ("Hot Wheels 2019 Ford Mustang GT 1:64", "Armor All Car Wash, 64 oz", "Ford Logo Ceramic Mug",
+                     "Little Trees Air Freshener for Toyota Camry owners"):
+            self.assertIsNone(self.ex(name, "Home Page/Toys", "Toys"), name)
+
+    def test_wholesale_and_commercial_lots_are_not_carried(self):
+        for name in ("Dart Ultra Clear Dome Cold Cup Lids, For 16 - 24 Oz Cups, Clear, Pack Of 1,000 Lids",
+                     '72 PC 2" RUBBER TURTLE MIX, Case of 3', "6601489 7.25 x 19 in. Skilcraft Microfiber Tube Mop Heads Blue",
+                     "8500PCS Clear Zipper Self Seal Zip Lock Top Polyethylene Bags 204*200mm"):
+            self.assertEqual(self.ex(name, "Home Page/Home", "Home"), "commercial_lot", name)
+        for name in ("Great Value Whole Kernel Corn, 15 oz, Case of 12", "1000 Piece Puzzle Mountain Lake",
+                     "Dixie Paper Plates 8.5 in, 300 ct", "Charmin Ultra Soft Toilet Paper, 24 Mega Rolls = 96 Regular Rolls",
+                     "Peptamen Junior 1.5 Nutritional Supplement 250mL Case of 24, Unflavored"):
+            self.assertIsNone(self.ex(name, "Home Page/Home", "Home"), name)
+
     def test_media(self):
         self.assertEqual(self.ex("Vinegars of the World, (Paperback)", brand="Laura Solieri"), "media")
         self.assertEqual(self.ex("Soul Sauce", brand="UMGD"), "media")
         self.assertEqual(self.ex("High-Hanging Fruit: Build Something Great by Going Where No One Else Will",
                                  brand="Mark Rampolla"), "media")
         self.assertEqual(self.ex("The Pacifier (2005)", "Home Page/Baby/Feeding", "Baby"), "media")
+        self.assertEqual(self.ex("JumpStart Advanced Preschool World Premium Edition - Box pack - 1 user - CD - Win",
+                                 "Home Page/Toys/Toys for All", "Toys"), "media")
         self.assertIsNone(self.ex("Warner Brothers Looney Tunes Best Buds Super Soft Baby Blanket", "Home Page/Baby", "Baby",
                                   brand="Warner Bros."))
 
@@ -144,7 +170,7 @@ class Placeholders(unittest.TestCase):
                             ("DO NOT USE- Barbecue Beans with Hickory BBQ Beef", "Fiorella's"), ("HUGGIES", "Huggies"),
                             ("CVP NON-TAX FL6206 D3 CVP Item", "Non Branded"), ("300PC CH GHST PPR HP", ""),
                             ("Discontinued Item by Supplier", "Prell"), ("Thai Kitchen Merchandise", "Thai Kitchen"),
-                            ("Crest 32pc Cr Snstv Pdq3", "Oral-B")):
+                            ("Crest 32pc Cr Snstv Pdq3", "Oral-B"), ("SEASONS", "")):
             self.assertTrue(C.placeholder(name, brand), name)
 
     def test_real_products_are_not(self):
@@ -209,6 +235,30 @@ class Categories(unittest.TestCase):
         self.assertEqual(cat("Great Value Frozen Cut Green Beans, 16 oz"), 5)
         self.assertEqual(cat("Iberia Lentil Beans, Lentejas, 16 oz Bag"), 7)
         self.assertEqual(cat("La Fe Sweetened Condensed Milk, 14 oz Can"), 28)
+
+    def test_sample_review_mislabels_of_2026_10_13(self):
+        """Category labels the first snapshot's sample review judged wrong (docs/DECISIONS.md 2026-10-13)."""
+        D = DEPTS
+        cases = [
+            ("3dRose, Little Cowboy and Cowgirl with Toy Pony Sledding, 12 Greeting Cards with envelopes",
+             "Home Page/Party & Occasions/Party Supplies/Christmas Party Supplies", "Party & Occasions", 22),
+            ("Tenterfield Terrier Love Greeting Cards and Envelopes Pack of 8", "Home Page/Party & Occasions/Themed Party Supplies", "Party & Occasions", 22),
+            ("NCAA Eastern Illinois Team Sonar 12oz Slim Can Cooler, Collapsible", "Home Page/Home/Kitchen & Dining/Dining & Entertaining/Bar", "Home", 17),
+            ("Carolines Treasures BB9923CC Schnauzer Fall Can or Bottle Hugger Can Hugger multicolor", "Home Page/Home/Kitchen & Dining/Dining & Entertaining/Bar", "Home", 17),
+            ("Party Animals Baseball Logo Magnet", "Home Page/Home/Kitchen & Dining/Fridge Magnets", "Home", 18),
+            ("Black Kitty Mask", "Home Page/Party & Occasions/Halloween/Halloween Accessories", "Party & Occasions", 22),
+            ("Spin Master Moonlite Duck & Goose Story Reel for Moonlite Story Projector", "Home Page/Toys/Learning Toys", "Toys", 21),
+            ("(4 pack) (4 Pack) Trend, TEPT91318, solid-colored Terrific Trimmers, 1 / Pack, Royal Blue", "Home Page/Office Supplies/School Supplies/Teaching", "Office Supplies", 20),
+            ("2 in 1 Bank Power Hand Warmer, Generic ReCharg eable Double-sided Hand Warmer 5000mAH Bank Power", "Home Page/Toys/Novelty Toys/Piggy Banks", "Toys", 25),
+            ("PEARL/MIRROR BATH TUMBLER", "Home Page/Home/Bath/Bathroom Accessories", "Home", 18),
+            ("Kraft Shake 'n Bake Seasoned Coating Mix Ranch & Herb Crusted 2 Pk w/Shaker Bag, 5.75 Oz", "Home Page/Food/Pantry/Herbs, spices & seasoning mixes", "Food", 28),
+            ("Bradley Maple Cure", "Home Page/Food/Pantry/Pantry meal essentials", "Food", 28),
+            ("Sof Sole Outdoor Fabric Protector 8 oz. Pump Spray Unisex", "Home Page/Party & Occasions/Christmas Trees", "Party & Occasions", 16),
+            ("Southworth Inkjet, Laser Parchment Paper, Copper", "Home Page/Office Supplies/Paper/Specialty Paper", "Office Supplies", 20),
+            ("Reynolds Kitchens Parchment Paper, 45 sq ft", "Home Page/Household Essentials/Food Storage", "Household Essentials", 16),
+        ]
+        for name, path, dept, want in cases:
+            self.assertEqual(cat(name, path, D[dept]), want, name)
 
     def test_non_food_found_in_food_is_labelled_as_what_it_is(self):
         self.assertEqual(cat("Brew Rite 8-12 Cup Basket Style Coffee Filters, 200 Ct", "Home Page/Food/Coffee/Coffee Filters"), 16)

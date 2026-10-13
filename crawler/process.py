@@ -252,7 +252,8 @@ def fill_placeholder_names(rows):
             brand = (r.get("brand") or "").strip().lower()
             # a brand field that only repeats a placeholder name ("Merchandise") is no brand; "PROGRESSO" by Progresso is
             if brand in PSEUDO_BRANDS or (brand == r["listed_name"].strip().lower()
-                                          and classify.placeholder_kind(r["listed_name"], None) == "generic"):
+                                          and classify.placeholder_kind(r["listed_name"], None) == "generic"
+                                          and not classify.BARE_WORD_RX.fullmatch(r["listed_name"].strip())):
                 r["brand"] = None                      # "Merchandise", "ONLINE": showing it would bring the placeholder back
             counts["none"] += 1
             continue

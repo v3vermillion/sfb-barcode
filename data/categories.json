@@ -175,6 +175,10 @@
   "barcode_required": true,
   "max_price": 100
  },
+ "consumable_rules": {
+  "note": "Consumable departments (2026-10-13): a price above max_price (USD) is a listing error, not a donation (an anti-diarrheal at $1,600.52); rejected rows count as consumable_over_cap in stats.json.",
+  "max_price": 500
+ },
  "exclude_path_keywords": [
   "/tobacco"
  ],
