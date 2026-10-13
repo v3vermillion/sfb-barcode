@@ -48,6 +48,8 @@ for (const scheme of ["light", "dark"]) {
       await page.waitForSelector("html[data-ready='1']", { timeout: 180000 });
       await page.waitForTimeout(400);
       const shoot = async (name) => { await page.screenshot({ path: `${OUT}/${tag}-${name}.png` }); const a = await page.evaluate(AUDIT_JS); audit.pages.push({ page: `${tag}-${name}`, ...a }); };
+      await page.waitForSelector("#tour:not([hidden])"); await shoot("0-walkthrough");
+      await page.click("#tour [data-tour=skip]"); await page.waitForTimeout(300);
       await shoot("1-home");
       await page.fill("#q", "peanut butter"); await page.waitForTimeout(400); await shoot("2-results");
       await page.locator("#list .row").first().click(); await page.waitForSelector("#sheet[open]"); await page.waitForTimeout(600); await shoot("3-sheet");

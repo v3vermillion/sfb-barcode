@@ -79,7 +79,7 @@
 
 /* ---------- base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { height: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html { height: 100%; background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }   /* the overscroll area is never white */
 body {
   margin: 0; min-height: 100%; background: var(--bg); color: var(--ink);
   font: 500 17px/1.35 var(--font); font-feature-settings: "ss01", "cv05"; font-variant-numeric: tabular-nums;
@@ -642,8 +642,6 @@ html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 .howto b { color: var(--ink); font-weight: 600; }
 .eyebrow { display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 2px; }
 .eyebrow .ref { white-space: nowrap; }
-.howto-card { padding: 14px 16px 12px; border-radius: var(--r-l); border: 1px dashed var(--line-2); background: color-mix(in oklab, var(--surface) 60%, transparent); }
-.howto-card .h2 { margin-bottom: 4px; }
 .howto-card .howto { font-size: 14.5px; padding-left: 20px; }
 
 /* ---------- 2026-10-12: colour scheme ----------
@@ -707,3 +705,32 @@ html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent), var(--glow-dot); }
 .reticle .laser { background: linear-gradient(90deg, transparent, oklch(87% 0.24 148), transparent); box-shadow: 0 0 14px oklch(87% 0.24 148); }
 .scanner.is-hit .reticle i { border-color: oklch(87% 0.24 148); }
+
+/* ---- walkthrough: a spotlight on the real element and a card beside it; the rest of the screen is dimmed ---- */
+.tour { position: fixed; inset: 0; z-index: 30; --tour-dim: oklch(10% 0.01 70 / .55); }
+.tour.is-free { background: var(--tour-dim); }
+.tour-spot { position: fixed; border-radius: 22px; box-shadow: 0 0 0 200vmax var(--tour-dim), 0 0 0 3px var(--accent), 0 0 22px color-mix(in oklab, var(--accent) 55%, transparent); pointer-events: none; transition: top .25s, left .25s, width .25s, height .25s; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tour { --tour-dim: oklch(0% 0 0 / .66); } }
+:root[data-theme="dark"] .tour { --tour-dim: oklch(0% 0 0 / .66); }
+.tour-card { position: fixed; left: 16px; right: 16px; top: 50%; translate: 0 -50%; max-width: 440px; margin-inline: auto; padding: 16px 18px 14px; border-radius: var(--r-l);
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg), 0 12px 40px -12px oklch(0% 0 0 / .5); animation: rise .22s ease-out; }
+.tour-card.is-placed { translate: none; top: auto; }
+.tour-step { margin: 0 0 4px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.tour-title { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; }
+.tour-text { margin: 6px 0 0; font-size: 15.5px; line-height: 1.45; color: var(--ink-2); }
+.tour-text b { color: var(--ink); font-weight: 600; }
+.tour-demo { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-m); border: 1px solid var(--line); background: var(--bg); display: grid; gap: 10px; }
+.td-row { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.td-name { font-weight: 600; } .td-price { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.td-btn { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 36px; padding: 0 14px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 600; }
+.td-btn .ico { width: 16px; height: 16px; }
+.tour-nav { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.tour-nav .btn { min-height: 44px; padding: 0 16px; }
+.tour-nav .btn--ghost { border-color: transparent; padding-left: 10px; }
+.tour-nav [data-tour="back"] { width: 44px; padding: 0; } .tour-nav [data-tour="back"] .ico { width: 20px; height: 20px; }
+.tour-nav [data-tour="next"] { margin-left: auto; min-width: 88px; }
+.tour-nav [data-tour="back"] + [data-tour="next"] { margin-left: 0; }
+.tour-dots { display: flex; gap: 6px; margin-left: auto; margin-right: 4px; }
+.tour-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
+.tour-dots i.is-on { background: var(--accent); width: 18px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .tour-card { animation: none; } .tour-spot { transition: none; } }

@@ -100,14 +100,6 @@
         </div>
         <div class="note install" id="installHint" hidden></div>
       </div>
-      <section class="howto-card" id="howtoCard" aria-labelledby="howtoH">
-        <h2 class="h2" id="howtoH">How it works</h2>
-        <ol class="howto">
-          <li>Scan the barcode, or type the item name and size.</li>
-          <li>Check the item and price, then tap <b>Add to tally</b>.</li>
-          <li>Share the tally once the donation is valued.</li>
-        </ol>
-      </section>
       <section class="recent" id="recent" hidden aria-labelledby="recentH">
         <h2 class="h2" id="recentH">Recent</h2>
         <ol class="list list--compact" id="recentList"></ol>
@@ -125,6 +117,10 @@
   <dialog id="tallySheet" class="sheet" aria-labelledby="tallyTitle"></dialog>
   <dialog id="settings" class="panel" aria-labelledby="settingsTitle"></dialog>
 
+  <div id="tour" class="tour" hidden>
+    <div class="tour-spot" id="tourSpot" hidden></div>
+    <section class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourText"></section>
+  </div>
   <div id="scanner" class="scanner" hidden role="dialog" aria-modal="true" aria-label="Barcode scanner">
     <video id="video" class="video" playsinline muted autoplay></video>
     <canvas id="overlay" class="overlay" aria-hidden="true"></canvas>

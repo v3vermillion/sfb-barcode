@@ -11,6 +11,7 @@ const BROWSER = String(args.browser || "chromium").toLowerCase();
 if (BROWSER !== "chromium" && BROWSER !== "webkit") { console.error(`scroll-check: --browser must be chromium or webkit (got ${args.browser})`); process.exit(2); }
 const URL_ = new URL(args.url || "http://127.0.0.1:8787/");
 URL_.searchParams.set("nosw", "1");
+URL_.searchParams.set("tour", "0");
 const exe = process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {};
 const browser = BROWSER === "chromium" ? await chromium.launch({ args: ["--no-sandbox"], ...exe }) : await webkit.launch();
 

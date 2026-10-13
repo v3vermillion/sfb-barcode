@@ -9,7 +9,7 @@ import { stalenessLevel, stalenessText, daysSince } from "./staleness.js";
 
 // ------------------------------------------------------------------ setup
 const $ = (id) => document.getElementById(id);
-const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "quick", "heroEyebrow", "readyCard", "statusLive", "tallyStrip", "tallyStripText", "tallyStripTotal"].map((k) => [k, $(k)]));
+const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "quick", "heroEyebrow", "readyCard", "statusLive", "tallyStrip", "tallyStripText", "tallyStripTotal", "tour", "tourSpot", "tourCard"].map((k) => [k, $(k)]));
 
 const LIVE_URL = (document.querySelector('meta[name="sfb-live-check"]')?.content || "").trim().replace(/\/$/, "");
 const BUILD = document.querySelector('meta[name="sfb-build"]')?.content || "dev";
@@ -26,7 +26,7 @@ const state = {
   query: "", seq: 0, last: null, codeHit: null, pending: null, sheetRes: null, qty: 1,
   scan: null, scanOpen: false, scanGen: 0, scanPausedByVisibility: false, engine: "", source: null, pendingReload: false,
   openScannerAfterSheet: false, closeScannerAfterSheet: false, focusSearchAfterSheet: false,
-  stale: "fresh", staleBusy: false, persisted: undefined,
+  stale: "fresh", staleBusy: false, persisted: undefined, tourOpen: false,
 };
 
 const db = new DbClient();
@@ -47,7 +47,7 @@ const icon = (name, cls = "ico") => `<svg class="${cls}" aria-hidden="true"><use
 const haptic = (ms = 12) => { if (prefs.haptics && navigator.vibrate) { try { navigator.vibrate(ms); } catch { /* ignore */ } } };
 const priceDate = () => db.manifest?.priceDate || db.manifest?.published?.slice(0, 10) || "";
 const storeLabel = () => db.manifest?.store?.label || "Strongsville Walmart";
-const anyModalOpen = () => el.sheet.open || el.tallySheet.open || el.settings.open;
+const anyModalOpen = () => el.sheet.open || el.tallySheet.open || el.settings.open || state.tourOpen;
 
 function highlight(text, toks) {
   const t = String(text ?? "");
@@ -86,19 +86,39 @@ applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 
 const vv = window.visualViewport;
+/** True while a text field has the focus: the only time a phone keyboard can be on screen. */
+const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"); };
 function keyboardInset() {
   if (!vv) return;
-  // a pinch-zoomed page is not a keyboard: only an unscaled viewport that got shorter is
+  // The inset and the pan are read from the visual viewport ONLY while a text field is focused. Safari in the browser
+  // (not installed) also shrinks and shifts the visual viewport when its toolbars collapse, on a rubber-band scroll and
+  // after a rotation: with nothing to type into, those are not a keyboard, and following them moved the header down the
+  // page and lifted the dock off the bottom. A pinch-zoomed page is not a keyboard either.
   const zoomed = vv.scale > 1.01;
-  const inset = zoomed ? 0 : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const keyboard = typing() && !zoomed;
+  const inset = keyboard ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
   // iOS opens the keyboard by panning the page up (offsetTop) instead of resizing it: the fixed header and the top of the
   // results would sit above the screen, out of reach of any scroll. Everything fixed follows the visible area instead.
-  const top = zoomed ? 0 : Math.max(0, Math.round(vv.offsetTop));
+  const top = keyboard ? Math.max(0, Math.round(vv.offsetTop)) : 0;
   document.documentElement.style.setProperty("--kb", `${inset}px`);
   document.documentElement.style.setProperty("--vv-top", `${top}px`);
 }
 vv?.addEventListener("resize", keyboardInset);
 vv?.addEventListener("scroll", keyboardInset);
+document.addEventListener("focusin", keyboardInset);
+document.addEventListener("focusout", () => setTimeout(keyboardInset, 0));
+// Safari can come back from a rotation with the page left zoomed in; the only remedy is to pin the scale for one frame
+const viewportMeta = document.querySelector('meta[name="viewport"]');
+function resetZoomAfterRotation() {
+  setTimeout(() => {
+    if (!vv || !viewportMeta || vv.scale <= 1.01) return;
+    const content = viewportMeta.content;
+    viewportMeta.content = `${content}, maximum-scale=1`;
+    requestAnimationFrame(() => { viewportMeta.content = content; keyboardInset(); });
+  }, 350);
+}
+window.addEventListener("orientationchange", resetZoomAfterRotation);
+screen.orientation?.addEventListener?.("change", resetZoomAfterRotation);
 
 // ------------------------------------------------------------------ modal stack (dialogs + scanner share history)
 // Every open pushes a history entry so the phone's Back closes the top-most layer. A close that owns the top
@@ -130,6 +150,7 @@ window.addEventListener("popstate", () => {
   const top = history.state?.modal;
   const openDlg = [el.sheet, el.tallySheet, el.settings].find((d) => d.open && !d._closeTimer);
   if (openDlg && top !== openDlg.id) { modals.close(openDlg, { fromPop: true }); return; }
+  if (state.tourOpen && top !== "tour") { closeTour({ fromPop: true }); return; }
   if (state.scanOpen && top !== "scanner") closeScanner({ fromPop: true });
 });
 // a reload keeps the previous entry's state: never start with a stale "a modal is open" marker
@@ -773,7 +794,6 @@ function pruneRecent() {
 }
 function renderRecent() {
   el.recent.hidden = recent.length === 0;
-  const how = $("howtoCard"); if (how) how.hidden = recent.length > 0;   // the first-launch steps give way to Recent
   el.recentList.innerHTML = recent.slice(0, 4).map((r, i) => `<li><button class="row" type="button" data-recent="${i}"><span class="name">${esc(r.title)}</span><span class="price">${money(r.priceCents)}${r.unit === "lb" ? "<small>per lb</small>" : ""}</span><span class="meta"><span class="tag">${esc(kindLabel({ kind: r.kind }))}</span></span></button></li>`).join("");
 }
 el.recentList.addEventListener("click", async (e) => {
@@ -827,6 +847,7 @@ function settingsHtml() {
       <li>Check the item and price, then tap <b>Add to tally</b>.</li>
       <li>Share the tally once the donation is valued.</li>
     </ol>
+    <button class="btn btn--ghost btn--block" type="button" data-act="tour">${icon("info")} Show the walkthrough</button>
     <details class="about">
       <summary><span>About</span>${icon("back", "ico chev")}</summary>
       <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
@@ -852,16 +873,100 @@ el.settings.addEventListener("click", async (e) => {
   if (sw) { const k = sw.dataset.pref; prefs[k] = !prefs[k]; writeJson(PREFS_KEY, prefs); sw.setAttribute("aria-checked", String(prefs[k])); haptic(5); return; }
   const actBtn = e.target.closest("[data-act]"), act = actBtn?.dataset.act;
   if (act === "update") await checkNow(actBtn);
+  else if (act === "tour") { el.settings.addEventListener("closed", () => openTour(), { once: true }); modals.close(el.settings); }
   else if (act === "reset") {
     if (!confirm("Remove the downloaded prices, tally and recent items from this phone? Prices download again when online.")) return;
     await db.reset(); tally = []; recent = [];
-    for (const k of [TALLY_KEY, RECENT_KEY, PREFS_KEY]) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
+    for (const k of [TALLY_KEY, RECENT_KEY, PREFS_KEY, TOUR_KEY]) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
     location.reload();   // the app shell stays cached, so this works offline too
   }
 });
 el.settingsBtn.addEventListener("click", openSettings);
 el.status.addEventListener("click", openSettings);
 el.readyCard?.addEventListener("click", openSettings);
+
+// ------------------------------------------------------------------ walkthrough (first launch, and Settings › Show the walkthrough)
+// Four coach marks over the real screen, one sentence or two each: find the item, add it, review and share the tally,
+// prices stay on the phone. Shown once per phone (TOUR_KEY); ?tour=1 forces it, ?tour=0 skips it (the measuring tools).
+const TOUR_KEY = "sfb.tour";
+const TOUR_STEPS = [
+  { target: () => el.dock, place: "above", title: "Find the item", text: "Tap <b>Scan</b> and point the camera at the barcode, or type the item name and size." },
+  { demo: true, title: "Add it to the tally", text: "Check the item and its price, then tap <b>Add to tally</b>. Set the quantity there when there are several." },
+  { target: () => el.tallyStrip, place: "below", title: "Review and share", text: "Every item added builds the tally. Open it to check the lines, then tap <b>Share</b> to send the total." },
+  { target: () => el.readyCard, place: "below", title: "Prices stay on this phone", text: "The app works without a signal. This card shows the date of the prices; they refresh on their own when online." },
+];
+const tour = { step: 0, returnTo: null };
+const tourParam = new URLSearchParams(location.search).get("tour");
+const tourWanted = () => tourParam === "1" || (tourParam !== "0" && !readJson(TOUR_KEY, null)?.done);
+function openTour() {
+  if (state.tourOpen || state.scanOpen || anyModalOpen()) return;
+  state.tourOpen = true; tour.step = 0; tour.returnTo = document.activeElement;
+  if (!el.home.hidden) window.scrollTo(0, 0);
+  setBackgroundInert(true);
+  el.tour.hidden = false;
+  history.pushState({ modal: "tour", n: (history.state?.n || 0) + 1 }, "");
+  renderTour();
+}
+function closeTour({ fromPop = false } = {}) {
+  if (!state.tourOpen) return;
+  if (!fromPop && history.state?.modal === "tour") { history.back(); return; }   // popstate finishes the close
+  state.tourOpen = false;
+  writeJson(TOUR_KEY, { done: Date.now() });
+  el.tour.hidden = true; el.tourCard.innerHTML = ""; el.tourSpot.hidden = true;
+  setBackgroundInert(false);
+  tour.returnTo?.focus?.({ preventScroll: true }); tour.returnTo = null;
+}
+function renderTour() {
+  const s = TOUR_STEPS[tour.step], n = TOUR_STEPS.length, last = tour.step === n - 1;
+  const dots = TOUR_STEPS.map((_, i) => `<i${i === tour.step ? ' class="is-on"' : ""}></i>`).join("");
+  const demo = s.demo ? `<div class="tour-demo" aria-hidden="true"><div class="td-row"><span class="td-name">Item and size</span><span class="td-price">Price</span></div><span class="td-btn">${icon("plus")} Add to tally</span></div>` : "";
+  el.tourCard.innerHTML = `<p class="tour-step">Step ${tour.step + 1} of ${n}</p>
+    <h2 class="tour-title" id="tourTitle">${s.title}</h2>
+    <p class="tour-text" id="tourText">${s.text}</p>${demo}
+    <div class="tour-nav"><button class="btn btn--ghost" type="button" data-tour="skip">${last ? "Close" : "Skip"}</button><span class="tour-dots" aria-hidden="true">${dots}</span>
+      ${tour.step ? `<button class="btn btn--ghost" type="button" data-tour="back" aria-label="Back">${icon("back")}</button>` : ""}
+      <button class="btn btn--accent" type="button" data-tour="next">${last ? "Start" : "Next"}</button></div>`;
+  placeTour();
+  el.tourCard.querySelector("[data-tour=next]").focus({ preventScroll: true });
+}
+/** The spotlight sits on the step's element (if it is on screen) and the card sits on the free side of it. */
+function placeTour() {
+  if (!state.tourOpen) return;
+  const s = TOUR_STEPS[tour.step], t = s.target?.();
+  const r = t && !t.hidden && t.getClientRects().length ? t.getBoundingClientRect() : null;   // fixed elements have no offsetParent
+  const card = el.tourCard, spot = el.tourSpot, vh = vv?.height || window.innerHeight, vt = vv?.offsetTop || 0;
+  el.tour.classList.toggle("is-free", !r);
+  card.style.top = card.style.bottom = "";
+  card.classList.toggle("is-placed", !!(r && r.width));
+  if (!r || r.width === 0) { spot.hidden = true; return; }
+  const pad = 6;
+  spot.hidden = false;
+  spot.style.cssText = `left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + 2 * pad}px;height:${r.height + 2 * pad}px`;
+  if (s.place === "above") card.style.bottom = `${Math.max(0, vt + vh - r.top + pad + 10)}px`;
+  else card.style.top = `${r.bottom + pad + 10}px`;
+}
+el.tourCard.addEventListener("click", (e) => {
+  const act = e.target.closest("[data-tour]")?.dataset.tour; if (!act) return;
+  if (act === "skip") closeTour();
+  else if (act === "back") { tour.step = Math.max(0, tour.step - 1); renderTour(); }
+  else if (act === "next") { if (tour.step >= TOUR_STEPS.length - 1) closeTour(); else { tour.step++; renderTour(); } }
+});
+// a tap outside the card (on the dimmed screen or the spotlight) moves on; Escape closes
+el.tour.addEventListener("click", (e) => { if (e.target === el.tour || e.target === el.tourSpot) el.tourCard.querySelector("[data-tour=next]")?.click(); });
+el.tour.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeTour(); return; }
+  if (e.key === "Tab") {   // the focus stays inside the card
+    const f = [...el.tourCard.querySelectorAll("button")]; if (!f.length) return;
+    const first = f[0], lastB = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); lastB.focus(); }
+    else if (!e.shiftKey && document.activeElement === lastB) { e.preventDefault(); first.focus(); }
+  }
+});
+window.addEventListener("resize", placeTour);
+vv?.addEventListener("resize", placeTour);
+vv?.addEventListener("scroll", placeTour);
+window.addEventListener("scroll", placeTour, { passive: true });
+window.__sfb.tour = { open: openTour, close: closeTour };
 
 // ------------------------------------------------------------------ scanner
 let scannerMod = null;
@@ -1010,6 +1115,7 @@ setStatus("loading", "Starting");
 renderReadyCard();
 keyboardInset();
 showInstallHint();
+if (tourWanted()) requestAnimationFrame(openTour);
 if (typeof DecompressionStream === "undefined") {
   // the price database is unpacked with DecompressionStream: Safari 16.4 (iOS 16.4, March 2023) and Chrome 80 or newer
   setStatus("error", "Update required · tap for details");
