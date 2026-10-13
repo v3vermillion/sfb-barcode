@@ -220,6 +220,18 @@ class Decisions20261008(unittest.TestCase):
         row, _ = N.normalize(self.item("Great Value Corn, 15 oz", upc="406727352130"), FOOD, CFG)
         self.assertNotIn("placeholder", row["flags"], "a real product name on a 4-prefix barcode is a product")
 
+    def test_a_consumable_priced_like_a_pallet_is_a_listing_error(self):
+        pills = {"name": "Estomicina Anti - Diarrheal - Anti-diarreico 100 Caps (Pack of 1)", "salePrice": 1600.52, "upc": "078742054261",
+                 "categoryPath": "Home Page/Health and Medicine/Digestive Health", "sellerInfo": "Walmart.com"}
+        self.assertEqual(N.junk_reason(pills, "Health and Medicine", CFG), "consumable_over_cap")
+        self.assertIsNone(N.junk_reason(dict(pills, salePrice=16.52), "Health and Medicine", CFG))
+
+    def test_paper_basis_weight_is_not_a_size(self):
+        row, _ = N.normalize(self.item("LUXPaper 8 1/2 x 11 Cardstock, 65 lb. Cream Parchment, 50/Pack", upc="078742054261"), FOOD, CFG)
+        self.assertNotEqual((row["size"], row["unit"]), (65.0, "lb"))
+        row, _ = N.normalize(self.item("Great Value Long Grain Rice, 20 lb", upc="078742054261"), FOOD, CFG)
+        self.assertEqual((row["size"], row["unit"]), (20.0, "lb"))
+
     def test_apparel_found_under_food_is_not_carried(self):
         _, why = N.normalize(self.item("White Stag® Long Sleeve Ribbed Turtleneck", path="Home Page/Food/Fresh Food"), FOOD, CFG)
         self.assertEqual(why, "apparel")

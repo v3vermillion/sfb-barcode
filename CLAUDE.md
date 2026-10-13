@@ -18,7 +18,7 @@ a cheap peek reads `state/run.json`, the published manifest, `sizing.json`, `aud
 through the GitHub API and stops when nothing is due. Otherwise `crawler/ci.py` picks ONE Walmart job per run, in priority order:
 sizing pass (once per 30 days) > crawl resume > build + gates + publish > weekly live audit > identify refresh >
 Strongsville store prices (weekly; the app shows the store's shelf price where Walmart gives one, data/store.json). Cadence lives in
-`data/schedule.json`; gate thresholds in `data/gates.json`; the 300-row sample review uses the `ANTHROPIC_API_KEY` secret.
+`data/schedule.json`; gate thresholds in `data/gates.json`; the 600-row sample review (two batches of 300, judged on evidence: docs/DECISIONS.md 2026-10-13) uses the `ANTHROPIC_API_KEY` secret.
 A snapshot publishes only when every gate passes; otherwise it holds and an issue is opened.
 
 ## What the owner decides (everything else is automatic)
@@ -37,7 +37,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
 
 ## Commands (also runnable locally with WM_CONSUMER_ID / WM_PRIVATE_KEY set and SFB_STORE pointing at a data-store checkout)
 - `python -m crawler.ci --plan continue|core|full|approve|identify|audit|size|status|peek|finish|rollback|store`
-- `python -m unittest discover tests` (322 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
+- `python -m unittest discover tests` (337 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
 - `cd app && node --test tests/*.test.mjs`
 
 ## Layout

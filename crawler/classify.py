@@ -60,7 +60,7 @@ APPAREL_EXEMPT_RX = re.compile(
     r"christmas\s+stockings?|stocking\s+(?:stuffers?|holders?|hangers?)|holiday\s+stockings?|stockings?\s+(?:with|of)\b|"
     r"\bstocking\b.*\b(?:toys?|candy|treats?|ornaments?)|(?:toys?|candy|treats?)\b.*\bstocking\b|"
     r"hat\s+(?:rack|box|stand|hook)|top\s+hat\s+(?:candy|cake)|"
-    r"dress(?:ing|er)|shirt\s+(?:stays|folder)|sock\s+(?:monkey|puppet)|(?:hose|socket)|sleeve\s+(?:protectors?|labels?)|"
+    r"dress(?:ing|er)|shirt\s+(?:stays|folder)|sock\s+(?:monkey|puppet)|(?:(?<!panty)hose|socket)|sleeve\s+(?:protectors?|labels?)|"
     r"(?:dog|cat|pet)\s+harness|harness|leash|collar|(?:wig\s+(?:cap|stand|head|glue|tape|grip|brush|shampoo|spray|"
     r"conditioner|adhesive)|wig\s+care)|(?:hair|lace)\s+(?:wigs?\s+)?(?:glue|adhesive)|"
     r"robe\s+hooks?|vest\s+(?:extender)|life\s+(?:vests?|jackets?)|(?:safety|reflective|hi-?vis)\s+vests?|"
@@ -133,7 +133,9 @@ MEDIA_RX = re.compile(
     r"\b(?:original\s+)?(?:motion\s+picture\s+)?soundtrack\b|\bvarious\s+artists\b|\s-\s(?:cd|vinyl|lp|dvd)\s*$|"
     r"\((?:19|20)\d\d\)\s*$|\(season\s+\d+|\bbook\s+\d+\b|\bcookbook\b|\brecipes?\s*:|:\s*(?:\d+\s+)?(?:easy\s+|delicious\s+|"
     r"simple\s+|healthy\s+|quick\s+)*recipes\b|\brecipes\s+(?:for|from)\b|\bnovel\b|\b(?:a|an)\s+\w+\s+mystery\b|"
-    r"\bhardcover\b|\bpaperback\b|\bboard\s+book\b|\bpicture\s+book\b|\bcoloring\s+book\b(?=.*\bby\b)", re.I)
+    r"\bhardcover\b|\bpaperback\b|\bboard\s+book\b|\bpicture\s+book\b|\bcoloring\s+book\b(?=.*\bby\b)|"
+    # software on disc is media too ("JumpStart Advanced Preschool - Box pack - 1 user - CD - Win")
+    r"\bcd-?roms?\b|\bbox\s+pack\b.*\b\d+\s+users?\b|\s-\s(?:cd|dvd)\s+-\s+(?:win|mac)\b|\(pc\)\s*$|\bpc\s+(?:game|software)\b", re.I)
 MEDIA_EXEMPT_RX = re.compile(r"\b(?:dvd\s+(?:player|case|rack|storage|holder)|blu-ray\s+player|cd\s+(?:player|case|rack|"
                              r"holder|storage)|recipe\s+(?:box|cards?|card\s+box|holder|book\s+stand|binder))\b", re.I)
 PUBLISHER_RX = re.compile(r"\b(?:publishing|publishers|press|books|cookbooks|records|music|entertainment|umgd|sony\s+music|"
@@ -388,7 +390,7 @@ LEXICON = [
                "agave", "taco\\s+seasoning\\s+sauce", "harissa", "chimichurri", "mole", "adobo\\s+sauce", "curry\\s+paste",
                "gochujang", "miso", "wasabi", "ponzu", "kimchi", "salad\\s+toppings?", "croutons", "bacon\\s+bits"]),
     # --- baking, spices & oils
-    (28, "s", ["apple\\s+cider\\s+vinegar", "sesame\\s+seeds?", "baking\\s+bits", "popcorn\\s+seasoning", "jerky\\s+spice", "(?:cake|buns?|bread|cookie|brownie|muffin|cupcake)\\s+(?:baking\\s+)?(?:kit|mix)", "baking\\s+kit", "mix\\s+brownie", "sweetened\\s+condensed\\s+milk", "condensed\\s+milk", "ground\\s+(?:white|black)\\s+pepper", "white\\s+pepper", "pepper\\s+supreme", "adobo", "sauce\\s+mix", "quick\\s+process\\s+mix", "pickl(?:e|ing)\\s+mix", "seasoning\\s+grinder", "cacao\\s+powder", "saffron", "chiles?\\s+(?:de\\s+)?arbol", "arbol\\s+chiles?", "sweetn?ers?", "vegit", "seasoning\\s+blend", "rice\\s+bowl\\s+topping", "baking\\s+chips?", "chile\\s+pods", "chili\\s+pods", "dried\\s+chil(?:es|is|e|i)", "pizza\\s+crust\\s+mix", "crust\\s+mix", "pizza\\s+dough\\s+mix", "old\\s+bay", "tarragon", "marjoram", "sage", "bay\\s+leaf", "dried\\s+garlic", "dehydrated\\s+\\w+", "garlic\\s+granules", "flour", "all[- ]purpose\\s+flour", "bread\\s+flour", "self[- ]rising\\s+flour", "almond\\s+flour", "sugar",
+    (28, "s", ["coating\\s+mix(?:es)?", "seasoned\\s+coating", "(?:maple|meat|curing|pink)\\s+cure", "curing\\s+salt", "prague\\s+powder", "apple\\s+cider\\s+vinegar", "sesame\\s+seeds?", "baking\\s+bits", "popcorn\\s+seasoning", "jerky\\s+spice", "(?:cake|buns?|bread|cookie|brownie|muffin|cupcake)\\s+(?:baking\\s+)?(?:kit|mix)", "baking\\s+kit", "mix\\s+brownie", "sweetened\\s+condensed\\s+milk", "condensed\\s+milk", "ground\\s+(?:white|black)\\s+pepper", "white\\s+pepper", "pepper\\s+supreme", "adobo", "sauce\\s+mix", "quick\\s+process\\s+mix", "pickl(?:e|ing)\\s+mix", "seasoning\\s+grinder", "cacao\\s+powder", "saffron", "chiles?\\s+(?:de\\s+)?arbol", "arbol\\s+chiles?", "sweetn?ers?", "vegit", "seasoning\\s+blend", "rice\\s+bowl\\s+topping", "baking\\s+chips?", "chile\\s+pods", "chili\\s+pods", "dried\\s+chil(?:es|is|e|i)", "pizza\\s+crust\\s+mix", "crust\\s+mix", "pizza\\s+dough\\s+mix", "old\\s+bay", "tarragon", "marjoram", "sage", "bay\\s+leaf", "dried\\s+garlic", "dehydrated\\s+\\w+", "garlic\\s+granules", "flour", "all[- ]purpose\\s+flour", "bread\\s+flour", "self[- ]rising\\s+flour", "almond\\s+flour", "sugar",
                "brown\\s+sugar", "powdered\\s+sugar", "cane\\s+sugar", "sweeteners?", "splenda", "stevia", "sugar\\s+substitute",
                "baking\\s+soda", "baking\\s+powder", "yeast", "cornstarch", "corn\\s+starch", "cake\\s+mix", "brownie\\s+mix",
                "muffin\\s+mix", "cookie\\s+mix", "cornbread\\s+mix", "biscuit\\s+mix", "bisquick", "baking\\s+mix", "frosting",
@@ -510,7 +512,7 @@ LEXICON = [
                "cc\\s+cream", "tinted\\s+moisturizer", "nail\\s+care", "hair\\s+removal\\s+(?:device|laser)",
                "dermaplaning", "lip\\s+care", "beauty\\s+supplement", "lip\\s+kit", "eyeshadow\\s+palette", "palette"]),
     # --- household supplies
-    (16, "s", ["odor\\s+absorbers?", "fridge-n-freezer", "paper\\s+towels?", "toilet\\s+paper", "bath\\s+tissue", "facial\\s+tissues?", "tissues", "kleenex",
+    (16, "s", ["fabric\\s+protect(?:or|ant)s?", "fabric\\s+(?:shield|guard)", "odor\\s+absorbers?", "fridge-n-freezer", "paper\\s+towels?", "toilet\\s+paper", "bath\\s+tissue", "facial\\s+tissues?", "tissues", "kleenex",
                "napkins", "paper\\s+plates?", "plastic\\s+(?:cups|plates|cutlery|forks|spoons|utensils)", "disposable\\s+(?:plates|cups|cutlery|bowls|tableware)",
                "solo\\s+cups", "aluminum\\s+foil", "foil", "plastic\\s+wrap", "cling\\s+wrap", "wax\\s+paper", "parchment\\s+paper",
                "freezer\\s+paper", "zip(?:per)?\\s*(?:lock|top)?\\s+bags", "ziploc", "storage\\s+bags", "sandwich\\s+bags",
@@ -533,7 +535,7 @@ LEXICON = [
                "furniture\\s+polish", "pledge", "magic\\s+eraser", "scouring\\s+pads?", "dish\\s+rack", "laundry\\s+baskets?",
                "clothes\\s?pins", "hangers", "ironing\\s+board", "iron\\s+steam", "starch\\s+spray", "wrinkle\\s+release"]),
     # --- kitchen & dining
-    (17, "s", ["cake\\s+set", "bake\\s+(?:&|and)\\s+decorate", "bag\\s+clips?", "chip\\s+clips?", "piping\\s+tips", "keurig\\s+(?:coffee\\s+maker|brewer)", "cookware", "pots?", "pans", "frying\\s+pans?", "skillets?", "saucepans?", "dutch\\s+ovens?", "stock\\s?pots?",
+    (17, "s", ["can\\s+coolers?", "slim\\s+can\\s+coolers?", "koozies?", "can\\s+huggers?", "bottle\\s+huggers?", "can\\s+or\\s+bottle\\s+huggers?", "cake\\s+set", "bake\\s+(?:&|and)\\s+decorate", "bag\\s+clips?", "chip\\s+clips?", "piping\\s+tips", "keurig\\s+(?:coffee\\s+maker|brewer)", "cookware", "pots?", "pans", "frying\\s+pans?", "skillets?", "saucepans?", "dutch\\s+ovens?", "stock\\s?pots?",
                "bakeware", "baking\\s+(?:sheets?|pans?|dish(?:es)?)", "cake\\s+pans?", "muffin\\s+(?:pans?|tins?)", "cupcake\\s+liners",
                "baking\\s+cups", "cookie\\s+sheets?", "casserole\\s+dish", "pie\\s+pans?", "loaf\\s+pans?", "cooling\\s+racks?",
                "rolling\\s+pins?", "mixing\\s+bowls?", "measuring\\s+(?:cups|spoons)", "utensils?", "spatulas?", "whisks?",
@@ -562,7 +564,7 @@ LEXICON = [
                "kitchen\\s+linens", "dish\\s+cloths?", "cupcake\\s+stand", "dessert\\s+stand", "candy\\s+dish", "cookie\\s+jar",
                "bowl\\s+set", "plate\\s+set", "dinnerware\\s+set"]),
     # --- home
-    (18, "s", ["bedding", "comforters?", "quilts?", "bed\\s+sheets?", "sheet\\s+sets?", "pillowcases?", "pillows?",
+    (18, "s", ["magnets?", "fridge\\s+magnets?", "refrigerator\\s+magnets?", "bath(?:room)?\\s+tumblers?", "bedding", "comforters?", "quilts?", "bed\\s+sheets?", "sheet\\s+sets?", "pillowcases?", "pillows?",
                "throw\\s+pillows?", "blankets?", "throws?", "duvets?", "mattress(?:es)?", "mattress\\s+(?:pads?|toppers?)",
                "bath\\s+towels?", "towels?", "towel\\s+sets?", "washcloths?", "bath\\s+mats?", "bath\\s+rugs?", "shower\\s+curtains?",
                "rugs?", "area\\s+rugs?", "doormats?", "curtains?", "drapes", "blinds", "window\\s+(?:panels?|treatments?)",
@@ -621,7 +623,7 @@ LEXICON = [
                "beggin", "ol'\\s+roy", "special\\s+kitty", "vibrant\\s+life", "blue\\s+buffalo", "rachael\\s+ray\\s+nutrish",
                "temptations", "whiskas", "tidy\\s+cats", "fresh\\s+step", "arm\\s+&\\s+hammer\\s+litter"]),
     # --- school, office & crafts
-    (20, "s", ["pens?", "pencils?", "markers?", "highlighters", "crayons?", "colored\\s+pencils", "erasers?", "notebooks?",
+    (20, "s", ["terrific\\s+trimmers", "bulletin\\s+board\\s+(?:borders?|trimmers?|sets?)", "border\\s+trim(?:mers?)?", "pens?", "pencils?", "markers?", "highlighters", "crayons?", "colored\\s+pencils", "erasers?", "notebooks?",
                "composition\\s+books?", "binders?", "folders?", "paper\\s+(?:copy|printer|construction|loose\\s+leaf)",
                "copy\\s+paper", "printer\\s+paper", "construction\\s+paper", "index\\s+cards", "sticky\\s+notes", "post-?it",
                "staplers?", "staples", "scissors", "glue\\s+sticks?", "school\\s+glue", "tape\\s+dispenser", "scotch\\s+tape",
@@ -637,7 +639,7 @@ LEXICON = [
                "paper\\s+clips", "binder\\s+clips", "push\\s+pins", "thumbtacks", "rubber\\s+bands", "shipping\\s+(?:boxes|supplies)",
                "bubble\\s+mailers", "packing\\s+tape", "office\\s+chair", "desk\\s+lamp", "shredder", "laminator"]),
     # --- toys, books & games
-    (21, "s", ["toys?", "dolls?", "action\\s+figures?", "figures?", "playsets?", "play\\s+sets?", "lego", "legos",
+    (21, "s", ["story\\s+reels?", "story\\s+projectors?", "toys?", "dolls?", "action\\s+figures?", "figures?", "playsets?", "play\\s+sets?", "lego", "legos",
                "building\\s+(?:blocks|sets?|bricks)", "blocks", "puzzles?", "jigsaw", "board\\s+games?", "card\\s+games?", "games?",
                "plush", "plushies", "stuffed\\s+(?:animals?|toys?)", "teddy\\s+bears?", "ride-?ons?", "ride\\s+on", "tricycles?",
                "scooters?", "balls?\\s+toy", "play\\s+kitchen", "dollhouse", "toy\\s+cars?", "die-?cast", "hot\\s+wheels",
@@ -652,7 +654,7 @@ LEXICON = [
                "walker\\s+toy", "rocking\\s+horse", "wagons?", "sleds?", "pool\\s+toys", "sidewalk\\s+chalk", "books?",
                "storybooks?", "novels?", "board\\s+books?", "comics?", "graphic\\s+novels?", "magazines?"]),
     # --- seasonal & party
-    (22, "s", ["party\\s+supplies", "party\\s+favors?", "balloons?", "banners?", "streamers", "confetti", "party\\s+(?:plates|cups|napkins|decorations?|hats|bags)",
+    (22, "s", ["kitty\\s+masks?", "cat\\s+masks?", "dog\\s+masks?", "animal\\s+masks?", "witch\\s+masks?", "skull\\s+masks?", "skeleton\\s+masks?", "zombie\\s+masks?", "clown\\s+masks?", "monster\\s+masks?", "scary\\s+masks?", "costume\\s+masks?", "halloween\\s+masks?", "masquerade\\s+masks?", "party\\s+supplies", "party\\s+favors?", "balloons?", "banners?", "streamers", "confetti", "party\\s+(?:plates|cups|napkins|decorations?|hats|bags)",
                "pinatas?", "gift\\s+wrap", "wrapping\\s+paper", "gift\\s+bags?", "gift\\s+boxes?", "gift\\s+tags", "tissue\\s+paper",
                "bows", "greeting\\s+cards?", "birthday\\s+cards?", "cards\\s+greeting", "birthday\\s+candles?", "cake\\s+toppers?",
                "cupcake\\s+toppers?", "candle\\s+numbers?", "christmas\\s+(?:tree|ornaments?|lights|decorations?|decor|village)",
@@ -675,7 +677,7 @@ LEXICON = [
                "dash\\s+cam", "license\\s+plate\\s+frame", "leather\\s+conditioner", "detailing", "armor\\s+all", "auto\\s+parts?",
                "glider\\s+hitch", "fifth\\s+wheel", "rv\\s+(?:supplies|accessories)"]),
     # --- electronics
-    (25, "s", ["tvs?", "televisions?", "smart\\s+tv", "laptops?", "computers?", "tablets?\\s+(?:android|ipad|kindle)", "ipads?",
+    (25, "s", ["power\\s+banks?", "\\d+\\s*mah", "tvs?", "televisions?", "smart\\s+tv", "laptops?", "computers?", "tablets?\\s+(?:android|ipad|kindle)", "ipads?",
                "monitors?\\s+computer", "computer\\s+monitors?", "keyboards?", "mouse\\s+(?:wireless|gaming|optical)", "mice",
                "headphones", "earbuds", "earphones", "airpods", "speakers?", "bluetooth\\s+speakers?", "soundbars?",
                "chargers?", "charging\\s+(?:cables?|cords?|stations?|pads?)", "usb\\s+(?:cables?|drives?|hubs?|chargers?|adapters?)",
@@ -792,7 +794,7 @@ PRODUCT_LINES = {
     "hotpockets": 5, "leancuisine": 5, "uncrustables": 5, "eggo": 5, "poptarts": 29, "quakerchewy": 29,
     "naturevalley": 29, "nutrigrain": 29, "hamburgerhelper": 7, "chickenhelper": 7, "tunahelper": 7, "ricearoni": 7,
     "pastaroni": 7, "kraftmac": 7, "velveetashells": 7, "ensure": 10, "glucerna": 10, "pedialyte": 13, "gatorade": 10,
-    "powerade": 10, "propel": 10, "torani": 10, "davinci": 10, "nespresso": 10, "shakenbake": 7, "oldbay": 28,
+    "powerade": 10, "propel": 10, "torani": 10, "davinci": 10, "nespresso": 10, "shakenbake": 28, "oldbay": 28,
     "slapyamama": 28,
 }
 PRODUCT_LINE_RX = re.compile(r"\b(?:compleats|dinty\s+moore|chef\s+boyardee|spaghettios|campbell'?s|lunchables|"
@@ -891,11 +893,42 @@ def product_noun(name):
     return _pick(mh, "s") or _pick(mh, "w") or _pick(mn, "s") or _pick(mn, "w")
 
 
+# vehicle parts stray into Baby and Toys ("Front Left Door Lock Actuator LH Driver For Dodge Ram Truck", "Bumper Retainer
+# Compatible With 2011-2020 Toyota Sienna"): a fitment clause with a make or model, or a part that only a car has
+AUTO_MAKES = (r"dodge|ford|chevy|chevrolet|toyota|honda|nissan|jeep|gmc|ram|hyundai|kia|subaru|mazda|bmw|mercedes(?:-benz)?|"
+              r"audi|volkswagen|vw|lexus|acura|buick|cadillac|chrysler|lincoln|tesla|infiniti|mitsubishi|volvo|pontiac|saturn|"
+              r"silverado|f-?150|f-?250|sienna|camry|civic|accord|corolla|tacoma|tundra|wrangler|cherokee|explorer|escape|"
+              r"equinox|malibu|altima|sentra|elantra|sonata|highlander|rav4|cr-v|odyssey|pilot|mustang")
+AUTO_PART_RX = re.compile(
+    r"\b(?:compatible\s+with|fits?|for|replacement\s+for)\s+(?:(?:19|20)\d\d(?:\s*-\s*(?:19|20)\d\d)?\s+)?(?:" + AUTO_MAKES + r")\b|"
+    r"\b(?:" + AUTO_MAKES + r")\s+(?:19|20)\d\d(?:\s*-\s*(?:19|20)\d\d)?\b|"
+    r"\b(?:door\s+lock\s+actuators?|bumper\s+(?:retainers?|covers?|brackets?|grilles?)|(?:tail|head)\s*lights?\s+assembl(?:y|ies)|"
+    r"brake\s+(?:pads?|rotors?|calipers?|shoes)|alternators?|radiators?|catalytic\s+converters?|spark\s+plugs?|ignition\s+coils?|"
+    r"control\s+arms?|tie\s+rod\s+ends?|wheel\s+bearings?|shock\s+absorbers?|strut\s+assembl(?:y|ies)|fuel\s+pumps?|"
+    r"water\s+pumps?\s+(?:for|fits?)|serpentine\s+belts?|timing\s+belts?|wiper\s+blades?|oil\s+filters?\s+(?:for|fits?)|"
+    r"exhaust\s+manifolds?|fender\s+liners?|side\s+mirrors?\s+(?:for|fits?)|hubcaps?|lug\s+nuts?)\b", re.I)
+AUTO_PART_EXEMPT_RX = re.compile(r"\b(?:die-?cast|diecast|1:\d+|toy|rc|remote\s+control|lego|hot\s+wheels|matchbox|t-shirt|tee|"
+                                 r"poster|decal|sticker|keychain|key\s+chain|air\s+freshener|plush|puzzle|book|hoodie|blanket|"
+                                 r"ride-?on|power\s+wheels|bike|bicycle|stroller|wagon|scooter)\b", re.I)
+# wholesale and commercial lots that no donor brings in: a pack of a thousand, a case of multipacks, government-supply
+# brands ("Dart Dome Cold Cup Lids, Pack Of 1,000", "72 PC 2\" RUBBER TURTLE MIX, Case of 3", "Skilcraft Microfiber Mop Heads")
+COMMERCIAL_RX = re.compile(r"\b(?:pack|box|case|carton|lot)\s+of\s+[1-9],?\d{3,}\b|\b[1-9],?\d{3,}\s*(?:ct|count|pcs?|pieces|pack|pk|"
+                           r"lids|bags|cups|plates|napkins|sheets)\b|\bskilcraft\b|\babilityone\b|\bwholesale\b|\bbulk\s+case\b", re.I)
+CASE_OF_PACKS_RX = re.compile(r"\b(?:[2-9]\d|\d{3,})\s*(?:pc|pcs|ct|count|pk|pack)\b.*\bcase\s+of\s+\d+\b|"
+                              r"\bcase\s+of\s+\d+\b.*\b(?:[2-9]\d|\d{3,})\s*(?:pc|pcs|ct|count|pk|pack)\b", re.I)
+COMMERCIAL_EXEMPT_RX = re.compile(r"\b(?:mah|watts?|lumens?|thread\s+count|sq\s*ft|square\s+feet|piece\s+puzzle|pc\s+puzzle|"
+                                  r"beads|sequins|rhinestones|stickers|confetti)\b", re.I)
+
+
 def exclusion(name, brand, path, dept_name, upc=None, price=None):
     """Why the item is not carried at all, or None."""
     n, p, b = name or "", (path or "").lower(), brand or ""
     if large_equipment(n, price):
         return "large_equipment"
+    if AUTO_PART_RX.search(n) and not AUTO_PART_EXEMPT_RX.search(n):
+        return "auto_part"
+    if (COMMERCIAL_RX.search(n) or CASE_OF_PACKS_RX.search(n)) and not COMMERCIAL_EXEMPT_RX.search(n):
+        return "commercial_lot"
     if not MEDIA_EXEMPT_RX.search(n):
         if MEDIA_RX.search(n) and dept_name != "Books":
             return "media"
@@ -974,6 +1007,7 @@ DISCONTINUED_STRIP_RX = re.compile(r"\s*\*+\s*discontinu\w*[^*]*\*+\s*|\s*\(?\bd
                                    r"vendor)\)?\s*", re.I)
 
 
+BARE_WORD_RX = re.compile(r"[A-Z][A-Z&'-]{2,14}")        # one capitalised word and nothing else
 PLACEHOLDER_KINDS = ("test", "display", "generic")
 DROPPED_PLACEHOLDERS = {"test": "test_listing", "display": "store_display"}
 
@@ -999,6 +1033,8 @@ def placeholder_kind(name, brand, price=None):
     b = (brand or "").strip().lower().strip(" .")
     if b and core.lower().strip(" .") == b and not re.search(r"\d", core) and product_noun(core) is None:
         return "generic"                              # "HUGGIES", "MOTIONS": the brand alone names no product
+    if BARE_WORD_RX.fullmatch(core) and product_noun(core) is None:
+        return "generic"                              # "SEASONS": one capitalised word that names no product
     return None
 
 
@@ -1041,16 +1077,23 @@ def durable(name, nn=None):
     return bool(DURABLE_RX.search(HEAD_SPLIT_RX.split(WRAPPER_PREFIX_RX.sub("", name or ""), 1)[0]))
 
 
+GREETING_RX = re.compile(r"\bgreeting\s+cards?\b|\b(?:birthday|christmas|holiday|thank\s+you|sympathy|anniversary)\s+cards?\b", re.I)
+
+
 def noun(name, path, dept, cfg):
     """The category the name supports, with a confidence: 3 = a multi-word strong noun or a product line ("instant
     pudding", "Gatorade"), 2 = a one-word strong noun ("soup") or a weak noun whose form the name states ("canned
     corn"), 1 = a weak noun whose aisle came only from the path ("corn"). Returns (category, confidence, phrase)."""
     n = name or ""
+    if GREETING_RX.search(n):
+        return 22, 3, "greeting cards"                             # "12 Greeting Cards with envelopes": not the envelopes
     m = product_noun(n)
     if m is None:
         return None
     lcat, strength, phrase = m
     p = (path or "").lower()
+    if phrase == "parchment\\s+paper" and "/office supplies" in p:
+        return 20, 3, phrase                                       # Southworth parchment paper is stationery, not for baking
     pcat = path_category(path, cfg)
     food_context = dept["name"] == "Food" or (pcat in FOOD_CATS)
     frozen = bool(FROZEN_RX.search(n) or "/frozen" in p) and not NOT_FROZEN_RX.search(n)

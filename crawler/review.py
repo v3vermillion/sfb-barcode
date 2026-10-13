@@ -2,9 +2,15 @@
 
   python -m crawler.review run        # reads build/candidate/review-sample.jsonl, writes review-verdict.json, exit 0 always
 
-qa.check() writes the sample (write_sample). This command asks the model whether the sample shows
-systematic junk (data/review-criteria.md) and writes a verdict that qa.finalize() folds into the gates:
-  {"status": "pass"|"fail", "systematic_junk", "junk_rate", "junk_examples", "notes", "run_id", "model", ...}
+qa.check() writes the sample (write_sample). This command asks the model, one batch of `batch_size` rows per call,
+whether the sample shows systematic junk (data/review-criteria.md), pools the batches and writes a verdict that
+qa.finalize() folds into the gates:
+  {"status": "pass"|"fail", "systematic_junk", "junk_count", "junk_rate", "junk_lower_bound", "junk_examples", "notes",
+   "batches": [...], "run_id", "model", ...}
+The decision (decide) is statistical (docs/DECISIONS.md 2026-10-13): junk rows are COUNTED from the examples the model
+lists (never below what its stated rate implies), and the snapshot is held when the model reports systematic junk,
+when the one-sided `confidence` Wilson lower bound of the junk rate is above `max_junk_rate`, or when the raw rate
+reaches `hard_max_junk_rate`. A rate a little above the target on a small sample is not evidence and does not hold.
   {"status": "skipped", "reason": "ANTHROPIC_API_KEY missing"}      no key in the environment
   {"status": "error", "reason": ...}                                 API, network or parsing failure (a hold)
 Env: ANTHROPIC_API_KEY (required for a verdict), SFB_REVIEW_MODEL (default claude-sonnet-5-5).
@@ -123,6 +129,69 @@ def _to_rate(v):
     return round(v, 4)
 
 
+# ----------------------------------------------------------------------------- decision
+
+Z_ONE_SIDED = {0.90: 1.2816, 0.95: 1.6449, 0.975: 1.9600, 0.99: 2.3263}
+DEFAULT_BATCH = 300
+
+
+def wilson_lower(k, n, confidence=0.95):
+    """One-sided lower confidence bound of a proportion k/n (Wilson score interval; exact enough at the tails where a
+    normal approximation is not). 0 when nothing was reviewed."""
+    if not n or n <= 0:
+        return 0.0
+    z = Z_ONE_SIDED.get(round(float(confidence), 3), Z_ONE_SIDED[0.95])
+    p = k / n
+    centre = p + z * z / (2 * n)
+    radius = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5)
+    return max(0.0, (centre - radius) / (1 + z * z / n))
+
+
+def junk_count(listed, stated_rate, n):
+    """Junk rows in a reviewed batch: the examples the model listed, never fewer than its stated rate implies
+    (a lazy list cannot make a sample look cleaner than the model said it was)."""
+    implied = int(round(float(stated_rate) * n)) if isinstance(stated_rate, (int, float)) and n else 0
+    return max(int(listed), implied)
+
+
+def review_config(sr):
+    """The sample_review thresholds with their defaults. max_junk_rate null = only systematic junk holds;
+    hard_max_junk_rate defaults to twice the target (a backstop for small samples), null = none."""
+    sr = dict(sr or {})
+    max_junk = sr.get("max_junk_rate", 0.05)
+    hard = sr.get("hard_max_junk_rate", (2 * max_junk) if isinstance(max_junk, (int, float)) else None)
+    if max_junk is None:
+        hard = None                                   # a null target measures only: just systematic junk holds
+    conf = sr.get("confidence", 0.95)
+    conf = float(conf) if isinstance(conf, (int, float)) and not isinstance(conf, bool) and 0.5 <= conf < 1 else 0.95
+    batch = sr.get("batch_size", DEFAULT_BATCH)
+    batch = int(batch) if isinstance(batch, (int, float)) and not isinstance(batch, bool) and batch >= 1 else DEFAULT_BATCH
+    return {"max_junk_rate": max_junk, "hard_max_junk_rate": hard, "confidence": conf, "batch_size": batch}
+
+
+def decide(junk, n, systematic, sr=None):
+    """Hold or pass from the pooled count. Returns {"ok", "rate", "lower_bound", "why", ...thresholds}.
+    With n unknown (an old verdict) the stated rate stands in for the count and the bound equals it."""
+    c = review_config(sr)
+    max_junk, hard, conf = c["max_junk_rate"], c["hard_max_junk_rate"], c["confidence"]
+    if n:
+        rate = junk / n
+        lower = wilson_lower(junk, n, conf)
+    else:
+        rate = float(junk) if isinstance(junk, (int, float)) else 0.0        # junk given as a rate
+        lower = rate
+    if systematic:
+        ok, why = False, "systematic junk"
+    elif max_junk is not None and lower > max_junk:
+        ok, why = False, f"{conf:.0%} lower bound {lower:.2%} is above the {max_junk:.1%} target"
+    elif hard is not None and rate >= hard:
+        ok, why = False, f"junk rate {rate:.1%} reaches the {hard:.0%} hard cap"
+    else:
+        ok, why = True, "ok"
+    return {"ok": ok, "rate": round(rate, 4), "lower_bound": round(lower, 4), "why": why,
+            "max_junk_rate": max_junk, "hard_max_junk_rate": hard, "confidence": conf}
+
+
 def _json_candidates(text: str):
     t = text.strip()
     yield t
@@ -163,7 +232,7 @@ def parse_verdict(text: str) -> dict:
     if not isinstance(ex, list):
         ex = [str(ex)]
     examples = []
-    for e in ex[:50]:
+    for e in ex[:1000]:
         if isinstance(e, dict):
             examples.append({"id": e.get("id"), "why": str(e.get("why") or e.get("reason") or "")[:200]})
         else:
@@ -242,15 +311,15 @@ def call_api(payload: dict, api_key: str, sleep=time.sleep) -> dict:
     raise ReviewError(f"gave up after {RETRIES} attempts; last: {last}")
 
 
-def _max_junk_rate():
-    """sample_review.max_junk_rate: from the thresholds qa.check recorded for this candidate, else from
-    data/gates.json via qa.gates_config (imported lazily: qa imports this module). None = no limit."""
+def _review_cfg():
+    """sample_review thresholds: those qa.check recorded for this candidate, else data/gates.json via qa.gates_config
+    (imported lazily: qa imports this module)."""
     g = store.read_json(CAND / "gates.json") or {}
     sr = (g.get("thresholds") or {}).get("sample_review")
     if not isinstance(sr, dict):
         from . import qa
         sr = qa.gates_config().get("sample_review") or {}
-    return sr.get("max_junk_rate", 0.05)
+    return sr
 
 
 def _run_id():
@@ -278,40 +347,87 @@ def run(api_key=None, model=None, sample=None, out_path=None, sleep=time.sleep) 
         print(verdict["reason"])
         return verdict
     criteria = CRITERIA.read_text() if CRITERIA.exists() else "Judge whether the rows are sellable consumer items with sensible names, sizes and prices."
-    system, messages = build_messages(criteria, sample)
-    payload = {"model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages}
+    sr = _review_cfg()
+    cfg = review_config(sr)
+    size = cfg["batch_size"]
+    batches = [sample[i:i + size] for i in range(0, len(sample), size)]
+    results = []
     try:
-        for attempt in range(2):
-            data = call_api(payload, api_key, sleep=sleep)
-            text = response_text(data)
-            usage = data.get("usage") or {}
-            verdict["usage"] = {k: usage.get(k) for k in ("input_tokens", "output_tokens") if k in usage}
-            verdict["max_tokens"] = payload["max_tokens"]
-            if data.get("stop_reason") == "refusal":
-                raise ReviewError("model refused the request")
-            try:
-                parsed = parse_verdict(text)
-                break
-            except ValueError as e:
-                if data.get("stop_reason") != "max_tokens":
-                    raise ReviewError(f"unparseable response: {e}; text: {text[:300]!r}")
-                if attempt or payload["max_tokens"] >= MAX_TOKENS_RETRY:
-                    raise ReviewError(f"response truncated at max_tokens={payload['max_tokens']}; {e}")
-                # the model's thinking shares max_tokens with the answer; give it room once
-                print(f"review answer cut off at max_tokens={payload['max_tokens']}; retrying with {MAX_TOKENS_RETRY}")
-                payload = dict(payload, max_tokens=MAX_TOKENS_RETRY)
+        for b in batches:
+            results.append(_review_batch(criteria, b, model, api_key, sleep))
     except ReviewError as e:
-        verdict.update(status="error", reason=str(e)[:500], error_kind=e.kind)
+        verdict.update(status="error", reason=str(e)[:500], error_kind=e.kind,
+                       batches=[r["summary"] for r in results] + [{"rows": len(batches[len(results)]), "error": str(e)[:200]}])
         store.write_json(out_path, verdict)
         print(f"review error: {verdict['reason']}")
         return verdict
-    max_junk = _max_junk_rate()
-    ok = not parsed["systematic_junk"] and (max_junk is None or parsed["junk_rate"] <= max_junk)
-    verdict.update(parsed, status="pass" if ok else "fail", max_junk_rate=max_junk)
+    verdict.update(_pool(results, sr))
+    verdict["usage"] = {k: sum(r["usage"].get(k) or 0 for r in results) for k in ("input_tokens", "output_tokens")}
+    verdict["max_tokens"] = max(r["max_tokens"] for r in results)
     store.write_json(out_path, verdict)
-    print(f"review {verdict['status']}: junk rate {parsed['junk_rate']:.1%}, systematic {parsed['systematic_junk']}, "
-          f"{len(parsed['junk_examples'])} examples ({model})")
+    print(f"review {verdict['status']}: junk {verdict['junk_count']}/{verdict['sample_rows']} ({verdict['junk_rate']:.1%}), "
+          f"lower bound {verdict['junk_lower_bound']:.1%}, systematic {verdict['systematic_junk']}, "
+          f"{len(batches)} batch(es) ({model}): {verdict['hold_reason']}")
     return verdict
+
+
+def _review_batch(criteria, batch, model, api_key, sleep):
+    """One API call (retried once with more room when the answer was cut off). Returns the parsed verdict with its
+    usage, max_tokens and a summary line for the pooled verdict; raises ReviewError."""
+    system, messages = build_messages(criteria, batch)
+    payload = {"model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages}
+    for attempt in range(2):
+        data = call_api(payload, api_key, sleep=sleep)
+        text = response_text(data)
+        usage = data.get("usage") or {}
+        usage = {k: usage.get(k) for k in ("input_tokens", "output_tokens") if k in usage}
+        if data.get("stop_reason") == "refusal":
+            raise ReviewError("model refused the request")
+        try:
+            parsed = parse_verdict(text)
+        except ValueError as e:
+            if data.get("stop_reason") != "max_tokens":
+                raise ReviewError(f"unparseable response: {e}; text: {text[:300]!r}")
+            if attempt or payload["max_tokens"] >= MAX_TOKENS_RETRY:
+                raise ReviewError(f"response truncated at max_tokens={payload['max_tokens']}; {e}")
+            # the model's thinking shares max_tokens with the answer; give it room once
+            print(f"review answer cut off at max_tokens={payload['max_tokens']}; retrying with {MAX_TOKENS_RETRY}")
+            payload = dict(payload, max_tokens=MAX_TOKENS_RETRY)
+            continue
+        n = len(batch)
+        listed = [e for e in parsed["junk_examples"]]
+        count = junk_count(len(listed), parsed["junk_rate"], n)
+        summary = {"rows": n, "junk_listed": len(listed), "junk_count": count, "model_junk_rate": parsed["junk_rate"],
+                   "systematic_junk": parsed["systematic_junk"], "usage": usage, "max_tokens": payload["max_tokens"]}
+        return {"parsed": parsed, "rows": n, "count": count, "usage": usage, "max_tokens": payload["max_tokens"], "summary": summary}
+    raise ReviewError("no answer")   # unreachable
+
+
+def _pool(results, sr):
+    """The pooled verdict of every batch and the decision on it."""
+    n = sum(r["rows"] for r in results)
+    examples, seen = [], set()
+    for r in results:
+        for e in r["parsed"]["junk_examples"]:
+            key = e.get("id")
+            if key is not None and key in seen:
+                continue
+            seen.add(key); examples.append(e)
+    count = sum(r["count"] for r in results)
+    systematic = any(r["parsed"]["systematic_junk"] for r in results)
+    stated = sum(r["parsed"]["junk_rate"] * r["rows"] for r in results) / n if n else 0.0
+    d = decide(count, n, systematic, sr)
+    out = {"sample_rows": n, "batches": [r["summary"] for r in results],
+           "systematic_junk": systematic, "junk_examples": examples, "junk_listed": len(examples), "junk_count": count,
+           "junk_rate": d["rate"], "model_junk_rate": round(stated, 4), "junk_lower_bound": d["lower_bound"],
+           "confidence": d["confidence"], "max_junk_rate": d["max_junk_rate"], "hard_max_junk_rate": d["hard_max_junk_rate"],
+           "notes": " | ".join(s for s in (r["parsed"].get("notes") or "" for r in results) if s)[:2000],
+           "status": "pass" if d["ok"] else "fail", "hold_reason": d["why"]}
+    mis = [r for r in results if r["parsed"].get("miscategorized_rate") is not None]
+    if mis:
+        out["miscategorized_rate"] = round(sum(r["parsed"]["miscategorized_rate"] * r["rows"] for r in mis) / sum(r["rows"] for r in mis), 4)
+        out["miscategorized_examples"] = [e for r in mis for e in r["parsed"].get("miscategorized_examples") or []][:50]
+    return out
 
 
 def main(argv=None):

@@ -661,12 +661,12 @@ class Continue(PlanBase):
         self.write("build/published/manifest.json", manifest(1))
         import crawler
         fake = types.ModuleType("crawler.audit")
-        fake.run = lambda wm: {"match_rate": 0.91, "within_5pct": 0.95, "outlier_share": 0.001, "alert": True, "examples": [1]}
+        fake.run = lambda wm: {"match_rate": 0.91, "within_5pct": 0.95, "close_rate": 0.912, "tolerance": 0.05, "outlier_share": 0.001, "alert": True, "examples": [1]}
         with mock.patch.dict(sys.modules, {"crawler.audit": fake}), mock.patch.object(crawler, "audit", fake, create=True), \
              mock.patch.object(ci, "utcnow", lambda: NOW):
             o, _ = self.run_plan("--plan", "continue")
             self.assertEqual(o["work"], "audit"); self.assertEqual(o["alert"], "audit-regression")
-            self.assertIn("0.91", o["alert_title"]); self.assertIn("- match_rate: 0.91", self.body(o))
+            self.assertIn("91.2%", o["alert_title"]); self.assertIn("within 5%", o["alert_title"]); self.assertIn("- match_rate: 0.91", self.body(o))
             fake.run = lambda wm: {"match_rate": 0.99, "alert": False}
             o, _ = self.run_plan("--plan", "audit")
             self.assertEqual(o["alert"], "none"); self.assertEqual(o["resolve"], "audit-failed,audit-regression,data-store-size")

@@ -4,7 +4,7 @@ Every kept item carries one category: **what the item is**, the way a grocery or
 it on the shelf. Walmart's own category path is a hint, never the answer: its feed files turtlenecks under Meat & Seafood,
 cookbooks under Baking and coffee filters under Coffee. `crawler/classify.py` applies these rules; `data/categories.json`
 holds the ids and names. The rules are measured against a hand-labelled sample (`tests/fixtures/category-gold.jsonl`),
-and every snapshot's 300-row sample review checks the category as well.
+and every snapshot's 600-row sample review checks the category as well.
 
 ## Not carried at all (excluded everywhere, whatever the department)
 
@@ -15,7 +15,9 @@ and every snapshot's 300-row sample review checks the category as well.
 | `pet_bed` | Pet beds and bed-like pet cushions, mats and crate pads. |
 | `alcohol` | Beer, wine, spirits, hard cider and hard seltzer. Non-alcoholic mixers and cooking wine stay in their aisle. |
 | `tobacco` | Cigarettes, cigars, tobacco, vapes and e-liquid. Stop-smoking aids (nicotine gum, patches, lozenges) are Health & Medicine. |
-| `media` | Books, music, movies and video games found outside the Books department (cookbooks under Food, CDs under Beverages). |
+| `media` | Books, music, movies, video games and software on disc found outside the Books department (cookbooks under Food, CDs under Beverages, "JumpStart Preschool - Box pack - 1 user - CD - Win" under Toys). |
+| `auto_part` | Vehicle parts wherever Walmart files them (a door lock actuator under Baby, a bumper retainer under Toys): a fitment clause naming a make or model ("For Dodge Ram", "Compatible With 2011-2020 Toyota Sienna") or a part only a car has (brake pads, alternators, wiper blades). Not auto parts: die-cast and toy cars, car care consumables, logo merchandise. |
+| `commercial_lot` | Wholesale and commercial supply no donor brings in: a pack of a thousand or more ("Pack Of 1,000 Lids", "8500PCS Poly Bags"), a case of multipacks ("72 PC Rubber Turtle Mix, Case of 3"), government-supply brands (Skilcraft, AbilityOne), "wholesale". A case of single items ("Corn, 15 oz, Case of 12") stays. |
 | `large_equipment` | Massage chairs and recliners, mobility scooters, power wheelchairs, patient lifts, hospital beds, treadmills, ellipticals, exercise bikes and home gyms (multi-gyms, power racks and cages, power towers, functional trainers, Smith machines), priced $100 or more. Not excluded: walkers, rollators, canes, shower chairs, manual wheelchairs, dumbbells, bands, and parts or accessories (slings, sheets, ramps, baskets, cushions). |
 
 ## Listings that are not products
@@ -25,7 +27,7 @@ Not carried: test listings (`Signing Test 9027 Dummy Stress Test`, `TEST ITEM 3`
 `Axe Kenobi Split EC`, `C&B SS Shipper`, `DISP SLIDE2ME 2024`, `Section Header Kit`) → `store_display`.
 
 Kept for barcode lookup only (`placeholder` flag): every other name that identifies no product: `Merchandise`, a brand
-alone (`PROGRESSO`), `Discontinued by Supplier`, `coming soon`, a supplier code, `DO NOT USE- ...`, an old seasonal listing
+alone (`PROGRESSO`), one capitalised word that names no product (`SEASONS`), `Discontinued by Supplier`, `coming soon`, a supplier code, `DO NOT USE- ...`, an old seasonal listing
 (`***holiday 2014***...`). Only with a valid check digit and a price that passes the price sanity rule; otherwise dropped
 (`placeholder_no_barcode`, `placeholder_price`). Never in typed search; not in the size-parse rate. The name is replaced by
 another Walmart listing's name for the same UPC, else the Open Facts name for the UPC (flag `name_filled`, source in

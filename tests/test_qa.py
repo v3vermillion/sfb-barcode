@@ -364,8 +364,17 @@ class Finalize(StoreCase, unittest.TestCase):
         self.assertEqual(self.qa.finalize(), "hold")
         self.assertIn("systematic junk: yes", self.gates()["gates"]["sample_review"]["detail"])
         self.assertEqual(self.state()["status"], "needs_review"); self.assertFalse(self.gates()["transient"])
-        self.verdict(status="pass", junk_rate=0.08)              # the model said pass but the rate is over the limit
+        self.verdict(status="pass", junk_rate=0.08)              # an old verdict without counts: its stated rate stands
         self.assertEqual(self.qa.finalize(), "hold")
+        # a counted verdict is judged on evidence: 16 of 300 is not above 5% with 95% confidence, 39 of 600 is
+        self.verdict(status="fail", junk_rate=0.053, sample_rows=300, junk_count=16, junk_examples=[{"id": i, "why": "x"} for i in range(16)])
+        self.assertEqual(self.qa.finalize(), "ready", "the review's own status is recomputed from the counts")
+        self.assertIn("junk 16/300 (5.3%), 95% lower bound", self.gates()["gates"]["sample_review"]["detail"])
+        self.verdict(status="pass", junk_rate=0.065, sample_rows=600, junk_count=39)
+        self.assertEqual(self.qa.finalize(), "hold")
+        self.assertIn("hard cap 10%", self.gates()["gates"]["sample_review"]["detail"])
+        self.verdict(status="pass", junk_rate=0.10, sample_rows=20, junk_count=2)
+        self.assertEqual(self.qa.finalize(), "hold"); self.assertIn("reaches the 10% hard cap", self.gates()["gates"]["sample_review"]["detail"])
         self.write_gates(sample_review={"max_junk_rate": None})
         self.qa.check(wm=FakeWM(self.rows)); self.verdict(status="pass", junk_rate=0.5)
         self.assertEqual(self.qa.finalize(), "ready", "null max_junk_rate: only systematic junk holds")
