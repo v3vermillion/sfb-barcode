@@ -189,6 +189,28 @@ def due_ids(rows, recs, now, every_days, consumable=None):
     return [d[-1] for d in due]
 
 
+NOT_FOUND = ("HTTP 400 ", "HTTP 404 ")
+
+
+def _fetch(wm, ids, sid, calls):
+    """The store's listings for ids: {itemId: item}. Walmart answers a chunk whose ids it cannot all serve at the store
+    with HTTP 400 "Results not found" (2026-10-13, run 55) instead of an empty page: the chunk is split in halves down
+    to single ids, so the ids it does serve are still priced and only the rest are recorded as gone. Returns the
+    items found; calls[0] counts the requests made."""
+    try:
+        page = wm.get(f"/items?ids={','.join(str(x) for x in ids)}&storeId={quote(sid)}")
+        calls[0] += 1
+    except RuntimeError as e:
+        if not str(e).startswith(NOT_FOUND):
+            raise
+        calls[0] += 1
+        if len(ids) == 1:
+            return {}
+        mid = len(ids) // 2
+        return {**_fetch(wm, ids[:mid], sid, calls), **_fetch(wm, ids[mid:], sid, calls)}
+    return {it.get("itemId"): it for it in _items(page)}
+
+
 def refresh(wm, budget_min, now=None, cfg=None):
     """Price due rows at the configured store until done, the budget ends or Walmart throttles (Throttled propagates
     after the records fetched so far are saved). Returns a summary; writes store_prices/latest.json."""
@@ -209,9 +231,9 @@ def refresh(wm, budget_min, now=None, cfg=None):
             if time.time() > deadline:
                 outcome = "budget"; break
             chunk = ids[i:i + CHUNK]
-            page = wm.get(f"/items?ids={','.join(str(x) for x in chunk)}&storeId={quote(sid)}")
-            calls += 1
-            items = {it.get("itemId"): it for it in _items(page)}
+            n_calls = [0]
+            items = _fetch(wm, chunk, sid, n_calls)
+            calls += n_calls[0]
             day = _day(now)
             for iid in chunk:
                 it = items.get(iid) or items.get(str(iid))

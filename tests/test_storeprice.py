@@ -84,6 +84,17 @@ class StoreWM:
         return {"items": [{"itemId": i, "salePrice": 1.5 if i % 2 == 0 else 2.0, "stock": "Available"} for i in ids if i != 13]}
 
 
+class RefusingStoreWM(StoreWM):
+    """Walmart answers HTTP 400 "Results not found" to any chunk that contains id 7 (seen on 2026-10-13, run 55)."""
+
+    def get(self, path):
+        ids = [int(x) for x in path.split("ids=")[1].split("&")[0].split(",")]
+        if 7 in ids:
+            self.paths.append(path)
+            raise RuntimeError('HTTP 400 for /items?ids=...&storeId=2266: {"errors":[{"code":6001,"message":"Results not found"}]}')
+        return super().get(path)
+
+
 class Refresh(unittest.TestCase):
     def setUp(self):
         Probe.setUp(self)
@@ -114,6 +125,20 @@ class Refresh(unittest.TestCase):
         # a second pass the same week has nothing to do
         wm2 = StoreWM()
         self.assertEqual(self.sp.refresh(wm2, 60, now=NOW_)["due"], 0); self.assertEqual(wm2.paths, [])
+
+    def test_a_chunk_walmart_refuses_is_split_so_the_rest_is_still_priced(self):
+        wm = RefusingStoreWM()
+        res = self.sp.refresh(wm, 60, now=NOW_)
+        self.assertEqual((res["due"], res["checked"], res["gone"], res["remaining"]), (50, 50, 2, 0))
+        recs = self.sp.load("2266")
+        self.assertTrue(recs[7]["g"]); self.assertTrue(recs[13]["g"])
+        self.assertEqual(recs[8]["p"], 1.5, "an id in the refused chunk is still priced")
+        self.assertEqual(sum(1 for r in recs.values() if r.get("p") is not None), 48)
+        self.assertLess(res["calls"], 3 + 2 * 5, "halving, not one call per id")
+        with self.assertRaises(RuntimeError):
+            class Broken(StoreWM):
+                def get(self, path): raise RuntimeError("HTTP 401 for /items: bad key")
+            self.sp.refresh(Broken(), 60, now=NOW_ + __import__("datetime").timedelta(days=8))
 
     def test_a_throttled_refresh_keeps_what_it_got(self):
         from crawler.wm import Throttled
