@@ -58,7 +58,7 @@ class Review(StoreCase, unittest.TestCase):
 
     def test_pass(self):
         verdict, post = self.run_review(api_response(GOOD))
-        self.assertEqual(verdict["status"], "pass"); self.assertFalse(verdict["systematic_junk"]); self.assertEqual(verdict["junk_rate"], 0.01)
+        self.assertEqual(verdict["status"], "pass"); self.assertFalse(verdict["systematic_junk"]); self.assertEqual(verdict["model_junk_rate"], 0.01); self.assertEqual(verdict["junk_count"], 2, "1 listed, 0.01 x 181 rows implies 2"); self.assertEqual(verdict["junk_rate"], round(2 / 181, 4))
         self.assertEqual(verdict["junk_examples"], [{"id": 1001, "why": "odd size"}]); self.assertEqual(verdict["notes"], "Looks clean.")
         self.assertEqual(verdict["run_id"], RUN_ID); self.assertEqual(verdict["model"], "claude-sonnet-5-5"); self.assertEqual(verdict["max_junk_rate"], 0.05)
         self.assertEqual(verdict["usage"], {"input_tokens": 1234, "output_tokens": 56}); self.assertEqual(verdict["sample_rows"], len(self.rows))
@@ -81,6 +81,58 @@ class Review(StoreCase, unittest.TestCase):
         self.run_review(api_response(GOOD))
         self.assertEqual(self.qa.finalize(), "ready")
 
+    def test_hold_thresholds_are_pinned(self):
+        """docs/DECISIONS.md 2026-10-13: held on evidence (one-sided 95% Wilson lower bound above the 5% target),
+        on systematic junk, or at the 10% hard cap; never on a point estimate a little above the target."""
+        sr = {"max_junk_rate": 0.05, "hard_max_junk_rate": 0.10, "confidence": 0.95}
+        d = self.review.decide
+        self.assertTrue(d(38, 600, False, sr)["ok"]); self.assertFalse(d(39, 600, False, sr)["ok"], "39 of 600 holds")
+        self.assertTrue(d(21, 300, False, sr)["ok"]); self.assertFalse(d(22, 300, False, sr)["ok"], "22 of 300 holds")
+        self.assertTrue(d(16, 300, False, sr)["ok"], "16 of 300 (issue #20) is not evidence of more than 5%")
+        self.assertIn("lower bound", d(39, 600, False, sr)["why"])
+        self.assertAlmostEqual(d(39, 600, False, sr)["lower_bound"], 0.0503, places=4); self.assertLess(d(38, 600, False, sr)["lower_bound"], 0.05)
+        # the hard cap: a small sample whose bound proves nothing still holds at 10% junk
+        self.assertFalse(d(2, 20, False, sr)["ok"]); self.assertIn("hard cap", d(2, 20, False, sr)["why"])
+        self.assertTrue(d(1, 20, False, sr)["ok"])
+        # systematic junk holds whatever the count; a null target measures only
+        self.assertEqual(d(0, 600, True, sr)["why"], "systematic junk")
+        self.assertTrue(d(300, 600, False, {"max_junk_rate": None})["ok"]); self.assertFalse(d(0, 600, True, {"max_junk_rate": None})["ok"])
+        self.assertEqual(self.review.review_config({"max_junk_rate": 0.05})["hard_max_junk_rate"], 0.1, "default hard cap: twice the target")
+        self.assertEqual(self.review.review_config({})["batch_size"], 300)
+        # the count never trusts a lazy list below the stated rate
+        self.assertEqual(self.review.junk_count(2, 0.10, 181), 18); self.assertEqual(self.review.junk_count(5, 0.01, 181), 5)
+        self.assertEqual(self.review.wilson_lower(0, 600), 0.0); self.assertEqual(self.review.wilson_lower(3, 0), 0.0)
+
+    def test_batches_are_pooled(self):
+        self.write_gates(sample_review={"batch_size": 100})
+        first = json.dumps({"systematic_junk": False, "junk_rate": 0.02, "junk_examples": [{"id": 1, "why": "a"}, {"id": 2, "why": "b"}], "notes": "first"})
+        second = json.dumps({"systematic_junk": False, "junk_rate": 0.0, "junk_examples": [{"id": 2, "why": "b again"}, {"id": 3, "why": "c"}], "notes": "second"})
+        v, post = self.run_review(api_response(first), api_response(second))
+        self.assertEqual(post.call_count, 2)
+        sizes = [c.kwargs["json"]["messages"][0]["content"].split(" rows")[0].rsplit(" ", 1)[-1] for c in post.call_args_list]
+        self.assertEqual(sizes, ["100", "81"])
+        self.assertEqual(v["status"], "pass"); self.assertEqual(v["sample_rows"], 181)
+        self.assertEqual([b["rows"] for b in v["batches"]], [100, 81]); self.assertEqual([b["junk_count"] for b in v["batches"]], [2, 2])
+        self.assertEqual(v["junk_count"], 4); self.assertEqual(v["junk_listed"], 3, "an example listed by both batches counts once in the list")
+        self.assertEqual(v["junk_rate"], round(4 / 181, 4)); self.assertEqual(v["notes"], "first | second")
+        self.assertEqual(v["usage"], {"input_tokens": 2468, "output_tokens": 112}); self.assertEqual(v["hold_reason"], "ok")
+        # a cut-off first batch is retried once; the second batch still runs
+        cut = '{"junk_rate": 0.01, "systematic_junk": false, "junk_examples": [], "notes": "cut'
+        v, post = self.run_review(api_response(cut, stop_reason="max_tokens"), api_response(first), api_response(second))
+        self.assertEqual(post.call_count, 3); self.assertEqual(v["status"], "pass"); self.assertEqual(v["max_tokens"], 20000)
+        # one batch reporting systematic junk holds the whole sample
+        bad = json.dumps({"systematic_junk": True, "junk_rate": 0.0, "junk_examples": [], "notes": "all bundles"})
+        v, _ = self.run_review(api_response(first), api_response(bad))
+        self.assertEqual((v["status"], v["hold_reason"]), ("fail", "systematic junk"))
+        # a lazy list: the model says 10% but lists two rows; the count follows the rate and the bound holds it
+        lazy = json.dumps({"systematic_junk": False, "junk_rate": 0.10, "junk_examples": [{"id": 1, "why": "a"}, {"id": 2, "why": "b"}]})
+        v, _ = self.run_review(api_response(lazy), api_response(lazy))
+        self.assertEqual(v["junk_count"], 18); self.assertEqual(v["junk_listed"], 2); self.assertEqual(v["status"], "fail")
+        self.assertIn("lower bound", v["hold_reason"])
+        # an API failure on the second batch is an error that names the batch
+        v, post = self.run_review(api_response(first), api_response("nonsense"))
+        self.assertEqual(v["status"], "error"); self.assertEqual(len(v["batches"]), 2); self.assertIn("error", v["batches"][1])
+
     def test_model_from_environment(self):
         os.environ["SFB_REVIEW_MODEL"] = "claude-opus-5-5"
         verdict, post = self.run_review(api_response(GOOD))
@@ -90,8 +142,8 @@ class Review(StoreCase, unittest.TestCase):
         v, _ = self.run_review(api_response(json.dumps({"systematic_junk": True, "junk_rate": 0.02, "junk_examples": [], "notes": "every Beauty row is a bundle"})))
         self.assertEqual(v["status"], "fail"); self.assertTrue(v["systematic_junk"])
         v, _ = self.run_review(api_response(json.dumps({"systematic_junk": False, "junk_rate": 0.2, "junk_examples": []})))
-        self.assertEqual(v["status"], "fail"); self.assertEqual(v["junk_rate"], 0.2)
-        self.write_gates(sample_review={"max_junk_rate": 0.3})
+        self.assertEqual(v["status"], "fail"); self.assertEqual(v["model_junk_rate"], 0.2)
+        self.write_gates(sample_review={"max_junk_rate": 0.3, "hard_max_junk_rate": None})
         v, _ = self.run_review(api_response(json.dumps({"systematic_junk": False, "junk_rate": 0.2, "junk_examples": []})))
         self.assertEqual(v["status"], "pass", "the limit comes from data/gates.json when the candidate has no gates.json yet")
         self.assertEqual(v["max_junk_rate"], 0.3)
@@ -109,17 +161,17 @@ class Review(StoreCase, unittest.TestCase):
     def test_robust_parsing(self):
         fenced = "Here is my assessment:\n```json\n" + GOOD + "\n```\nLet me know."
         v, _ = self.run_review(api_response(fenced))
-        self.assertEqual(v["status"], "pass"); self.assertEqual(v["junk_rate"], 0.01)
+        self.assertEqual(v["status"], "pass"); self.assertEqual(v["model_junk_rate"], 0.01)
         v, _ = self.run_review(api_response('{"systematic_junk": "false", "junk_rate": "3%", "junk_examples": {"id": 5, "why": "x"}, "notes": null}'))
-        self.assertEqual(v["status"], "pass"); self.assertEqual(v["junk_rate"], 0.03); self.assertEqual(v["junk_examples"], [{"id": 5, "why": "x"}]); self.assertEqual(v["notes"], "")
+        self.assertEqual(v["status"], "pass"); self.assertEqual(v["model_junk_rate"], 0.03); self.assertEqual(v["junk_examples"], [{"id": 5, "why": "x"}]); self.assertEqual(v["notes"], "")
         v, _ = self.run_review(api_response('{"systematic_junk": false, "junk_rate": 2, "junk_examples": ["a string"]}'))
-        self.assertEqual(v["junk_rate"], 0.02, "a percentage given as a number"); self.assertEqual(v["junk_examples"], [{"id": None, "why": "a string"}])
+        self.assertEqual(v["model_junk_rate"], 0.02, "a percentage given as a number"); self.assertEqual(v["junk_examples"], [{"id": None, "why": "a string"}])
         v, _ = self.run_review(api_response('Prose first {"junk_rate": 0.0, "systematic_junk": false} prose after'))
         self.assertEqual(v["status"], "pass")
         echoed = '```\n{"id": 5, "why": "album"}\n```\n```json\n{"systematic_junk": true, "junk_rate": 0.2}\n```'
         v, _ = self.run_review(api_response(echoed))
         self.assertEqual(v["status"], "fail", "the verdict after an echoed example object is found")
-        self.assertEqual(v["junk_rate"], 0.2)
+        self.assertEqual(v["model_junk_rate"], 0.2)
 
     def test_malformed_answers_are_errors(self):
         v, _ = self.run_review(api_response("The sample looks fine to me."))
@@ -129,7 +181,7 @@ class Review(StoreCase, unittest.TestCase):
         v, _ = self.run_review(api_response('{"junk_rate": 0.5}'))
         self.assertIn("systematic_junk missing", v["reason"])
         v, _ = self.run_review(api_response('{"junk_rate": 7.5, "systematic_junk": false}'))
-        self.assertEqual(v["junk_rate"], 0.075, "a number between 1 and 100 is read as a percentage")
+        self.assertEqual(v["model_junk_rate"], 0.075, "a number between 1 and 100 is read as a percentage")
         v, _ = self.run_review(api_response('{"junk_rate": 150, "systematic_junk": false}'))
         self.assertIn("out of range", v["reason"])
         v, _ = self.run_review(api_response('{"junk_rate": -0.1, "systematic_junk": false}'))

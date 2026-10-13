@@ -48,7 +48,8 @@ DEFAULTS = {
     "item_count_min_ratio": 0.90,
     "category_count_tolerance": 0.20,
     "category_count_min_rows": 200,
-    "sample_review": {"required": True, "max_junk_rate": 0.05, "sample_size": 300},
+    "sample_review": {"required": True, "max_junk_rate": 0.05, "hard_max_junk_rate": 0.10, "confidence": 0.95,
+                      "sample_size": 600, "batch_size": 300},   # held on evidence, not a point estimate (review.decide)
     "audit_sample": 500,
     "audit_match_min": 0.95,
 }
@@ -451,17 +452,32 @@ def evaluate_review(verdict, run_id, sr):
                                                 "-> add the ANTHROPIC_API_KEY repository secret (or set sample_review.required false)"), False
         return _gate(True, None, max_junk, f"not required; review skipped: {reason}"), False
     if status in ("pass", "fail"):
-        rate = verdict.get("junk_rate")
-        rate = float(rate) if isinstance(rate, (int, float)) else None
+        # the decision is recomputed here from the counts (review.decide), so an edited threshold applies at the
+        # next finalize without a new review; an old verdict without counts falls back to its stated rate
         systematic = bool(verdict.get("systematic_junk"))
-        ok = status == "pass" and not systematic and (max_junk is None or (rate is not None and rate <= max_junk))
         ex = verdict.get("junk_examples") or []
-        detail = (f"junk rate {rate:.1%}" if rate is not None else "junk rate unknown") + \
-                 f", systematic junk: {'yes' if systematic else 'no'}, {len(ex)} examples, model {verdict.get('model')}"
+        n = verdict.get("sample_rows")
+        n = int(n) if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+        stated = verdict.get("model_junk_rate", verdict.get("junk_rate"))
+        stated = float(stated) if isinstance(stated, (int, float)) and not isinstance(stated, bool) else None
+        k = verdict.get("junk_count")
+        if not (isinstance(k, int) and not isinstance(k, bool)):
+            k = review.junk_count(len(ex), stated, n) if n else (stated or 0.0)
+        d = review.decide(k, n, systematic, sr)
+        batches = verdict.get("batches") or []
+        detail = (f"junk {k}/{n} ({d['rate']:.1%}), {d['confidence']:.0%} lower bound {d['lower_bound']:.1%}" if n
+                  else f"junk rate {d['rate']:.1%} (stated; no row count)")
+        detail += f" vs {d['max_junk_rate']:.1%} target" if d["max_junk_rate"] is not None else " (no target)"
+        if d["hard_max_junk_rate"] is not None:
+            detail += f", hard cap {d['hard_max_junk_rate']:.0%}"
+        detail += f", systematic junk: {'yes' if systematic else 'no'}, {len(ex)} examples"
+        if batches:
+            detail += f", {len(batches)} batches"
+        detail += f", model {verdict.get('model')}: {d['why']}"
         notes = str(verdict.get("notes") or "").strip()
         if notes:
             detail += f"; notes: {notes[:400]}"
-        return _gate(ok, rate, max_junk, detail), False
+        return _gate(d["ok"], d["rate"], max_junk, detail), False
     # "error" or anything unknown: no usable verdict. Retried every TRANSIENT_RETRY_HOURS, so once the key or the
     # credits are fixed the next retry clears the hold by itself.
     if required:
