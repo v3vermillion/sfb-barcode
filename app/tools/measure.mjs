@@ -11,7 +11,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => (a.star
 const BROWSER = String(args.browser || "chromium").toLowerCase();
 if (BROWSER !== "chromium" && BROWSER !== "webkit") { console.error(`measure: --browser must be chromium or webkit (got ${args.browser})`); process.exit(2); }
 const IS_CHROMIUM = BROWSER === "chromium";
-const URL_ = args.url || "http://127.0.0.1:8787/";
+const URL_ = (() => { const u = new URL(args.url || "http://127.0.0.1:8787/"); u.searchParams.set("tour", "0"); return u.href; })();   // no walkthrough while measuring
 const CPU = Number(args.cpu || 4);
 const RUNS = Number(args.runs || 5);
 const VIDEO = IS_CHROMIUM ? args.video || null : null;

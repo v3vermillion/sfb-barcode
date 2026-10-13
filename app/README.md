@@ -60,7 +60,10 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 
 Also: the home screen reads top-down and never leaves empty space above the content: a **status card** (prices ready /
 downloading / offline / a problem, one line each; tapping it opens Settings), a **tally strip** (count and total, always
-visible, opens the tally), the headline, common items, the Home Screen card and Recent. The tally (lines, total,
+visible, opens the tally), the headline, common items, the Home Screen card and Recent. On the first launch a four-step
+**walkthrough** runs over the real screen (find the item, add it to the tally, review and share, prices stay on the phone),
+one sentence or two per step with Next, Back and Skip; it is shown once per phone and can be replayed from Settings
+(`?tour=1` forces it, `?tour=0` skips it, as the measuring tools do). The tally (lines, total,
 share/copy, clear), settings (appearance, vibration, live price check; a Prices card with the date, the source and the
 size on the phone, Check for new prices; a three-step How to use; an About fold with the result-label legend, the small
 print and the build; Reset app data), scanner with torch, manual barcode entry for denied cameras and keyboard-wedge
