@@ -389,7 +389,8 @@ class Finalize(StoreCase, unittest.TestCase):
     def test_skipped_names_the_missing_secret(self):
         self.verdict(status="skipped", reason="ANTHROPIC_API_KEY missing")
         self.assertEqual(self.qa.finalize(), "hold")
-        self.assertIn("ANTHROPIC_API_KEY", self.gates()["gates"]["sample_review"]["detail"]); self.assertFalse(self.gates()["transient"])
+        self.assertIn("ANTHROPIC_API_KEY", self.gates()["gates"]["sample_review"]["detail"])
+        self.assertTrue(self.gates()["transient"], "rechecked every few hours, so an added key is picked up by itself")
         self.write_gates(sample_review={"required": False})
         self.qa.check(wm=FakeWM(self.rows)); self.verdict(status="skipped", reason="ANTHROPIC_API_KEY missing")
         self.assertEqual(self.qa.finalize(), "ready")
@@ -402,6 +403,57 @@ class Finalize(StoreCase, unittest.TestCase):
         self.write_gates(sample_review={"required": False})
         self.qa.check(wm=FakeWM(self.rows)); self.verdict(status="error", reason="HTTP 529")
         self.assertEqual(self.qa.finalize(), "ready")
+
+    def test_a_review_unavailable_past_the_grace_publishes_on_the_deterministic_gates(self):
+        self.verdict(status="error", error_kind="credits", reason="HTTP 402: add credits")
+        self.assertEqual(self.qa.finalize(), "hold")
+        g = self.gates(); self.assertTrue(g["transient"]); self.assertNotIn("review_grace", g)
+        outage = self.store.read_json(self.qa.OUTAGE)
+        self.assertEqual(outage["kind"], "credits"); self.assertEqual(outage["since"], outage["last"])
+        since = outage["since"]
+        # a later attempt keeps the first date; 20 days in it still holds, 21 days in it publishes without the review
+        self.verdict(status="error", error_kind="auth", reason="HTTP 401")
+        self.assertEqual(self.qa.finalize(), "hold")
+        self.assertEqual(self.store.read_json(self.qa.OUTAGE)["since"], since)
+        self.assertEqual(self.store.read_json(self.qa.OUTAGE)["kind"], "auth")
+        day = __import__("datetime").timedelta(days=1)
+        t0 = __import__("datetime").datetime.fromisoformat(since)
+        self.store.write_json(self.qa.OUTAGE, dict(outage, since=(t0 - 20 * day).isoformat(timespec="seconds")))
+        self.assertEqual(self.qa.finalize(), "hold")
+        self.store.write_json(self.qa.OUTAGE, dict(outage, since=(t0 - 21 * day).isoformat(timespec="seconds")))
+        self.assertEqual(self.qa.finalize(), "ready")
+        g = self.gates(); x = g["gates"]["sample_review"]
+        self.assertTrue(x["pass"]); self.assertIsNone(x["value"]); self.assertIn("review unavailable since", x["detail"])
+        self.assertIn("HTTP 401", x["detail"]); self.assertFalse(g["transient"])
+        self.assertEqual((g["review_grace"]["grace_days"], g["review_grace"]["kind"]), (21, "auth"))
+        self.assertGreaterEqual(g["review_grace"]["days"], 21)
+        self.assertEqual(self.state()["status"], "built")
+        # a missing key counts as unavailable too; a verdict ends the outage and the grace
+        self.verdict(status="skipped", reason="ANTHROPIC_API_KEY missing")
+        self.assertEqual(self.qa.finalize(), "ready"); self.assertEqual(self.gates()["review_grace"]["kind"], "skipped")
+        self.verdict(status="fail", systematic_junk=True)
+        self.assertEqual(self.qa.finalize(), "hold"); self.assertFalse(self.qa.OUTAGE.exists()); self.assertNotIn("review_grace", self.gates())
+        self.verdict(status="pass")
+        self.assertEqual(self.qa.finalize(), "ready"); self.assertFalse(self.qa.OUTAGE.exists()); self.assertNotIn("review_grace", self.gates())
+        # grace null: the hold stands however long the review is unavailable
+        self.write_gates(sample_review={"unavailable_grace_days": None})
+        self.qa.check(wm=FakeWM(self.rows)); self.verdict(status="error", error_kind="credits", reason="HTTP 402")
+        self.assertEqual(self.qa.finalize(), "hold")
+        self.store.write_json(self.qa.OUTAGE, dict(self.store.read_json(self.qa.OUTAGE), since=(t0 - 400 * day).isoformat(timespec="seconds")))
+        self.assertEqual(self.qa.finalize(), "hold"); self.assertNotIn("review_grace", self.gates())
+
+    def test_the_grace_never_overrides_a_deterministic_hold(self):
+        rows = [r for r in self.rows if r["id"] != 15544057]          # a sentinel missing: deterministic hold
+        self.write_candidate(rows)
+        self.assertEqual(self.qa.check(wm=FakeWM(rows)), "hold")
+        self.verdict(status="error", error_kind="credits", reason="HTTP 402")
+        self.assertEqual(self.qa.finalize(), "hold")
+        outage = self.store.read_json(self.qa.OUTAGE)
+        day = __import__("datetime").timedelta(days=1)
+        t0 = __import__("datetime").datetime.fromisoformat(outage["since"])
+        self.store.write_json(self.qa.OUTAGE, dict(outage, since=(t0 - 60 * day).isoformat(timespec="seconds")))
+        self.assertEqual(self.qa.finalize(), "hold"); self.assertNotIn("review_grace", self.gates())
+        self.assertFalse(self.gates()["gates"]["sample_review"]["pass"])
 
     def test_finalize_after_a_deterministic_hold_stays_held(self):
         rows = [r for r in self.rows if r["id"] != 15544057]

@@ -191,7 +191,67 @@ async function livePrice(req, env, ctx, gtinRaw) {
   return res;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Schedule watchdog. GitHub fires the pipeline's cron hours late or not at all (runs 58-61 on 2026-10-14 came five hours
+// apart, and nothing fired for 3.5 h after a failed run, which does not chain). Cloudflare's cron is reliable, so this
+// Worker dispatches a `continue` run through the GitHub API whenever the pipeline is idle for WATCHDOG_GAP_MIN minutes.
+// A dispatched run that finds nothing due stops after its peek, so the cost of an unnecessary kick is a few seconds.
+const WATCHDOG_RUNS = 5;
+
+function ghHeaders(env) {
+  return {
+    authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+    "user-agent": "sfb-valuation-watchdog",
+  };
+}
+
+// Decide from the newest runs: { action: "dispatch" | "none", reason, newest, age_min, active }.
+export function watchdogDecision(runs, now = Date.now(), gapMin = 40) {
+  const active = runs.filter(r => r.status && r.status !== "completed");
+  if (active.length) return { action: "none", reason: `${active.length} run(s) ${active.map(r => r.status).join(",")}`, active: active.length };
+  const starts = runs.map(r => Date.parse(r.run_started_at || r.created_at)).filter(Number.isFinite);
+  if (!starts.length) return { action: "dispatch", reason: "no runs on record" };
+  const newest = Math.max(...starts);
+  const ageMin = (now - newest) / 60000;
+  if (ageMin < gapMin) return { action: "none", reason: `newest run started ${ageMin.toFixed(0)} min ago (limit ${gapMin})`, newest: new Date(newest).toISOString(), age_min: Math.round(ageMin) };
+  return { action: "dispatch", reason: `newest run started ${ageMin.toFixed(0)} min ago (limit ${gapMin})`, newest: new Date(newest).toISOString(), age_min: Math.round(ageMin) };
+}
+
+export async function watchdog(env, { dry = false, now = Date.now() } = {}) {
+  const out = { configured: Boolean(env.GH_DISPATCH_TOKEN && env.GH_REPO), repo: env.GH_REPO || null, dry };
+  if (!out.configured) return { ...out, action: "none", reason: "GH_DISPATCH_TOKEN or GH_REPO not set" };
+  const gapMin = Math.max(5, parseInt(env.WATCHDOG_GAP_MIN || "40", 10) || 40);
+  const base = `https://api.github.com/repos/${env.GH_REPO}/actions/workflows/pipeline.yml`;
+  let runs;
+  try {
+    const r = await fetch(`${base}/runs?per_page=${WATCHDOG_RUNS}`, { headers: ghHeaders(env) });
+    if (r.status !== 200) return { ...out, action: "none", reason: `GitHub answered ${r.status} listing runs`, github_status: r.status };
+    runs = (await r.json()).workflow_runs || [];
+  } catch (e) {
+    return { ...out, action: "none", reason: `could not list runs: ${String(e).slice(0, 200)}` };
+  }
+  const d = watchdogDecision(runs, now, gapMin);
+  if (d.action !== "dispatch" || dry) return { ...out, ...d, dispatched: false };
+  try {
+    const r = await fetch(`${base}/dispatches`, {
+      method: "POST", headers: { ...ghHeaders(env), "content-type": "application/json" },
+      body: JSON.stringify({ ref: env.GH_BRANCH || "main", inputs: { plan: "continue" } }),
+    });
+    if (r.status !== 204) return { ...out, ...d, dispatched: false, reason: `GitHub answered ${r.status} to the dispatch`, github_status: r.status };
+    return { ...out, ...d, dispatched: true };
+  } catch (e) {
+    return { ...out, ...d, dispatched: false, reason: `dispatch failed: ${String(e).slice(0, 200)}` };
+  }
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    const res = await watchdog(env);
+    console.log(JSON.stringify({ watchdog: res, cron: event.cron }));
+  },
+
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
 
@@ -210,7 +270,14 @@ export default {
         WM_KEY_VERSION: env.WM_KEY_VERSION || null,
         PRICE_LIMITER: Boolean(env.PRICE_LIMITER),
         PRICE_GLOBAL_LIMITER: Boolean(env.PRICE_GLOBAL_LIMITER),
+        GH_DISPATCH_TOKEN: Boolean(env.GH_DISPATCH_TOKEN),
+        GH_REPO: env.GH_REPO || null,
       });
+    }
+
+    // /watchdog?dry=1 — what the schedule watchdog sees (and, without dry, does) right now.
+    if (url.pathname === "/watchdog") {
+      return json(await watchdog(env, { dry: url.searchParams.get("dry") === "1" }));
     }
 
     if (url.pathname === "/taxonomy") {
@@ -308,6 +375,6 @@ export default {
       return json({ query: q, totalResults: d.totalResults ?? null, items: (d.items || []).map(summarizeItem) });
     }
 
-    return json({ error: "not found", routes: ["/health", "/taxonomy", "/taxonomy/<id>", "/items/<id>?pages=N", "/search?q=", "public: /v1/price/<gtin>"] }, 404);
+    return json({ error: "not found", routes: ["/health", "/watchdog?dry=1", "/taxonomy", "/taxonomy/<id>", "/items/<id>?pages=N", "/search?q=", "public: /v1/price/<gtin>"] }, 404);
   },
 };

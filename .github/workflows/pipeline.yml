@@ -142,6 +142,7 @@ jobs:
           PEEK_ALERT: ${{ steps.peek.outputs.alert }}
           PEEK_TITLE: ${{ steps.peek.outputs.alert_title }}
           PEEK_BODY: ${{ steps.peek.outputs.alert_body_file }}
+          PEEK_RESOLVE: ${{ steps.peek.outputs.resolve }}
           CI_OUTCOME: ${{ steps.ci.outcome }}
           CI_ALERT: ${{ steps.ci.outputs.alert }}
           CI_TITLE: ${{ steps.ci.outputs.alert_title }}
@@ -163,7 +164,7 @@ jobs:
           [ "$FIN_OUTCOME" = success ] && pick "$FIN_ALERT" "$FIN_TITLE" "$FIN_BODY"
           [ "$CI_OUTCOME" = success ] && pick "$CI_ALERT" "$CI_TITLE" "$CI_BODY"
           pick "$PEEK_ALERT" "$PEEK_TITLE" "$PEEK_BODY"
-          keys="$CI_RESOLVE,$FIN_RESOLVE"
+          keys="$PEEK_RESOLVE,$CI_RESOLVE,$FIN_RESOLVE"
           [ "$CI_OUTCOME" = success ] && keys="$keys,pipeline-failed"
           resolve="$(printf '%s' "$keys" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sort -u | paste -sd, -)"
           case ",$resolve," in *",$alert,"*) alert=none ;; esac   # raised and cleared in one run: cleared

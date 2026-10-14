@@ -25,6 +25,8 @@ import requests
 from . import store
 
 API_URL = "https://api.anthropic.com/v1/messages"
+MODELS_URL = "https://api.anthropic.com/v1/models"
+MODEL_FAMILY = "claude-sonnet-"     # a retired review model is replaced by the newest model of this family (list_models)
 API_VERSION = "2023-06-01"
 DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_TOKENS = 12000                # first attempt: the model's thinking over 300 rows shares this cap with the answer
@@ -260,7 +262,8 @@ def response_text(data: dict) -> str:
 class ReviewError(Exception):
     """The API did not give a usable answer; str(e) is a safe reason (never includes the key).
     kind: "auth" (401, invalid or revoked key), "permission" (403, key not allowed), "credits" (402 billing_error, or
-    the 400 "credit balance is too low" older accounts get), or "api" (anything else)."""
+    the 400 "credit balance is too low" older accounts get), "model" (404 not_found_error: the model id is retired or
+    not on this key), or "api" (anything else)."""
 
     def __init__(self, message, kind="api"):
         super().__init__(message)
@@ -281,7 +284,39 @@ def error_kind(status: int, body: str) -> str:
         return "credits"
     if status == 403 or etype == "permission_error":
         return "permission"
+    if status == 404 or etype == "not_found_error":
+        return "model"
     return "api"
+
+
+def list_models(api_key: str) -> list:
+    """Model ids this key can use, newest first (GET /v1/models). Raises ReviewError."""
+    headers = {"x-api-key": api_key, "anthropic-version": API_VERSION}
+    try:
+        r = requests.get(MODELS_URL, headers=headers, params={"limit": 100}, timeout=60)
+    except requests.RequestException as e:
+        raise ReviewError(f"could not list models: {type(e).__name__}")
+    if r.status_code != 200:
+        raise ReviewError(f"could not list models: HTTP {r.status_code}", kind=error_kind(r.status_code, r.text or ""))
+    try:
+        data = (r.json() or {}).get("data") or []
+    except ValueError:
+        raise ReviewError("could not list models: response is not JSON")
+    rows = [m for m in data if isinstance(m, dict) and isinstance(m.get("id"), str)]
+    rows.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
+    return [m["id"] for m in rows]
+
+
+def fallback_model(api_key: str, requested: str) -> str:
+    """The model to review with when `requested` is gone: the newest of MODEL_FAMILY the key can use, else the newest
+    model of any family. Raises ReviewError (kind "model") when there is none."""
+    ids = [m for m in list_models(api_key) if m != requested]
+    family = [m for m in ids if m.startswith(MODEL_FAMILY)]
+    if family:
+        return family[0]
+    if ids:
+        return ids[0]
+    raise ReviewError(f"model {requested} is not available and the key lists no other model", kind="model")
 
 
 def call_api(payload: dict, api_key: str, sleep=time.sleep) -> dict:
@@ -353,8 +388,20 @@ def run(api_key=None, model=None, sample=None, out_path=None, sleep=time.sleep) 
     batches = [sample[i:i + size] for i in range(0, len(sample), size)]
     results = []
     try:
-        for b in batches:
-            results.append(_review_batch(criteria, b, model, api_key, sleep))
+        try:
+            for b in batches:
+                results.append(_review_batch(criteria, b, model, api_key, sleep))
+        except ReviewError as e:
+            if e.kind != "model" or results:
+                raise
+            # the configured model is retired or not on this key: review with a current one instead of holding
+            # the snapshot until someone edits SFB_REVIEW_MODEL (docs/DECISIONS.md 2026-10-14)
+            replacement = fallback_model(api_key, model)
+            print(f"review model {model} unavailable ({str(e)[:120]}); using {replacement}")
+            verdict["model_fallback"] = {"requested": model, "used": replacement, "reason": str(e)[:200]}
+            verdict["model"] = model = replacement
+            for b in batches:
+                results.append(_review_batch(criteria, b, model, api_key, sleep))
     except ReviewError as e:
         verdict.update(status="error", reason=str(e)[:500], error_kind=e.kind,
                        batches=[r["summary"] for r in results] + [{"rows": len(batches[len(results)]), "error": str(e)[:200]}])

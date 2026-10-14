@@ -49,7 +49,8 @@ DEFAULTS = {
     "category_count_tolerance": 0.20,
     "category_count_min_rows": 200,
     "sample_review": {"required": True, "max_junk_rate": 0.05, "hard_max_junk_rate": 0.10, "confidence": 0.95,
-                      "sample_size": 600, "batch_size": 300},   # held on evidence, not a point estimate (review.decide)
+                      "sample_size": 600, "batch_size": 300,    # held on evidence, not a point estimate (review.decide)
+                      "unavailable_grace_days": 21},            # review unavailable this long: publish on the other gates
     "audit_sample": 500,
     "audit_per_department": 30,         # extra rows per department each audit, so each department's drift is measured
     "audit_match_min": 0.95,
@@ -434,7 +435,51 @@ REVIEW_FIXES = {
     "auth": "the Anthropic API rejected ANTHROPIC_API_KEY as invalid or revoked (HTTP 401) -> replace the repository secret",
     "permission": "the Anthropic API refused ANTHROPIC_API_KEY permission (HTTP 403) -> check the key's workspace and model access",
     "credits": "the Anthropic account is out of credits -> add credits in the Anthropic Console (auto-reload is off)",
+    "model": "the review model is not available on this key (HTTP 404) and no replacement was found -> set the "
+             "SFB_REVIEW_MODEL repository variable to a current model id",
 }
+OUTAGE = store.ROOT / "state" / "review-outage.json"   # since when the review has been unavailable (key, credits, model, API)
+
+
+def review_outage(unavailable, kind=None, reason=None, now=None):
+    """Keep state/review-outage.json: the first time the review could not run (a missing or rejected key,
+    no credits, a retired model, an API outage) and the latest attempt. Cleared as soon as a review gives a verdict.
+    Returns the outage record, or None when the review is available."""
+    now = now or _now()
+    if not unavailable:
+        if OUTAGE.exists():
+            OUTAGE.unlink()
+        return None
+    rec = store.read_json(OUTAGE) or {}
+    if not rec.get("since"):
+        rec = {"since": now}
+    rec.update(last=now, kind=kind, reason=(reason or "")[:300])
+    store.write_json(OUTAGE, rec)
+    return rec
+
+
+def grace_gate(gate, outage, sr, now=None):
+    """The sample_review gate when the review has been unavailable for longer than sample_review.unavailable_grace_days:
+    the snapshot is then judged on the deterministic gates alone, so volunteers' prices never go stale because a key,
+    credits or a model id needs a person (docs/DECISIONS.md 2026-10-14). null disables it. Returns the gate and the
+    grace record (None when the grace has not run out)."""
+    days = (sr or {}).get("unavailable_grace_days", DEFAULTS["sample_review"]["unavailable_grace_days"])
+    if not outage or not isinstance(days, (int, float)) or isinstance(days, bool):
+        return gate, None
+    try:
+        since = datetime.fromisoformat(str(outage["since"]).replace("Z", "+00:00"))
+    except (KeyError, ValueError, TypeError):
+        return gate, None
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
+    then = datetime.fromisoformat((now or _now()).replace("Z", "+00:00"))
+    age = (then - since).total_seconds() / 86400
+    if age < days:
+        return gate, None
+    rec = {"since": outage["since"], "days": round(age, 1), "grace_days": days, "kind": outage.get("kind")}
+    detail = (f"review unavailable since {outage['since'][:10]} ({age:.0f} days, grace {days:g}): judged on the "
+              f"deterministic gates alone; last attempt: {gate.get('detail')}")
+    return _gate(True, None, gate.get("threshold"), detail), rec
 
 
 def evaluate_review(verdict, run_id, sr):
@@ -452,7 +497,7 @@ def evaluate_review(verdict, run_id, sr):
     if status == "skipped":
         if required:
             return _gate(False, None, max_junk, f"review skipped: {reason or 'ANTHROPIC_API_KEY missing'} "
-                                                "-> add the ANTHROPIC_API_KEY repository secret (or set sample_review.required false)"), False
+                                                "-> add the ANTHROPIC_API_KEY repository secret (or set sample_review.required false)"), True
         return _gate(True, None, max_junk, f"not required; review skipped: {reason}"), False
     if status in ("pass", "fail"):
         # the decision is recomputed here from the counts (review.decide), so an edited threshold applies at the
@@ -556,6 +601,16 @@ def finalize():
     sr = (g.get("thresholds") or gates_config()).get("sample_review")
     verdict = store.read_json(CAND / "review-verdict.json")
     gate, transient = evaluate_review(verdict, g["run_id"], sr)
+    # the review could not run (not: it ran and held): remember since when, and after the grace judge without it
+    unavailable = transient and isinstance(verdict, dict) and verdict.get("status") in ("error", "skipped")
+    outage = review_outage(unavailable, (verdict or {}).get("error_kind") or (verdict or {}).get("status"),
+                           (verdict or {}).get("reason"))
+    g.pop("review_grace", None)
+    if unavailable and g.get("passed_deterministic"):
+        gate, grace = grace_gate(gate, outage, sr)
+        if grace:
+            g["review_grace"] = grace
+            transient = False
     g["gates"]["sample_review"] = gate
     status = "ready" if g.get("passed_deterministic") and gate["pass"] else "hold"
     g["status"], g["finalized"] = status, _now()
@@ -621,6 +676,7 @@ def publish(approve=False):
                 "items": stats["items"], "upcs": stats["upcs"],
                 "gates_passed": g["status"] == "ready", "approved_manually": bool(approve), "file": "items.jsonl.gz",
                 "gates": {"status": g["status"], "passed_deterministic": g.get("passed_deterministic"), "failed": failed,
+                          "review_grace": g.get("review_grace"),
                           "config_hash": g.get("config_hash"), "checked": g.get("checked"),
                           "sample_review": g["gates"].get("sample_review")},
                 "history": hist}

@@ -16,8 +16,12 @@ Public key format accepted by the portal: base64 body only (no BEGIN/END lines).
    - WM_PRIVATE_KEY — full PEM from password manager (BEGIN/END lines included)
    - WM_CONSUMER_ID — Prod Consumer ID from walmart.io
    - ADMIN_TOKEN — any long random string; required on every request
-   WM_KEY_VERSION=1 is set in wrangler.toml.
-4. Redeploy (or push any commit) so secrets apply.
+   - GH_DISPATCH_TOKEN — the schedule watchdog's GitHub token (see "Schedule" below): a fine-grained personal access
+     token (GitHub → Settings → Developer settings → Personal access tokens → Fine-grained) for this repository only,
+     permission *Actions: Read and write*, the longest expiry offered; the `[schedule-gap]` issue says when it is
+     missing or has expired. Without it the watchdog does nothing.
+   WM_KEY_VERSION=1, GH_REPO, GH_BRANCH and WATCHDOG_GAP_MIN are set in wrangler.toml.
+4. Redeploy (or push any commit) so secrets apply. `/watchdog?token=<ADMIN_TOKEN>&dry=1` shows what the watchdog sees.
 
 ## Endpoints
 - GET /v1/price/<gtin> — PUBLIC (no token): live Walmart price for the app, the Strongsville store's own price
@@ -41,8 +45,11 @@ Required repository secrets (Settings → Secrets and variables → Actions):
 - WM_PRIVATE_KEY — full PEM from the password manager
 - WM_CONSUMER_ID — Prod Consumer ID
 - ANTHROPIC_API_KEY — used only by the 600-row sample review (two calls of 300 rows) before a publish (console.anthropic.com → API keys).
-  Without it a finished snapshot holds and the `[review-key-invalid]` (the review API call was rejected: 401 invalid or revoked key, or 403 no permission -> replace the secret), `[review-credits]` (out of Anthropic credits -> add credits; auto-reload is off), `[review-key-missing]` issue says so; `sample_review.required=false` in
-  `data/gates.json` waives the review.
+  Without it a finished snapshot holds and the `[review-key-invalid]` (the review API call was rejected: 401 invalid or revoked key, or 403 no permission -> replace the secret), `[review-credits]` (out of Anthropic credits -> add credits; auto-reload is off), `[review-key-missing]`, `[review-model]` (the review model is retired and no replacement could be listed -> set the `SFB_REVIEW_MODEL` variable) issue says so; `sample_review.required=false` in
+  `data/gates.json` waives the review. Nothing holds forever: after `sample_review.unavailable_grace_days` (21) of the review
+  being unable to run at all, a candidate that passes every deterministic gate publishes without it and the review issue stays
+  open (`state/review-outage.json` on the data-store branch records since when). A retired review model (HTTP 404) is replaced by the newest
+  `claude-sonnet-*` the key lists (`GET /v1/models`), recorded as `model_fallback` in the verdict.
 Optional variables: WM_KEY_VERSION (default 1), SFB_REVIEW_MODEL (default claude-sonnet-5-5).
 
 ### How it runs
@@ -64,7 +71,7 @@ Editing `data/gates.json`, `data/sentinels.json` or `data/categories.json` makes
 
 ### Alerts (GitHub issues, label `pipeline-alert`)
 One open issue per kind, updated in place, closed automatically when the condition clears: `[pipeline-failed]`, `[gates-hold]`,
-`[review-key-missing]`, `[audit-regression]`, `[audit-failed]` (the audit could not reach Walmart: a 401/403 means the WM_* secrets no longer match), `[data-store-size]` (the files on the data-store branch passed 1 GB; the issue carries the breakdown and the proposal to move raw pages to Cloudflare R2), `[snapshot-archive]` (a publish could not be kept as a GitHub Release; the publish itself stands and the next one retries), `[stale-prices]` (no publish for stale_days while idle), `[throttled]`
+`[review-key-missing]`, `[review-model]`, `[schedule-gap]` (pipeline runs more than 3 h apart while idle: the watchdog token is missing or expired, see "Schedule"), `[audit-regression]`, `[audit-failed]` (the audit could not reach Walmart: a 401/403 means the WM_* secrets no longer match), `[data-store-size]` (the files on the data-store branch passed 1 GB; the issue carries the breakdown and the proposal to move raw pages to Cloudflare R2), `[snapshot-archive]` (a publish could not be kept as a GitHub Release; the publish itself stands and the next one retries), `[stale-prices]` (no publish for stale_days while idle), `[throttled]`
 (three consecutive runs ended on Walmart throttling), `[crawl-truncated]` (a department or child node ended far short of
 Walmart's page count or its id was refused; see "Crawl scope edits" below), `[deploy-failed]`, `[deploy-mismatch]`, `[tests-failed]`.
 Watch the repository (or just the issues) on the GitHub app for phone notifications.
@@ -81,7 +88,7 @@ Read a log by hand: `python -m crawler.throttle store/throttle/<run>.events.json
 
 ### Holds and retries
 A held candidate stands until `data/gates.json`, `data/sentinels.json` or `data/categories.json` changes (the candidate's
-`gates.json` carries their hash). A hold marked `transient` (live check or review API unavailable) is rechecked after 6 hours.
+`gates.json` carries their hash). A hold marked `transient` (live check or review unavailable: key missing or rejected, credits, model, API) is rechecked after 6 hours.
 `peek` prints `work=inspect` when `state/run.json` is unreadable so the full job runs and fails loudly. The pipeline-failed issue
 is resolved only by a run whose Run step succeeded (a peek-only run clears nothing). Alerts from Finish win over Run over peek.
 `identify/latest.json` is a marker written by the identify plan (git keeps no file times). A skipped audit (no eligible rows) is
@@ -90,10 +97,18 @@ Rows whose per-unit price is more than 10× off their category+unit median keep 
 and carry the flag `unit_price_suspect`; the `unit_outliers` gate reports the raw share (measure-only until parsing improves).
 
 ### Schedule
-The schedule fires, though GitHub delays and drops scheduled runs, so they come hours apart rather than every 30 minutes. A
+The schedule fires, though GitHub delays and drops scheduled runs, so they come hours apart rather than every 30 minutes
+(2026-10-14: five hours between scheduled runs, and nothing for 3.5 h after a failed run, which does not chain). A
 scheduled run that arrives while a crawl is running waits in the `pipeline` concurrency group and is cancelled when the crawl's
-chained run takes its place (cancelled runs with 0 jobs in the Actions tab): by design. If a run ends with nothing chained and
-no scheduled run follows within a few hours, start `plan=continue` from the Actions tab.
+chained run takes its place (cancelled runs with 0 jobs in the Actions tab): by design.
+
+**Watchdog.** The pipeline Worker (`pipeline/src/index.js`, cron `*/20 * * * *` in `pipeline/wrangler.toml`) is the second
+trigger: every 20 minutes it lists the newest pipeline runs through the GitHub API and, when none is queued or running and
+the newest started more than `WATCHDOG_GAP_MIN` (40) minutes ago, dispatches `plan=continue`. A run with nothing due stops
+after its peek, so an unneeded kick costs seconds. It needs the Worker secret `GH_DISPATCH_TOKEN` (above). The peek of every
+pipeline run measures the idle gaps between runs over the last 24 h and opens `[schedule-gap]` when one exceeds 3 h
+(`ci.SCHEDULE_GAP_HOURS`); the issue closes itself once runs arrive close together. If the watchdog is not set up, start
+`plan=continue` from the Actions tab when a run ends with nothing chained.
 
 ### Store prices (Strongsville, store #2266)
 `data/store.json` names the store. After a publish, when no crawl, build, audit or identify is due, `decide()` runs the
