@@ -10,7 +10,7 @@
   "refresh": {
     "target_close_rate": 0.92,
     "min_days": 5,
-    "max_days": 60,
+    "max_days": 120,
     "default_drift_per_day": 0.023,
     "prior_weight": 200,
     "crawl_share": 0.5,
@@ -27,7 +27,7 @@
       5
     ],
     "from": "08:00",
-    "to": "17:00",
+    "to": "12:00",
     "per_min": 3
   }
 }

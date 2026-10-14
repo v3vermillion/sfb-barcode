@@ -36,6 +36,7 @@ DIR = store.ROOT / "store_prices"
 CHUNK = 20                    # /items takes up to 20 ids per call
 SPLIT_RETRIES = 1             # 5xx retries per call while a failing chunk is split (the chunk itself had the full retries)
 ERROR_RETRY_DAYS = 7          # an id Walmart answers with a server error is asked again after this many days
+NOT_CARRIED_DAYS = 90         # a row the store does not carry is asked again after this many days (store.json not_carried_every_days)
 DEAD_CHUNKS = 2               # consecutive chunks with every id failing on a server error: Walmart is down, stop the pass
 SAVE_EVERY_S = 15 * 60
 RECORD_VERSION = 2            # v1 records (2026-10-13) kept marketplace offers as store prices; they are refetched
@@ -238,13 +239,25 @@ def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=No
         rank, every = tier
         rec = recs.get(r["id"])
         age = _age_days(rec["t"], now) if rec else None
-        if age is not None and age < (min(every, ERROR_RETRY_DAYS) if rec.get("e") else every):
+        if age is not None and age < _interval(rec, every, cfg):
             continue
         due.append((rank, rec is not None, -(age or 0), str(r["id"]), r["id"]))
         if meta is not None:
             meta[r["id"]] = (r.get("dept"), r.get("price"))
     due.sort()
     return [d[-1] for d in due]
+
+
+def _interval(rec, every, cfg):
+    """Days before a record is asked again: the tier's cadence for a priced row, sooner for a server error, and
+    not_carried_every_days (at least the cadence) for a row the store does not carry."""
+    if rec.get("e"):
+        return min(every, ERROR_RETRY_DAYS)
+    if rec.get("g"):
+        v = (cfg or {}).get("not_carried_every_days", NOT_CARRIED_DAYS)
+        v = int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else NOT_CARRIED_DAYS
+        return max(every, v)
+    return every
 
 
 NOT_FOUND = ("HTTP 400 ", "HTTP 404 ")

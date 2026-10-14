@@ -14,7 +14,7 @@ class Arithmetic(unittest.TestCase):
         self.c = C.config({})
 
     def test_config_defaults_and_overrides(self):
-        self.assertEqual(self.c["target_close_rate"], 0.92); self.assertEqual(self.c["min_days"], 5); self.assertEqual(self.c["max_days"], 60)
+        self.assertEqual(self.c["target_close_rate"], 0.92); self.assertEqual(self.c["min_days"], 5); self.assertEqual(self.c["max_days"], 120)
         c = C.config({"refresh": {"target_close_rate": 0.9, "min_days": "x", "max_days": 3, "crawl_share": -1}})
         self.assertEqual((c["target_close_rate"], c["min_days"], c["max_days"], c["crawl_share"]), (0.9, 5, 5, 0.5))
 
@@ -40,8 +40,9 @@ class Arithmetic(unittest.TestCase):
 
     def test_ideal_interval(self):
         self.assertEqual(C.ideal_interval(0.023, self.c), 6)         # 2 x 0.08 / 0.023 = 6.96
-        self.assertEqual(C.ideal_interval(0.0, self.c), 60); self.assertEqual(C.ideal_interval(0.5, self.c), 5)
-        self.assertEqual(C.ideal_interval(0.002, self.c), 60)
+        self.assertEqual(C.ideal_interval(0.0, self.c), 120); self.assertEqual(C.ideal_interval(0.5, self.c), 5)
+        self.assertIn(C.ideal_interval(0.004, self.c), (39, 40))      # 2 x 0.08 / 0.004 = 40 (float), under the 120-day cap
+        self.assertEqual(C.ideal_interval(0.001, self.c), 120)         # a department measured as nearly static
 
     def test_pages_by_department_sums_split_nodes(self):
         sizing = {"1": {"total_pages": 100}, "2_1": {"total_pages": 30}, "2_2": {"total_pages": 20}}

@@ -55,10 +55,14 @@ def compact(row, categories=None) -> dict:
     return out
 
 
+def reviewable(rows) -> list:
+    """Rows a reviewer judges as priced items: barcode-only placeholders and withheld prices are not shown as such."""
+    return [r for r in rows if "placeholder" not in (r.get("flags") or []) and not r.get("price_withheld")]
+
+
 def write_sample(rows, run_id, n=300, path=None) -> list:
     """Pick n rows at random (deterministic for a run_id) and write them as compact JSON lines."""
-    # barcode-only placeholders and withheld prices are not shown as priced items, so they are not reviewed as such
-    rows = [r for r in rows if "placeholder" not in (r.get("flags") or []) and not r.get("price_withheld")]
+    rows = reviewable(rows)
     n = max(0, int(n))
     picked = rows if len(rows) <= n else random.Random(str(run_id)).sample(rows, n)
     picked.sort(key=lambda r: str(r.get("id")))

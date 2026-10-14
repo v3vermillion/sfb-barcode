@@ -44,7 +44,11 @@ Generate new pair → upload public key on walmart.io (key version increments) �
 Required repository secrets (Settings → Secrets and variables → Actions):
 - WM_PRIVATE_KEY — full PEM from the password manager
 - WM_CONSUMER_ID — Prod Consumer ID
-- ANTHROPIC_API_KEY — used only by the 600-row sample review (two calls of 300 rows) before a publish (console.anthropic.com → API keys).
+- ANTHROPIC_API_KEY — used only by the sample review before a publish (console.anthropic.com → API keys): up to 600 rows in
+  calls of 300, drawn (`sample_review.new_rows_only`) from the rows the last reviewed snapshot did not have, since a refresh
+  changes prices, not rows a reviewer already judged; fewer than `min_new_rows` (50) new rows means no review and no spend
+  (the gate says so). A snapshot approved by hand or published under the grace was not reviewed, so the next candidate is
+  judged in full. About $0.25 a review at 2026 Sonnet prices; a few dollars a year.
   Without it a finished snapshot holds and the `[review-key-invalid]` (the review API call was rejected: 401 invalid or revoked key, or 403 no permission -> replace the secret), `[review-credits]` (out of Anthropic credits -> add credits; auto-reload is off), `[review-key-missing]`, `[review-model]` (the review model is retired and no replacement could be listed -> set the `SFB_REVIEW_MODEL` variable) issue says so; `sample_review.required=false` in
   `data/gates.json` waives the review. Nothing holds forever: after `sample_review.unavailable_grace_days` (21) of the review
   being unable to run at all, a candidate that passes every deterministic gate publishes without it and the review issue stays
@@ -111,7 +115,9 @@ pipeline run measures the idle gaps between runs over the last 24 h and opens `[
 `plan=continue` from the Actions tab when a run ends with nothing chained.
 
 ### Store prices (Strongsville, store #2266)
-`data/store.json` names the store. After a publish, when no crawl, build, audit or identify is due, `decide()` runs the
+`data/store.json` names the store. A row the store does not carry (about 60% of consumable rows) is asked again after
+`not_carried_every_days` (90), not the tier's 28 or 56 days, so each pass is less than half the size and carried rows get
+their shelf price refreshed sooner. After a publish, when no crawl, build, audit or identify is due, `decide()` runs the
 `store` job: `crawler/storeprice.py refresh` asks Walmart for the store's own price and stock of every barcode row of the
 snapshot, 20 per call, consumable departments first and the oldest check first, within the crawl budget, and chains the
 next run while rows remain (`store_prices/2266.jsonl.gz`, `store_prices/latest.json`). The next build shows the store
@@ -200,7 +206,9 @@ Each department is re-crawled on its own interval, `state/cadence.json`, written
 measured (`audit/drift.json`: per department, the share of prices still within tolerance and the age of the rows). The
 planner (crawler/cadence.py) keeps every department's cycle-average accuracy at `refresh.target_close_rate` with the
 fewest calls that fit `refresh.crawl_share` of the daily Walmart quota; until a department has `prior_weight` row-days of
-evidence it is never crawled more often than the legacy cadence (consumable 7 days, durable 30). The run summary of
+evidence it is never crawled more often than the legacy cadence (consumable 7 days, durable 30); intervals run from
+`refresh.min_days` (5) to `refresh.max_days` (120, raised from 60 on 2026-10-14 so a department measured as static is
+crawled four times a year, not six). The run summary of
 every audit prints the plan; `[accuracy-budget]` opens when the target does not fit the quota. `plan=core` and
 `plan=full` from the Actions tab still crawl by hand. `volunteer_hours` in data/schedule.json (time zone, days, from, to,
 per_min) caps the pipeline's pace while volunteers may be using the app's live check, which shares the Walmart key:

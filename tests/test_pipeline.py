@@ -144,11 +144,12 @@ class T(unittest.TestCase):
         run2 = self.store.read_json(self.crawl.STATE)["run_id"]
         self.assertNotEqual(run1, run2)
         self.process.build()
-        self.assertEqual(self.qa.check(wm=wm2), "review")
+        # the first snapshot passed its review and this one has no new rows: nothing new to judge, no review call
+        self.assertEqual(self.qa.check(wm=wm2), "ready")
         self.assertFalse((self.qa.CAND / "review-verdict.json").exists(), "check removes the previous run's verdict")
-        self.assertEqual(self.qa.finalize(), "hold")
-        self._verdict(run2)
-        self.assertEqual(self.qa.finalize(), "ready")
+        g = self.store.read_json(self.qa.CAND / "gates.json")
+        self.assertIn("only 0 reviewable rows are new since the reviewed snapshot " + run1, g["gates"]["sample_review"]["detail"])
+        self.assertEqual((g["extras"]["review_pool"]["new"], g["extras"]["review_pool"]["since"]), (0, run1))
         self.assertTrue(self.qa.publish())
         man = self.store.read_json(self.qa.PUB / "manifest.json")
         self.assertEqual(man["version"], run2); self.assertEqual(man["history"]["kind"], "changes")

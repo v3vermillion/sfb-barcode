@@ -50,7 +50,8 @@ DEFAULTS = {
     "category_count_min_rows": 200,
     "sample_review": {"required": True, "max_junk_rate": 0.05, "hard_max_junk_rate": 0.10, "confidence": 0.95,
                       "sample_size": 600, "batch_size": 300,    # held on evidence, not a point estimate (review.decide)
-                      "unavailable_grace_days": 21},            # review unavailable this long: publish on the other gates
+                      "unavailable_grace_days": 21,             # review unavailable this long: publish on the other gates
+                      "new_rows_only": True, "min_new_rows": 50},  # review what the reviewed snapshot did not have
     "audit_sample": 500,
     "audit_per_department": 30,         # extra rows per department each audit, so each department's drift is measured
     "audit_match_min": 0.95,
@@ -431,6 +432,40 @@ def gate_review_pending(sr):
     return _gate(None, None, sr.get("max_junk_rate"), "pending: `python -m crawler.review run`, then `qa finalize`")
 
 
+def reviewed_snapshot(manifest):
+    """The published snapshot's version when its rows were judged by a passed sample review (or none was required),
+    else None: a snapshot approved by hand over a failed review, or published under the review grace, was not."""
+    if not isinstance(manifest, dict) or not manifest.get("version"):
+        return None
+    gates = manifest.get("gates") if isinstance(manifest.get("gates"), dict) else {}
+    sr = gates.get("sample_review") if isinstance(gates.get("sample_review"), dict) else {}
+    if gates.get("review_grace") or sr.get("pass") is not True:
+        return None
+    return manifest["version"]
+
+
+def review_pool(rows, prev, prev_manifest, sr):
+    """What the sample review judges: every reviewable row, or (sample_review.new_rows_only) only the rows the last
+    reviewed snapshot did not have, since a refresh changes prices, not the rows a reviewer already judged. Returns
+    (rows to sample from, info dict); info["skip"] says why no review is needed (fewer than min_new_rows new rows)."""
+    sr = sr or {}
+    eligible = review.reviewable(rows)
+    info = {"eligible": len(eligible), "new_rows_only": bool(sr.get("new_rows_only", DEFAULTS["sample_review"]["new_rows_only"]))}
+    since = reviewed_snapshot(prev_manifest) if prev else None
+    if not info["new_rows_only"] or not since:
+        info["since"] = None
+        info["reason"] = "the published snapshot was not judged by a passed review" if prev and info["new_rows_only"] else None
+        return eligible, info
+    new = [r for r in eligible if r.get("id") not in prev]
+    min_new = sr.get("min_new_rows", DEFAULTS["sample_review"]["min_new_rows"])
+    min_new = int(min_new) if isinstance(min_new, (int, float)) and not isinstance(min_new, bool) and min_new >= 0 else 0
+    info.update(since=since, new=len(new), min_new_rows=min_new)
+    if len(new) < min_new:
+        info["skip"] = (f"only {len(new)} reviewable rows are new since the reviewed snapshot {since} "
+                        f"(fewer than min_new_rows {min_new}): nothing new to judge")
+    return new, info
+
+
 REVIEW_FIXES = {
     "auth": "the Anthropic API rejected ANTHROPIC_API_KEY as invalid or revoked (HTTP 401) -> replace the repository secret",
     "permission": "the Anthropic API refused ANTHROPIC_API_KEY permission (HTTP 403) -> check the key's workspace and model access",
@@ -571,6 +606,9 @@ def check(wm=None):
     extras["drift"] = extras["drift"][:50]
     sr = cfg.get("sample_review")
     gates["sample_review"] = gate_review_pending(sr)
+    pool, extras["review_pool"] = review_pool(rows, prev, store.read_json(PUB / "manifest.json") or {}, sr)
+    if gates["sample_review"]["pass"] is None and extras["review_pool"].get("skip"):
+        gates["sample_review"] = _gate(True, None, (sr or {}).get("max_junk_rate"), extras["review_pool"]["skip"])
 
     passed = all(gates[n]["pass"] for n in DETERMINISTIC)
     if not passed:
@@ -582,7 +620,7 @@ def check(wm=None):
     # only a hold caused solely by an unavailable live check is transient (a retry may clear it)
     transient = transient and status == "hold" and all(gates[n]["pass"] for n in DETERMINISTIC if n != "live_match")
 
-    review.write_sample(rows, run_id, n=int((sr or {}).get("sample_size") or 300))
+    review.write_sample(pool, run_id, n=int((sr or {}).get("sample_size") or 300))
     g = {"run_id": run_id, "gates": gates, "passed_deterministic": passed, "status": status,
          "config_hash": config_hash(), "checked": _now(), "transient": transient, "thresholds": cfg, "extras": extras}
     store.write_json(CAND / "gates.json", g)

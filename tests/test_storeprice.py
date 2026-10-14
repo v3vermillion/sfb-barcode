@@ -272,7 +272,11 @@ class Refresh(unittest.TestCase):
             self.assertTrue(self.sp.due(latest, NOW_ + __import__("datetime").timedelta(days=28)))
             # 30 days on: Food is due again, Toys (56-day tier) is not; Food's price still shows (max_age 42), Toys's too
             later = NOW_ + __import__("datetime").timedelta(days=30)
-            self.assertEqual(self.sp.refresh(StoreWM(), 60, now=later)["due"], 46)
+            self.assertEqual(self.sp.refresh(StoreWM(), 60, now=later)["due"], 45, "id 13 is not carried: asked again after 90 days")
+            self.assertEqual(self.sp.due_ids([row(13)], self.sp.load("2266"), NOW_ + __import__("datetime").timedelta(days=89), cfg=dict(CFG)), [])
+            self.assertEqual(self.sp.due_ids([row(13)], self.sp.load("2266"), NOW_ + __import__("datetime").timedelta(days=90), cfg=dict(CFG)), [13])
+            self.assertEqual(self.sp.due_ids([row(13)], self.sp.load("2266"), NOW_ + __import__("datetime").timedelta(days=10),
+                                             cfg=dict(CFG, not_carried_every_days=10)), [13], "store.json sets it; never below the tier")
             rr = {r["id"]: r for r in [row(2, dept="Toys", price=2.0), row(6, price=2.0)]}
             self.assertEqual(self.sp.apply(rr, now=later), 2)
             self.assertEqual(self.sp.apply({2: row(2, dept="Toys", price=2.0)}, now=NOW_ + __import__("datetime").timedelta(days=71)), 0)

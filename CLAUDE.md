@@ -19,7 +19,7 @@ through the GitHub API and stops when nothing is due. Otherwise `crawler/ci.py` 
 sizing pass (once per 30 days) > crawl resume > build + gates + publish > weekly live audit > identify refresh >
 Strongsville store prices (tiers in data/store.json: consumable departments on 28/56-day cycles; only Walmart's own in-stock offer counts). Each department is re-crawled on its own interval from `state/cadence.json`
 (crawler/cadence.py: drift measured by the weekly audit per department, intervals planned under the Walmart quota, docs/DECISIONS.md 2026-10-14; floors 7 days consumable / 30 durable until measured). Cadence lives in
-`data/schedule.json` (also `volunteer_hours`: the pipeline's pace while volunteers may be using the live check); gate thresholds in `data/gates.json`; the 600-row sample review (two batches of 300, judged on evidence: docs/DECISIONS.md 2026-10-13) uses the `ANTHROPIC_API_KEY` secret.
+`data/schedule.json` (also `volunteer_hours`: the pipeline's pace while volunteers may be using the live check); gate thresholds in `data/gates.json`; the sample review (up to 600 rows in batches of 300, drawn from the rows the last reviewed snapshot did not have, judged on evidence: docs/DECISIONS.md 2026-10-13 and 2026-10-14) uses the `ANTHROPIC_API_KEY` secret.
 A snapshot publishes only when every gate passes; otherwise it holds and an issue is opened. A review that cannot run at all (key, credits, model) for `sample_review.unavailable_grace_days` (21) stops holding a candidate the deterministic gates pass; the issue stays open. GitHub's cron is unreliable, so the pipeline Worker's cron watchdog dispatches `continue` whenever the pipeline sits idle 40 minutes (needs its `GH_DISPATCH_TOKEN` secret).
 
 ## What the owner decides (everything else is automatic)
@@ -38,7 +38,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
 
 ## Commands (also runnable locally with WM_CONSUMER_ID / WM_PRIVATE_KEY set and SFB_STORE pointing at a data-store checkout)
 - `python -m crawler.ci --plan continue|core|full|approve|identify|audit|size|status|peek|finish|rollback|store`
-- `python -m unittest discover tests` (366 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
+- `python -m unittest discover tests` (367 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
 - `cd app && node --test tests/*.test.mjs`
 
 ## Layout

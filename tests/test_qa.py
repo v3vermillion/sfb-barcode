@@ -50,6 +50,56 @@ class Gates(StoreCase, unittest.TestCase):
         self.assertTrue(g["gates"]["sample_review"]["pass"]); self.assertIn("not required", g["gates"]["sample_review"]["detail"])
         self.assertTrue(self.qa.publish())
 
+    def test_review_judges_only_rows_new_since_the_reviewed_snapshot(self):
+        # the published snapshot passed its review: a candidate with the same rows plus 60 new ones reviews the 60
+        prev = self.rows[:]
+        self.write_published(prev, version="v-reviewed")
+        man = self.store.read_json(self.qa.PUB / "manifest.json")
+        man["gates"] = {"status": "ready", "sample_review": {"pass": True, "value": 0.01, "threshold": 0.05, "detail": "ok"}}
+        self.store.write_json(self.qa.PUB / "manifest.json", man)
+        new_rows = [row(9000 + i) for i in range(60)]
+        self.write_candidate(self.rows + new_rows)
+        self.assertEqual(self.qa.check(wm=FakeWM(self.rows + new_rows)), "review")
+        sample = [json.loads(l) for l in (self.qa.CAND / "review-sample.jsonl").read_text().splitlines()]
+        self.assertEqual(len(sample), 60); self.assertTrue(all(9000 <= s["id"] < 9060 for s in sample))
+        pool = self.gates()["extras"]["review_pool"]
+        self.assertEqual((pool["new"], pool["since"], pool["min_new_rows"]), (60, "v-reviewed", 50))
+        # fewer than min_new_rows new rows: no review, the gate passes and says why
+        self.write_candidate(self.rows + new_rows[:20])
+        self.assertEqual(self.qa.check(wm=FakeWM(self.rows + new_rows[:20])), "ready")
+        x = self.gates()["gates"]["sample_review"]
+        self.assertTrue(x["pass"]); self.assertIsNone(x["value"]); self.assertIn("only 20 reviewable rows are new", x["detail"])
+        self.assertIn("v-reviewed", x["detail"])
+        # a deterministic hold still holds; the review is not what decides
+        rows = [r for r in self.rows if r["id"] != 15544057] + new_rows[:20]
+        self.write_candidate(rows)
+        self.assertEqual(self.qa.check(wm=FakeWM(rows)), "hold")
+        # the published snapshot was approved over a failed review, or published under the grace: everything is judged
+        for gates in ({"status": "hold", "sample_review": {"pass": False, "value": 0.2, "threshold": 0.05, "detail": "junk"}},
+                      {"status": "ready", "sample_review": {"pass": True, "value": None, "threshold": 0.05, "detail": "grace"},
+                       "review_grace": {"since": "2026-09-01T00:00:00+00:00", "days": 22.0, "grace_days": 21, "kind": "credits"}},
+                      None):
+            man = self.store.read_json(self.qa.PUB / "manifest.json")
+            man.pop("gates", None)
+            if gates:
+                man["gates"] = gates
+            self.store.write_json(self.qa.PUB / "manifest.json", man)
+            self.write_candidate(self.rows + new_rows[:20])
+            self.assertEqual(self.qa.check(wm=FakeWM(self.rows + new_rows[:20])), "review", gates)
+            sample = (self.qa.CAND / "review-sample.jsonl").read_text().splitlines()
+            self.assertEqual(len(sample), len(self.rows) + 20)
+            self.assertIsNone(self.gates()["extras"]["review_pool"]["since"])
+        # new_rows_only false: everything is judged even after a passed review
+        man = self.store.read_json(self.qa.PUB / "manifest.json")
+        man["gates"] = {"status": "ready", "sample_review": {"pass": True, "value": 0.01, "threshold": 0.05, "detail": "ok"}}
+        self.store.write_json(self.qa.PUB / "manifest.json", man)
+        self.write_gates(sample_review={"new_rows_only": False})
+        self.write_candidate(self.rows + new_rows[:20])
+        self.assertEqual(self.qa.check(wm=FakeWM(self.rows + new_rows[:20])), "review")
+        self.assertEqual(len((self.qa.CAND / "review-sample.jsonl").read_text().splitlines()), len(self.rows) + 20)
+        self.assertEqual(self.qa.reviewed_snapshot({"version": "v", "gates": {"sample_review": {"pass": True}}}), "v")
+        self.assertIsNone(self.qa.reviewed_snapshot({"version": "v"})); self.assertIsNone(self.qa.reviewed_snapshot({}))
+
     def test_check_removes_stale_artifacts_from_a_previous_run(self):
         self.verdict(run_id="older-run")
         (self.qa.CAND / "report.md").write_text("old")
