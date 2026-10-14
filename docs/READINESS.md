@@ -1,4 +1,41 @@
-# Readiness audit — 2026-10-09
+# Readiness
+
+## Current state (2026-10-14)
+
+**Verdict: ready for a supervised pilot on the current address; ready for volunteers once the four items under
+"Before volunteers install it" are done.** The system runs itself end to end on real data and asks for a person only
+through `pipeline-alert` issues.
+
+### Verified
+- The first real snapshot is published (2.6 million listings, 2.4 million barcodes) and the app serves it.
+- Offline pack, scanner, tally, walkthrough and updates work in Chromium and WebKit automation; 367 pipeline and 72 app
+  tests pass on every change.
+- The first weekly audit found 93.9% of sampled prices within 5% of Walmart's and 90.9% exact or close against the 90% bar.
+- Every failure mode found so far is handled without a person: dropped GitHub schedules (Cloudflare watchdog, `[schedule-gap]`),
+  ids Walmart cannot serve (chunks split, retried later), outages (the pass pauses and resumes), a review that cannot run
+  (21-day grace, then the deterministic gates decide), a retired review model (replaced automatically).
+- Spend is bounded: Walmart calls are free; GitHub Actions and Cloudflare stay on free tiers; the only recurring cost is the
+  sample review at about $0.25 per candidate, and only when a candidate has new rows.
+
+### Before volunteers install it
+1. **The app's permanent address** (`value.strongsvillefoodbank.org`, pending the food bank's approval, else a domain of the
+   owner's). Volunteers must install from the final address only: offline data does not survive an address change.
+2. **One-time operator steps**: the Worker secret `GH_DISPATCH_TOKEN` for the schedule watchdog, and a small Anthropic credit
+   load for the sample review (RUNBOOK).
+3. **A test on real phones** from the final address: an older iPhone and an Android phone, installed to the Home Screen,
+   airplane mode, one shift of scanning.
+4. **Who receives alerts after the owner**: a named person on the repository's issue notifications and the one-page alert
+   sheet in the RUNBOOK.
+
+### Known limits
+- Store prices cover a minority of items: the Strongsville store does not carry most of Walmart.com's catalog, and the first
+  pass over the backlog takes several days. Until then Walmart.com's price is shown, labelled as such.
+- Apparel is out of scope by rule, though hats and gloves are donated; adding clothing is a scope decision for the owner.
+- Phones short of memory keep the consumable departments and the most likely durable ones; a dropped shard's barcodes still
+  answer through the live check when online.
+
+## Earlier audit (2026-10-09, historical)
+
 
 Verdict: **not ready for volunteers.** The app shell is solid (offline, scanner fallback, tally, updates all verified
 in a real browser; 288 Python + 53 app tests pass), but no real snapshot can publish yet, the live app still serves
@@ -9,7 +46,7 @@ How this was checked: full read of crawler/, app/, pipeline/ and workflows; a lo
 the 760k fixture driven in Chromium (install, search, every barcode kind, tally, offline, update, reset);
 read-only probes of the deployed Workers and Cloudflare account.
 
-## Progress (updated 2026-10-09)
+### Progress (updated 2026-10-09)
 
 | Step | Status |
 |---|---|
@@ -32,7 +69,7 @@ read-only probes of the deployed Workers and Cloudflare account.
 | 19–23 Phone reliability | Next, with the new pack format |
 | 24–27 Ops/handoff | 26 done (limiter 20/min, store id); 24 waits on the food bank's Cloudflare account; 25, 27 open |
 
-## What blocks the first publish today
+### What blocks the first publish today
 
 | # | Finding | Evidence |
 |---|---|---|
@@ -43,11 +80,11 @@ read-only probes of the deployed Workers and Cloudflare account.
 | B5 | The app pack cannot deploy at real size: `cols.bin.gz` 25.4 MiB and `tokens.bin.gz` 30.9 MiB exceed the 25 MiB file limit; whole pack 128.5 MB over the wire | `app/tools/build-db.mjs` |
 | B6 | The sample review needs a working `ANTHROPIC_API_KEY`; without it every candidate holds | `review.py`, `gates.json sample_review.required` |
 
-## Ordered plan
+### Ordered plan
 
 Each step lists the change, how it is proven, and its exit condition. Steps in the same phase can run in parallel.
 
-### Phase 1 — Unblock the crawl (day 1)
+#### Phase 1 — Unblock the crawl (day 1)
 
 1. **Drop Books and Auto & Tires from the crawl.** Move them to "not crawled" in `data/categories.json` and remove them
    from `state/run.json` on data-store (the running crawl iterates the frozen list, `crawl.py:78`). Append a DECISIONS entry.
@@ -64,7 +101,7 @@ Each step lists the change, how it is proven, and its exit condition. Steps in t
 6. Small crawler fixes: a 200 with a non-object body is retried, not a crash (`wm.py:150`, `crawl.py:89`); process departments
    in `state["departments"]` order, not set order (`process.py:34`), so the 104 cross-listed items stop changing department.
 
-### Phase 2 — Make a real build fit (days 1–3, while the crawl finishes)
+#### Phase 2 — Make a real build fit (days 1–3, while the crawl finishes)
 
 7. **Build memory under 4 GB.** `Valuer` only for categories that hold withheld rows (~2.3k rows); drop the duplicate `seen`
    set (`process.py:47`); intern `path`/`dept`; don't keep `variants` in memory; run `qa.check` in a fresh subprocess.
@@ -76,7 +113,7 @@ Each step lists the change, how it is proven, and its exit condition. Steps in t
 9. **Promo guard persists.** Carry the kept normal price forward while `prev` has `kept_normal_price` (`process.py:62`), and
    on the first publish fall back to the price-history median or withhold the promo row. Test: two consecutive clearance builds.
 
-### Phase 3 — Accuracy (days 2–6)
+#### Phase 3 — Accuracy (days 2–6)
 
 10. **Pack and count parsing.** Hand-checked failures: "Charmin 4ct" → 4 ct ×4, "12 Double Rolls", "52 Diapers", "4 Bars",
     "5 oz, 8 Cans" → ×1, "GV Diced Tomatoes 12 Count", "(6 pack) … 24 oz" → ×1. Add each as a gold test in
@@ -104,7 +141,7 @@ Each step lists the change, how it is proven, and its exit condition. Steps in t
 18. Small: duplicated brand on equivalents (`resolve.js:134`, use `titleOf`); About text says "Strongsville area" but prices
     are online, unpinned (`app.js:687`); implement the open UPC-E item in `gtin14()` (`normalize.py:106-119`).
 
-### Phase 4 — App reliability on real phones (days 3–7)
+#### Phase 4 — App reliability on real phones (days 3–7)
 
 19. **Failed first download.** Cancel the parallel queue on the first error, ignore late progress, retry with backoff,
     network wording instead of "couldn't be opened" (`db-client.js:166-183`, `app.js:181`).
@@ -116,7 +153,7 @@ Each step lists the change, how it is proven, and its exit condition. Steps in t
 23. **Tally record.** Per-donation sessions ("New donation" archives the last), CSV export with time, barcode, result kind
     and price; flag non-exact lines. Shape depends on the food bank's answer to "what happens to the price after lookup".
 
-### Phase 5 — Operations and handoff (in parallel; must finish before any install)
+#### Phase 5 — Operations and handoff (in parallel; must finish before any install)
 
 24. **Move to the food bank's Cloudflare account and `value.strongsvillefoodbank.org`** before a single volunteer installs:
     offline data does not follow an origin change. Today there is one personal account with no zone. Redeploy both Workers,
@@ -130,7 +167,7 @@ Each step lists the change, how it is proven, and its exit condition. Steps in t
     coordinator page (who to call, how to tell prices are stale); rotation runbook for every secret (the crawler and Worker
     share the Walmart key); owner and backup per account. Check Walmart affiliate terms on the public `data-store` branch.
 
-### Phase 6 — Acceptance: go/no-go with evidence
+#### Phase 6 — Acceptance: go/no-go with evidence
 
 28. First real publish with every gate passing (live match ≥ 97%, review passed, all 114 sentinels on the reduced scope).
 29. **Shelf spot-check** at Walmart Strongsville (#2266): 50 items from a real donation table; ≥ 90% within 10% of shelf.
@@ -140,7 +177,7 @@ Each step lists the change, how it is proven, and its exit condition. Steps in t
 32. Go when: gold search ≥ 95% top-3, spot-check ≥ 90% within 10%, no blank or crash in the pilot, alerts all closed, handoff
     docs reviewed by the coordinator.
 
-## Decisions needed from the food bank / owner
+### Decisions needed from the food bank / owner
 
 - Crawl scope: drop Books and Auto & Tires; curated child nodes for Home and Home Improvement (steps 1, 3).
 - Cloudflare account and domain (step 24); who owns each account and secret.
