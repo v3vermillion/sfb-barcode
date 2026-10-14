@@ -81,6 +81,12 @@ The first real snapshot is published and the app serves it. Remaining before vol
 address for the app, a test on real phones from that address, and the two one-time operator steps listed in
 [READINESS](docs/READINESS.md).
 
+## License
+
+[MIT](LICENSE). Use it for your own food bank; see "Another food bank" in [docs/READINESS.md](docs/READINESS.md) for
+what to change. Bundled third-party components keep their own licences (zxing-wasm Apache-2.0, Geist OFL); the Open
+Food Facts data is ODbL.
+
 ## Acknowledgements
 
 Prices from the [Walmart I/O Affiliate API](https://walmart.io/). Barcodes Walmart does not sell are identified through

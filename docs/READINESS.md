@@ -34,6 +34,23 @@ through `pipeline-alert` issues.
 - Phones short of memory keep the consumable departments and the most likely durable ones; a dropped shard's barcodes still
   answer through the live check when online.
 
+## Another food bank
+
+The snapshot is Walmart-wide; only the store prices and the branding are local. Three ways to reuse it, cheapest first:
+
+1. **Same app, shared.** A food bank that accepts the same Walmart store's prices can use the same address as it is.
+   No work.
+2. **Own branding and own store, own deployment.** Fork the repository and change: `data/store.json` (store id, name,
+   address), the name strings in `app/public/manifest.webmanifest`, `app/public/index.html` and `app/public/js/app.js`
+   (the eyebrow, the About text, the verse, the share header), the Worker names in `app/wrangler.toml` and
+   `pipeline/wrangler.toml`, `GH_REPO` and `STORE_ID` in `pipeline/wrangler.toml`, and `APP_URL`. Then the RUNBOOK's
+   setup: a Walmart I/O key of their own (applied for on walmart.io; approval can take days), a Cloudflare account, the
+   repository secrets, the Worker secrets. Hands-on time about half a day; calendar time about a week, since the first
+   full crawl takes several days before the gates can pass. The two deployments crawl Walmart twice.
+3. **One pipeline, several food banks.** Store prices per store and a store chosen per deployment of the app would let
+   one crawl serve any number of food banks; this is about two days of work in `crawler/storeprice.py` and the app's
+   manifest, not done.
+
 ## Earlier audit (2026-10-09, historical)
 
 
