@@ -61,9 +61,11 @@ Optional variables: WM_KEY_VERSION (default 1), SFB_REVIEW_MODEL (default claude
 manifest, `sizing.json`, `audit/latest.json` and the candidate `gates.json` through the GitHub API and ends the run when nothing
 is due (no data-branch checkout). Otherwise `crawler/ci.py` runs ONE Walmart job per run, in this order: sizing pass (one call per
 department, every 30 days) > crawl resume (300-minute budget, then chains `continue`) > build + gates + publish > weekly live
-audit > identify refresh. Only one run executes at a time (concurrency group `pipeline`); a crawl paused by Walmart 429s (after the
-45-minute back-off cap) chains the next run too, so the crawl never waits on the schedule, which stays as the backstop. Cadence: `data/schedule.json` (full_every_days 30, core_every_days 7, audit_every_days 7,
-identify_every_days 30, sizing_every_days 30, stale_days 14, budget_min 300).
+audit > identify refresh > store prices. Only one run executes at a time (concurrency group `pipeline`); a crawl paused by Walmart
+429s (after the 45-minute back-off cap) chains the next run too, so the crawl never waits on the schedule, which stays as the
+backstop. Cadence: `data/schedule.json` (per-department intervals from `state/cadence.json`, see "Refresh cadence"; floors
+full_every_days 30 and core_every_days 7; audit_every_days 7, identify_every_days 30, sizing_every_days 30, stale_days 14,
+budget_min 300).
 
 ### Acceptance gates (`data/gates.json`; a null threshold = measure only)
 departments_complete (every department done, kept > 0, pages within 30% of `sizing.json`), sentinels (every one of data/sentinels.json found and priced; 114 since Electronics and the Rain-X auto-care sentinel left on 2026-10-12),
@@ -74,11 +76,29 @@ otherwise hold + `[gates-hold]` issue with the report. `plan=approve` publishes 
 Editing `data/gates.json`, `data/sentinels.json` or `data/categories.json` makes the next run re-evaluate a held candidate.
 
 ### Alerts (GitHub issues, label `pipeline-alert`)
-One open issue per kind, updated in place, closed automatically when the condition clears: `[pipeline-failed]`, `[gates-hold]`,
-`[review-key-missing]`, `[review-model]`, `[schedule-gap]` (pipeline runs more than 3 h apart while idle: the watchdog token is missing or expired, see "Schedule"), `[audit-regression]`, `[audit-failed]` (the audit could not reach Walmart: a 401/403 means the WM_* secrets no longer match), `[data-store-size]` (the files on the data-store branch passed 1 GB; the issue carries the breakdown and the proposal to move raw pages to Cloudflare R2), `[snapshot-archive]` (a publish could not be kept as a GitHub Release; the publish itself stands and the next one retries), `[stale-prices]` (no publish for stale_days while idle), `[throttled]`
-(three consecutive runs ended on Walmart throttling), `[crawl-truncated]` (a department or child node ended far short of
-Walmart's page count or its id was refused; see "Crawl scope edits" below), `[deploy-failed]`, `[deploy-mismatch]`, `[tests-failed]`.
-Watch the repository (or just the issues) on the GitHub app for phone notifications.
+One open issue per kind, updated in place, closed automatically when the condition clears. Watch the repository (or just
+its issues) in the GitHub app for phone notifications.
+
+| Issue | Meaning | What to do |
+|---|---|---|
+| `[pipeline-failed]` | a run crashed | read the failing step in the run; the next successful run closes it |
+| `[gates-hold]` | the candidate snapshot is held; the report is in the issue | fix a rule or threshold, or run `plan=approve` |
+| `[review-key-missing]` | `ANTHROPIC_API_KEY` is not set | add the secret, or set `sample_review.required` false |
+| `[review-key-invalid]` | the key was rejected (401) or lacks permission (403) | replace the secret |
+| `[review-credits]` | the Anthropic account is out of credits | add credits (auto-reload is off) |
+| `[review-model]` | the review model is gone and no replacement could be listed | set the `SFB_REVIEW_MODEL` variable |
+| `[schedule-gap]` | pipeline runs more than 3 h apart while idle | add or renew the Worker's `GH_DISPATCH_TOKEN` ("Schedule") |
+| `[audit-regression]` | the weekly audit found the published prices drifting | nothing if a refresh is due; else lower the cadence cap |
+| `[audit-failed]` | the audit could not reach Walmart | a 401/403 means the `WM_*` secrets no longer match |
+| `[accuracy-budget]` | the refresh plan cannot hold the target within the quota | adjust `refresh.*` in data/schedule.json |
+| `[stale-prices]` | no publish for `stale_days` while idle | look at the latest runs and the other open issues |
+| `[throttled]` | three consecutive runs ended on Walmart rate limiting | nothing; the pace adapts; it closes when a run completes |
+| `[crawl-truncated]` | a department ended far short of Walmart's page count, or its id was refused | give it a `split` or fix the node id ("Crawl scope edits") |
+| `[data-store-size]` | the data-store branch passed 1 GB | decide where raw pages move (the issue carries the proposal) |
+| `[snapshot-archive]` | a publish could not be kept as a GitHub Release | nothing; the publish stands and the next one retries |
+| `[search-gold]` | the search gold set fell below 95% on a deploy | fix the ranking or a wrong expectation |
+| `[deploy-failed]`, `[deploy-mismatch]` | the app deploy failed or the live build does not match | check the Cloudflare deployment and re-run deploy-app |
+| `[tests-failed]` | the test suite failed on main | fix the test or the code |
 
 ### Pacing (`state.pace`, data-store `throttle/`)
 Every request and every 429 sleep is logged to `throttle/<run>.events.jsonl`; at the end of each crawl invocation

@@ -2,9 +2,8 @@
 
 Scan or type a donated item, see its exact Walmart price. Works with no network after the first open,
 on the phone already in the volunteer's hand. Lives in `app/`; deployed to Cloudflare Workers static assets
-by `.github/workflows/deploy-app.yml`; the price data comes from the pipeline's published snapshot
-(`data-store` branch) or, until the first snapshot is published, a full-size synthetic fixture that the app
-labels "sample data".
+by `.github/workflows/deploy-app.yml`; the price data is the pipeline's published snapshot (`data-store` branch).
+A full-size synthetic fixture stands in for it in tests and local builds; the app labels it "sample data".
 
 ```
 app/
@@ -24,7 +23,7 @@ app/
   tools/
     make_fixture.py  760k-row synthetic snapshot in the crawler's row format (through crawler/normalize.py); its
                      version is a hash of the inputs, so unchanged inputs never make phones re-download
-    build-db.mjs     snapshot (items.jsonl.gz + equivalents) → sfb-pack v1 under dist/db/<version>/
+    build-db.mjs     snapshot (items.jsonl.gz + equivalents) → sfb-pack v3 under dist/db/<version>/ (one shard per department)
     build-site.mjs   public/ → dist/, stamps sw.js + config meta, writes _headers
     serve.mjs        local static server that mirrors production headers
     measure.mjs      the performance numbers below (Playwright, 4× CPU throttle, fake camera); --browser webkit for iPhone's engine

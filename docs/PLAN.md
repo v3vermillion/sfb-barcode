@@ -1,33 +1,40 @@
-# Plan
+# Plan and origin
+
+The original plan (October 2026) with each step's outcome. Current decisions are in DECISIONS.md; current operations in
+RUNBOOK.md.
 
 ## Problem
-Volunteers receiving donations estimate item values roughly. Paid barcode apps (~$100/mo) were too expensive. Donations can be anything except clothing.
+Volunteers receiving donations valued items from memory. Paid barcode apps cost about $100 a month, which a food bank
+cannot justify. Donations can be almost anything, mostly food, drinks and household goods.
 
 ## Solution
-Fully offline PWA: local item DB in IndexedDB + fuzzy search bar. Volunteer types brand/flavor/size and gets the price. Nothing is written back.
+A fully offline progressive web app with a barcode scanner and a search bar: the price database lives on the phone,
+nothing is written back, and a live check covers unknown barcodes when there is signal.
 
 ## Phases
-1. Auth: Walmart I/O Taxonomy test call succeeds from the pipeline Worker. DONE
-2. Map 23 categories to Walmart taxonomy IDs (data/categories.json).
-3. Pull Product Catalog per taxonomy ID (paginated) → data/items/<category>.jsonl. QA each category before merging.
-4. Normalize: parse size/unit/pack from product names; fail loudly on unexpected API fields.
-5. Build the PWA; ship DB as versioned compressed pack files, updated in the background. DONE (app/, see app/README.md)
-6. Pilot: one real donation batch + 50-item spot-check vs. a physical Walmart shelf.
-7. Quarterly refresh via Worker cron trigger.
-8. Phase 2: other-store brands (Aldi, Giant Eagle, Meijer).
+| Phase | Outcome |
+|---|---|
+| 1 Walmart I/O access from a Cloudflare Worker | Done |
+| 2 Map the scope to Walmart departments (`data/categories.json`) | Done: 15 departments, categories decided by rules in `crawler/classify.py` |
+| 3 Crawl the product catalog | Done: resumable crawler on GitHub Actions, working data on the `data-store` branch |
+| 4 Normalise sizes, packs and prices | Done: `crawler/normalize.py`, measured by unit tests and a hand-labelled gold set |
+| 5 The app, shipped as versioned compressed packs | Done: `app/`, see `app/README.md` |
+| 6 Pilot with a real donation batch and a shelf spot-check | Pending: see READINESS.md |
+| 7 Refresh on a schedule | Done, measured instead of fixed: each department is re-crawled on the interval its own price drift justifies |
+| 8 Other stores' brands (Aldi, Giant Eagle, Meijer) | Done through Open Food, Beauty and Products Facts: an equivalent value with a confidence level |
 
-## App requirements
-- Offline-first PWA, installed to home screen (iOS evicts storage for uninstalled sites after 7 days).
-- Barcode scanner (camera, offline): GTIN lookup incl. UPC-E/EAN-13 normalization and retired UPCs.
-- Store-printed price barcodes (prefix 2) decoded directly; PLU produce codes with weight/count entry.
-- Non-Walmart barcodes → equivalent value from identify/equivalents (labeled, basis item shown).
-- Typed search tolerant of abbreviations (GV, pb, oz/ounce, pk/ct); results show brand, variant, size, pack, price.
-- Fallback: same type + size per-unit price, flagged. Never blank or unpriced.
-- Live Walmart check for scanned items when online (Worker route, to be added).
-- Show price source and date. DB shipped as versioned compressed file; updates when the manifest changes.
-- About screen: Open Food Facts attribution (ODbL).
+## App requirements (all met)
+- Offline-first, installed to the Home Screen (iOS evicts storage for uninstalled sites after a week).
+- Barcode scanner that works offline: GTIN lookup with UPC-E and EAN-13 normalisation and retired barcodes.
+- Store-printed price labels decoded directly; produce codes with weight or count entry.
+- Non-Walmart barcodes valued at a labelled equivalent with the basis item shown.
+- Typed search tolerant of abbreviations (GV, pb, oz, pk, ct); results show brand, variant, size, pack and price.
+- Never blank: the same product type at the same size, per unit, flagged, as a last resort.
+- Live Walmart check for scanned items when online.
+- The price source and date on every result; the database as versioned packs updated in the background.
+- Open Food Facts attribution (ODbL) under About.
 
-## Open questions (food bank)
-- What happens to the price after lookup (running tally? receipt?)
-- Shared tablet vs. personal phones
-- Named owner to approve pricing policy
+## Questions the food bank answered
+- After a lookup the item goes on a running tally on the phone, shared as text; nothing is stored centrally.
+- Volunteers use their own phones, installed from the food bank's own address.
+- The repository owner runs the service and approves pricing policy; the food bank's manager hands the app to volunteers.
