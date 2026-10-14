@@ -51,6 +51,7 @@ DEFAULTS = {
     "sample_review": {"required": True, "max_junk_rate": 0.05, "hard_max_junk_rate": 0.10, "confidence": 0.95,
                       "sample_size": 600, "batch_size": 300},   # held on evidence, not a point estimate (review.decide)
     "audit_sample": 500,
+    "audit_per_department": 30,         # extra rows per department each audit, so each department's drift is measured
     "audit_match_min": 0.95,
 }
 LIVE_CHUNK = 20
@@ -215,7 +216,7 @@ def live_check(wm, sample, tolerance=0.05):
     res = {"sample": len(by_id), "checked": 0, "exact": 0, "within_5pct": 0, "close": 0, "missing": 0, "calls": 0,
            "tolerance": tolerance, "by_tier": {"consumable": {"found": 0, "exact": 0, "close": 0, "missing": 0},
                                               "durable": {"found": 0, "exact": 0, "close": 0, "missing": 0}},
-           "examples": [], "error": None}
+           "examples": [], "error": None, "by_row": {}}
     consumable = _consumable_departments()
     for chunk, store_id in chunks:
         try:
@@ -230,7 +231,7 @@ def live_check(wm, sample, tolerance=0.05):
             res["checked"] += 1
             tier = res["by_tier"]["consumable" if r.get("dept") in consumable else "durable"]
             if it is None or not isinstance(it.get("salePrice"), (int, float)):
-                res["missing"] += 1; tier["missing"] += 1
+                res["missing"] += 1; tier["missing"] += 1; res["by_row"][iid] = "missing"
                 res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"], "live": None})
                 continue
             tier["found"] += 1
@@ -238,12 +239,14 @@ def live_check(wm, sample, tolerance=0.05):
             rel = diff / float(r["price"]) if r["price"] else 9e9
             if diff < 0.005:
                 res["exact"] += 1; res["within_5pct"] += 1; res["close"] += 1
-                tier["exact"] += 1; tier["close"] += 1
+                tier["exact"] += 1; tier["close"] += 1; res["by_row"][iid] = "exact"
             else:
                 if rel <= 0.05:
                     res["within_5pct"] += 1
                 if rel <= tolerance:
-                    res["close"] += 1; tier["close"] += 1
+                    res["close"] += 1; tier["close"] += 1; res["by_row"][iid] = "close"
+                else:
+                    res["by_row"][iid] = "far"
                 res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"],
                                         "live": float(it["salePrice"])})
     n = res["checked"]
@@ -597,11 +600,24 @@ def publish(approve=False):
     shutil.copytree(CAND, PUB)
     failed = [n for n, x in g["gates"].items() if x.get("pass") is False]
     now = _now()
-    # full_published: when every department was last refreshed (a core publish carries the rest over from the
-    # previous snapshot), so ci.decide() can start the monthly full crawl even while weekly core publishes continue
-    full_published = now if str(run_id).endswith("-full") else (prev_manifest.get("full_published")
-                                                                or prev_manifest.get("published"))
-    manifest = {"version": run_id, "published": now, "full_published": full_published,
+    # departments: when each one was last crawled (this run's finished departments, the rest carried over from the
+    # previous manifest); ci.decide() refreshes a department once that date is older than its cadence interval
+    st = store.read_json(STATE) or {}
+    crawled = {}
+    if st.get("run_id") in (None, run_id):
+        for d in st.get("departments") or []:
+            if d.get("status") == "done" and d.get("name"):
+                crawled[d["name"]] = {"crawled": d.get("done_at") or st.get("crawled") or now, "run_id": run_id}
+    departments = {**{k: v for k, v in (prev_manifest.get("departments") or {}).items() if isinstance(v, dict)}, **crawled}
+    try:
+        every = {d["name"] for d in store.config().get("departments") or []}
+    except (OSError, ValueError, KeyError, TypeError):
+        every = set()
+    # full_published: when every department was last refreshed (a partial publish carries the rest over from the
+    # previous snapshot), so the legacy monthly full crawl keys off it; a run that covered every department counts
+    full_published = now if str(run_id).endswith("-full") or (every and every <= set(crawled)) else (
+        prev_manifest.get("full_published") or prev_manifest.get("published"))
+    manifest = {"version": run_id, "published": now, "full_published": full_published, "departments": departments,
                 "items": stats["items"], "upcs": stats["upcs"],
                 "gates_passed": g["status"] == "ready", "approved_manually": bool(approve), "file": "items.jsonl.gz",
                 "gates": {"status": g["status"], "passed_deterministic": g.get("passed_deterministic"), "failed": failed,

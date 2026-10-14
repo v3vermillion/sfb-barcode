@@ -173,6 +173,22 @@ the whole key). On the first deploy after this change Cloudflare creates them au
 in the dashboard. `namespace_id` only has to be unique within the account. `/health` reports whether both are bound;
 without them the public route answers 503 instead of spending the Walmart key without a cap.
 
+### Refresh cadence (since 2026-10-14)
+
+Each department is re-crawled on its own interval, `state/cadence.json`, written by the weekly audit from the drift it
+measured (`audit/drift.json`: per department, the share of prices still within tolerance and the age of the rows). The
+planner (crawler/cadence.py) keeps every department's cycle-average accuracy at `refresh.target_close_rate` with the
+fewest calls that fit `refresh.crawl_share` of the daily Walmart quota; until a department has `prior_weight` row-days of
+evidence it is never crawled more often than the legacy cadence (consumable 7 days, durable 30). The run summary of
+every audit prints the plan; `[accuracy-budget]` opens when the target does not fit the quota. `plan=core` and
+`plan=full` from the Actions tab still crawl by hand. `volunteer_hours` in data/schedule.json (time zone, days, from, to,
+per_min) caps the pipeline's pace while volunteers may be using the app's live check, which shares the Walmart key:
+set the food bank's real hours there.
+
+Store prices (data/store.json `tiers`): only the listed departments are priced, on their tier's cycle, and only Walmart's
+own in-stock offer counts; `store_prices/latest.json` `by_dept` shows how often the store price differed from
+Walmart.com's in the last pass.
+
 ### Rollback (last three published snapshots)
 Every publish uploads `build/published/*` (shards as they are) to a GitHub Release tagged `snapshot-<version>` (not marked
 latest) and deletes all but the newest three (`crawler/releases.py`). To put an earlier one back from a phone: Actions →

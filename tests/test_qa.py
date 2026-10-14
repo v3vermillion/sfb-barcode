@@ -469,6 +469,22 @@ class Publish(StoreCase, unittest.TestCase):
         self.assertEqual(man2["published"], "2026-10-08T07:30:00+00:00")
         self.assertEqual(man2["full_published"], man1["full_published"], "a core publish keeps the last full date")
 
+    def test_manifest_records_when_each_department_was_crawled(self):
+        st = make_state(run_id=RUN_ID)
+        st["departments"][0]["done_at"] = "2026-10-07T11:00:00+00:00"
+        self.write_candidate(self.rows, state=st)
+        self.qa.check(wm=FakeWM(self.rows)); self.verdict(); self.qa.finalize(); self.assertTrue(self.qa.publish())
+        man = self.store.read_json(self.qa.PUB / "manifest.json")
+        self.assertEqual(man["departments"]["Food"], {"crawled": "2026-10-07T11:00:00+00:00", "run_id": RUN_ID})
+        self.assertEqual(man["departments"]["Pets"]["crawled"], man["published"], "no stamp: the publish time")
+        # a later run that crawled only Pets keeps Food's date
+        st2 = make_state(run_id="run-2"); st2["departments"] = [dict(st2["departments"][1], done_at="2026-10-14T09:00:00+00:00")]
+        self.write_candidate(self.rows, state=st2, stats=make_stats(self.rows, run_id="run-2"))
+        self.qa.check(wm=FakeWM(self.rows)); self.verdict(run_id="run-2"); self.qa.finalize(); self.assertTrue(self.qa.publish())
+        man2 = self.store.read_json(self.qa.PUB / "manifest.json")
+        self.assertEqual(man2["departments"]["Food"]["crawled"], "2026-10-07T11:00:00+00:00")
+        self.assertEqual(man2["departments"]["Pets"], {"crawled": "2026-10-14T09:00:00+00:00", "run_id": "run-2"})
+
     def test_publish_refuses_gates_from_another_run(self):
         self.qa.check(wm=FakeWM(self.rows)); self.verdict(); self.assertEqual(self.qa.finalize(), "ready")
         self.write_candidate(self.rows, state=make_state(run_id="run-2"), stats=make_stats(self.rows, run_id="run-2"))

@@ -35,9 +35,15 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def start(plan: str):
+def start(plan: str, departments=None):
+    """Begin a run: "full" = every department, "core" = the `core` ones, "refresh" = the named departments
+    (ci.decide() names those whose last crawl is older than their cadence interval)."""
     cfg = store.config()
-    depts = [d for d in cfg["departments"] if plan == "full" or d.get("core")]
+    if plan == "refresh":
+        wanted = set(departments or [])
+        depts = [d for d in cfg["departments"] if d["name"] in wanted] or list(cfg["departments"])
+    else:
+        depts = [d for d in cfg["departments"] if plan == "full" or d.get("core")]
     state = store.read_json(STATE)
     if state and state.get("status") == "crawling":
         print(f"run {state['run_id']} still in progress; use `run` to continue it")
@@ -100,6 +106,7 @@ def run(budget_min: float, wm: Walmart = None):
             if outcome not in ("done", "truncated", "failed"):
                 break
             t["status"] = outcome; t["next"] = None
+            _stamp(d)
             label = f"{d['name']} / {t['name']}" if unit is not None else d["name"]
             tp = t.get("total_pages")
             print(f"[{now()}] {label}: {outcome}, {t['pages']} pages of {tp if tp is not None else '?'}, {t['items']} items")
@@ -151,10 +158,17 @@ def _raw_dir(state, d, unit=None):
     return base / unit["id"] if unit is not None else base
 
 
+def _stamp(d):
+    """When a department's crawl is done, remember when: the manifest carries it, the audit measures drift against it."""
+    if d.get("status") == "done" and not d.get("done_at"):
+        d["done_at"] = now()
+
+
 def _rollup(d):
     """A split department's counters are the sums of its units; it is done when every unit is."""
     units = d.get("units")
     if not units:
+        _stamp(d)
         return
     d["pages"] = sum(u["pages"] for u in units)
     d["items"] = sum(u["items"] for u in units)
@@ -164,7 +178,7 @@ def _rollup(d):
     d["next"] = None
     st = {u["status"] for u in units}
     if st <= {"done"}:
-        d["status"] = "done"
+        d["status"] = "done"; _stamp(d)
     elif st <= {"done", "truncated", "failed"}:
         d["status"] = "failed" if "failed" in st else "truncated"
     elif st == {"pending"}:

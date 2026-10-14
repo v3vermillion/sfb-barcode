@@ -64,6 +64,21 @@ class Crawl(unittest.TestCase):
     def raw(self, *parts):
         return self.tmp.joinpath("raw", self.state()["run_id"], *parts)
 
+    def test_a_refresh_run_crawls_the_named_departments_and_stamps_when_each_finished(self):
+        self.crawl.start("refresh", departments=["Food", "Toys"])
+        st = self.state()
+        self.assertEqual([d["name"] for d in st["departments"]], ["Food", "Toys"]); self.assertTrue(st["run_id"].endswith("-refresh"))
+        self.assertEqual(self.crawl.run(5, wm=Script()), "done")
+        st = self.state()
+        self.assertEqual(st["status"], "crawled")
+        for d in st["departments"]:
+            self.assertEqual(d["status"], "done"); self.assertTrue(d.get("done_at"), d["name"])
+        # an unknown list falls back to every department; a split department is stamped once its nodes are done
+        self.crawl.start("refresh", departments=["Nothing"])
+        self.assertEqual(len(self.state()["departments"]), 3)
+        self.assertEqual(self.crawl.run(5, wm=Script()), "done")
+        self.assertTrue(self.dept("Home").get("done_at"))
+
     # ------------------------------------------------------------------ split departments
     def test_a_split_department_is_crawled_node_by_node(self):
         self.crawl.start("full")

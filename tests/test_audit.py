@@ -70,10 +70,11 @@ class Run(StoreCase, unittest.TestCase):
 
     def test_sample_size_and_daily_seed(self):
         self.write_published(self.rows)
+        self.write_gates(audit_per_department=0)
         wm = FakeWM(self.rows)
         self.audit.run(wm=wm, n=40)
         self.assertEqual(sum(len(c) for c in wm.requested), 40)
-        self.write_gates(audit_sample=25)
+        self.write_gates(audit_sample=25, audit_per_department=0)
         wm = FakeWM(self.rows)
         self.audit.run(wm=wm)
         self.assertEqual(sum(len(c) for c in wm.requested), 25)
@@ -128,8 +129,38 @@ class Run(StoreCase, unittest.TestCase):
         self.assertEqual(res["sample"], 181, "the gate skips carried-over rows, the audit does not")
         self.assertTrue({"2000", "2001"} <= {i for c in wm.requested for i in c})
 
+    def test_each_department_is_measured_and_the_ledger_and_plan_are_written(self):
+        self.write_published(self.rows)
+        man = self.store.read_json(self.qa.PUB / "manifest.json")
+        man["departments"] = {"Food": {"crawled": (NOW - timedelta(days=10)).isoformat()}}   # Pets: the publish date
+        self.store.write_json(self.qa.PUB / "manifest.json", man)
+        self.write_gates(audit_sample=20, audit_per_department=10)
+        changed = {r["id"]: r["price"] * 2 for r in self.rows if r["dept"] == "Food"}        # every Food price moved
+        wm = FakeWM(self.rows, prices=changed, missing=[2000])
+        with mock.patch.object(self.audit, "_now", return_value=NOW):
+            res = self.audit.run(wm=wm)
+        self.assertEqual(sum(len(c) for c in wm.requested), 40, "20 random rows plus 10 per department")
+        self.assertEqual(res["stratified_rows"], 20); self.assertEqual((res["calls"], res["stratified_calls"]), (2, 1), "20 rows per call")
+        bd = res["by_dept"]
+        self.assertEqual(set(bd), {"Food", "Pets"})
+        self.assertEqual(bd["Food"]["close"], 0); self.assertGreaterEqual(bd["Food"]["found"], 10)
+        self.assertEqual(bd["Food"]["age_days"], 10.0); self.assertEqual(bd["Food"]["rows"], 121)
+        self.assertEqual(bd["Pets"]["close"], bd["Pets"]["found"]); self.assertGreater(bd["Pets"]["age_days"], 40)
+        self.assertEqual(bd["Pets"]["missing"] + sum(1 for c in wm.requested for i in c if i == "2000"), bd["Pets"]["missing"] * 2 if bd["Pets"]["missing"] else 0)
+        ledger = self.store.read_json(self.store.ROOT / "audit" / "drift.json")
+        self.assertEqual([p["dept"] for p in ledger["points"]], ["Food", "Pets"])
+        self.assertEqual(ledger["points"][0]["close"], 0); self.assertEqual(ledger["points"][0]["age_days"], 10.0)
+        plan = self.store.read_json(self.store.ROOT / "state" / "cadence.json")
+        self.assertEqual(plan, res["cadence"]); self.assertIn("Food", plan["departments"])
+        self.assertGreater(plan["departments"]["Food"]["drift_per_day"], plan["departments"]["Pets"]["drift_per_day"])
+        # a second audit a week later: more evidence, the same ledger grows
+        with mock.patch.object(self.audit, "_now", return_value=NOW + timedelta(days=7)):
+            self.audit.run(wm=FakeWM(self.rows, prices=changed))
+        self.assertEqual(len(self.store.read_json(self.store.ROOT / "audit" / "drift.json")["points"]), 4)
+
     def test_cli(self):
         self.write_published(self.rows)
+        self.write_gates(audit_per_department=0)
         fake = FakeWM(self.rows)
         with mock.patch.object(self.audit.qa, "walmart_client", return_value=fake):
             self.audit.main(["--sample", "30"])

@@ -110,13 +110,17 @@ class Refresh(unittest.TestCase):
     def test_refresh_prices_every_barcode_row_consumables_first_and_records_what_is_gone(self):
         wm = StoreWM()
         res = self.sp.refresh(wm, 60, now=NOW_)
-        self.assertEqual((res["due"], res["checked"], res["gone"], res["remaining"], res["calls"]), (50, 50, 1, 0, 3))
+        # the four Toys rows are outside the store-price scope (consumable departments without tiers): 46 due
+        self.assertEqual((res["due"], res["checked"], res["gone"], res["remaining"], res["calls"]), (46, 46, 1, 0, 3))
         first = [int(x) for x in wm.paths[0].split("ids=")[1].split("&")[0].split(",")]
         self.assertTrue(all(i >= 5 for i in first), "Food (consumable) rows go first")
         recs = self.sp.load("2266")
-        self.assertEqual(set(recs), set(range(1, 51)))
-        self.assertEqual(recs[2], {"id": 2, "p": 1.5, "s": "Available", "t": "2026-10-12"})
+        self.assertEqual(set(recs), set(range(5, 51)))
+        self.assertEqual(recs[6], {"id": 6, "p": 1.5, "s": "Available", "t": "2026-10-12", "d": "Food", "v": 2})
         self.assertTrue(recs[13]["g"])
+        bd = res["by_dept"]["Food"]
+        self.assertEqual((bd["checked"], bd["priced"], bd["gone"], bd["compared"]), (46, 45, 1, 45))
+        self.assertEqual(bd["same"] + bd["higher"] + bd["lower"], 45); self.assertEqual(bd["lower"], 23, "even ids: 1.50 against 2.00")
         latest = self.store.read_json(self.tmp / "store_prices" / "latest.json")
         self.assertEqual((latest["due"], latest["next_due"]), (0, "2026-10-19"))
         self.assertFalse(self.sp.due(latest, NOW_))
@@ -129,11 +133,11 @@ class Refresh(unittest.TestCase):
     def test_a_chunk_walmart_refuses_is_split_so_the_rest_is_still_priced(self):
         wm = RefusingStoreWM()
         res = self.sp.refresh(wm, 60, now=NOW_)
-        self.assertEqual((res["due"], res["checked"], res["gone"], res["remaining"]), (50, 50, 2, 0))
+        self.assertEqual((res["due"], res["checked"], res["gone"], res["remaining"]), (46, 46, 2, 0))
         recs = self.sp.load("2266")
         self.assertTrue(recs[7]["g"]); self.assertTrue(recs[13]["g"])
         self.assertEqual(recs[8]["p"], 1.5, "an id in the refused chunk is still priced")
-        self.assertEqual(sum(1 for r in recs.values() if r.get("p") is not None), 48)
+        self.assertEqual(sum(1 for r in recs.values() if r.get("p") is not None), 44)
         self.assertLess(res["calls"], 3 + 2 * 5, "halving, not one call per id")
         with self.assertRaises(RuntimeError):
             class Broken(StoreWM):
@@ -145,28 +149,73 @@ class Refresh(unittest.TestCase):
         with self.assertRaises(Throttled):
             self.sp.refresh(StoreWM(throttle_after=1), 60, now=NOW_)
         self.assertEqual(len(self.sp.load("2266")), 20)
-        self.assertEqual(self.store.read_json(self.tmp / "store_prices" / "latest.json")["due"], 30)
+        self.assertEqual(self.store.read_json(self.tmp / "store_prices" / "latest.json")["due"], 26)
 
     def test_apply_shows_fresh_store_prices_and_reverts_stale_ones(self):
         self.sp.refresh(StoreWM(), 60, now=NOW_)
-        rows = {r["id"]: r for r in [row(2, price=2.5), row(3, price=2.0), row(13), row(60),
-                                     row(4, price=3.0, flags=["promo_price", "kept_normal_price"], promo=2.0)]}
+        rows = {r["id"]: r for r in [row(6, price=2.5), row(7, price=2.0), row(13), row(60),
+                                     row(8, price=3.0, flags=["promo_price", "kept_normal_price"], promo=2.0)]}
         n = self.sp.apply(rows, now=NOW_)
         self.assertEqual(n, 3)
-        r2 = rows[2]
+        r2 = rows[6]
         self.assertEqual((r2["price"], r2["online_price"], r2["store_checked"], r2["store_stock"]), (1.5, 2.5, "2026-10-12", "Available"))
         self.assertIn("store_price", r2["flags"]); self.assertAlmostEqual(r2["unit_price"], 0.25 * 1.5 / 2.5)
-        self.assertEqual(rows[3]["price"], 2.0)                                # same price, still labelled the store's
+        self.assertEqual(rows[7]["price"], 2.0)                                # same price, still labelled the store's
         self.assertNotIn("store_price", rows[13]["flags"]); self.assertNotIn("store_price", rows[60]["flags"])
-        self.assertEqual(rows[4]["price"], 1.5); self.assertNotIn("promo", rows[4])
-        self.assertEqual([f for f in rows[4]["flags"] if f != "store_price"], [])
+        self.assertEqual(rows[8]["price"], 1.5); self.assertNotIn("promo", rows[8])
+        self.assertEqual([f for f in rows[8]["flags"] if f != "store_price"], [])
         # applied again (a carried-over row) it starts from Walmart.com's price, not the store's
         self.sp.apply(rows, now=NOW_)
-        self.assertEqual((rows[2]["price"], rows[2]["online_price"]), (1.5, 2.5))
+        self.assertEqual((rows[6]["price"], rows[6]["online_price"]), (1.5, 2.5))
         # 22 days later the store price is too old: Walmart.com's price again, no store label
         self.assertEqual(self.sp.apply(rows, now=NOW_ + __import__("datetime").timedelta(days=22)), 0)
-        self.assertEqual(rows[2]["price"], 2.5); self.assertNotIn("online_price", rows[2])
-        self.assertNotIn("store_price", rows[2]["flags"]); self.assertAlmostEqual(rows[2]["unit_price"], 0.25)
+        self.assertEqual(rows[6]["price"], 2.5); self.assertNotIn("online_price", rows[6])
+        self.assertNotIn("store_price", rows[6]["flags"]); self.assertAlmostEqual(rows[6]["unit_price"], 0.25)
+
+    def test_marketplace_offers_and_out_of_stock_shelf_prices_are_never_shown(self):
+        """Walmart answers a storeId lookup with the buy box: a marketplace seller's price when the store does not
+        carry the item (a 15 oz soup at $10, 2026-10-13). Only Walmart's own, in-stock offer is a shelf price."""
+        class MixedWM(StoreWM):
+            def get(self, path):
+                page = super().get(path)
+                for it in page["items"]:
+                    if it["itemId"] == 6: it.update(marketplace=True, sellerInfo="Some Seller", salePrice=10.0)
+                    if it["itemId"] == 8: it.update(sellerInfo="Other Shop LLC", salePrice=9.5)
+                    if it["itemId"] == 10: it["stock"] = "Not available"
+                return page
+        res = self.sp.refresh(MixedWM(), 60, now=NOW_)
+        recs = self.sp.load("2266")
+        self.assertTrue(recs[6]["g"]); self.assertTrue(recs[8]["g"]); self.assertEqual(recs[10]["p"], 1.5)
+        self.assertEqual(res["by_dept"]["Food"]["not_walmart"], 2); self.assertEqual(res["by_dept"]["Food"]["out_of_stock"], 1)
+        rows = {r["id"]: r for r in [row(6), row(8), row(10), row(12)]}
+        self.assertEqual(self.sp.apply(rows, now=NOW_), 1, "only the in-stock Walmart offer (id 12) is shown")
+        self.assertNotIn("store_price", rows[6]["flags"]); self.assertNotIn("store_price", rows[10]["flags"]); self.assertIn("store_price", rows[12]["flags"])
+        # version-1 records (taken before this rule) are dropped on load and refetched
+        self.store.write_jsonl_gz(self.sp.path("2266"), [{"id": 6, "p": 10.0, "s": "Available", "t": "2026-10-12"}, dict(recs[12])])
+        self.assertEqual(set(self.sp.load("2266")), {12})
+
+    def test_tiers_set_the_scope_the_order_and_the_cadence(self):
+        cfg = dict(CFG, tiers=[{"departments": ["Food"], "refresh_every_days": 28, "max_age_days": 42},
+                               {"departments": ["Toys"], "refresh_every_days": 56, "max_age_days": 70}])
+        with mock.patch.object(self.sp, "config", lambda: cfg):
+            rows = [row(i, dept="Toys" if i < 5 else "Food") for i in range(1, 51)] + [row(200, dept="Home")]
+            self.store.write_jsonl_gz(self.tmp / "build" / "published" / "items.jsonl.gz", rows)
+            wm = StoreWM()
+            res = self.sp.refresh(wm, 60, now=NOW_)
+            self.assertEqual(res["due"], 50, "Home is outside every tier")
+            first = [int(x) for x in wm.paths[0].split("ids=")[1].split("&")[0].split(",")]
+            self.assertTrue(all(i >= 5 for i in first), "the first tier goes first")
+            latest = self.store.read_json(self.tmp / "store_prices" / "latest.json")
+            self.assertEqual(latest["next_due"], "2026-11-09", "the Food tier is due again after 28 days")
+            self.assertEqual([s["refresh_every_days"] for s in latest["scope"]], [28, 56])
+            self.assertFalse(self.sp.due(latest, NOW_ + __import__("datetime").timedelta(days=27)))
+            self.assertTrue(self.sp.due(latest, NOW_ + __import__("datetime").timedelta(days=28)))
+            # 30 days on: Food is due again, Toys (56-day tier) is not; Food's price still shows (max_age 42), Toys's too
+            later = NOW_ + __import__("datetime").timedelta(days=30)
+            self.assertEqual(self.sp.refresh(StoreWM(), 60, now=later)["due"], 46)
+            rr = {r["id"]: r for r in [row(2, dept="Toys", price=2.0), row(6, price=2.0)]}
+            self.assertEqual(self.sp.apply(rr, now=later), 2)
+            self.assertEqual(self.sp.apply({2: row(2, dept="Toys", price=2.0)}, now=NOW_ + __import__("datetime").timedelta(days=71)), 0)
 
     def test_without_a_store_nothing_is_due_or_applied(self):
         with mock.patch.object(self.sp, "config", lambda: None):
