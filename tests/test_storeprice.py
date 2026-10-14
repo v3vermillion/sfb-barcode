@@ -74,9 +74,9 @@ class StoreWM:
     def __init__(self, throttle_after=None):
         self.paths = []; self.throttle_after = throttle_after
 
-    def get(self, path):
+    def get(self, path, server_retries=None):
         from crawler.wm import Throttled
-        self.paths.append(path)
+        self.paths.append(path); self.retries = getattr(self, "retries", []) + [server_retries]
         if self.throttle_after is not None and len(self.paths) > self.throttle_after:
             raise Throttled("429")
         assert "storeId=2266" in path, path
@@ -87,12 +87,33 @@ class StoreWM:
 class RefusingStoreWM(StoreWM):
     """Walmart answers HTTP 400 "Results not found" to any chunk that contains id 7 (seen on 2026-10-13, run 55)."""
 
-    def get(self, path):
+    def get(self, path, server_retries=None):
         ids = [int(x) for x in path.split("ids=")[1].split("&")[0].split(",")]
         if 7 in ids:
             self.paths.append(path)
             raise RuntimeError('HTTP 400 for /items?ids=...&storeId=2266: {"errors":[{"code":6001,"message":"Results not found"}]}')
-        return super().get(path)
+        return super().get(path, server_retries)
+
+
+def _http_error(status):
+    import requests
+    r = requests.Response(); r.status_code = status
+    return requests.HTTPError(f"{status} Server Error", response=r)
+
+
+class BrokenIdStoreWM(StoreWM):
+    """Walmart answers HTTP 502 on every attempt to any chunk that contains one of `bad` (seen on 2026-10-14,
+    runs 58-61: the same 20 ids failed three runs in a row, so it is the ids, not an outage)."""
+
+    def __init__(self, bad=(9,), **kw):
+        super().__init__(**kw); self.bad = set(bad)
+
+    def get(self, path, server_retries=None):
+        ids = [int(x) for x in path.split("ids=")[1].split("&")[0].split(",")]
+        if self.bad & set(ids):
+            self.paths.append(path); self.retries = getattr(self, "retries", []) + [server_retries]
+            raise _http_error(502)
+        return super().get(path, server_retries)
 
 
 class Refresh(unittest.TestCase):
@@ -143,6 +164,45 @@ class Refresh(unittest.TestCase):
             class Broken(StoreWM):
                 def get(self, path): raise RuntimeError("HTTP 401 for /items: bad key")
             self.sp.refresh(Broken(), 60, now=NOW_ + __import__("datetime").timedelta(days=8))
+
+    def test_a_chunk_walmart_cannot_serve_is_split_and_the_broken_id_is_asked_again_in_a_week(self):
+        wm = BrokenIdStoreWM(bad=(9,))
+        res = self.sp.refresh(wm, 60, now=NOW_)
+        self.assertEqual((res["due"], res["checked"], res["gone"], res["errors"], res["remaining"], res["status"]),
+                         (46, 46, 1, 1, 0, "done"))
+        recs = self.sp.load("2266")
+        self.assertEqual(recs[9], {"id": 9, "p": None, "s": None, "t": "2026-10-12", "d": "Food", "v": 2, "g": True, "e": 502})
+        self.assertEqual(recs[8]["p"], 1.5, "an id in the failing chunk is still priced")
+        self.assertEqual(sum(1 for r in recs.values() if r.get("p") is not None), 44)
+        self.assertEqual(res["by_dept"]["Food"]["error"], 1)
+        failing = [r for p, r in zip(wm.paths, wm.retries) if "9" in p.split("ids=")[1].split("&")[0].split(",")]
+        self.assertIsNone(failing[0], "the chunk itself gets the client's full retries")
+        self.assertTrue(all(r == self.sp.SPLIT_RETRIES for r in failing[1:]), "its halves get one retry each")
+        self.assertLess(len(wm.paths), 3 + 2 * 5, "halving, not one call per id")
+        # the broken id is not shown as a store price and is not first in line next run: it is due again in a week
+        rows = {9: row(9, price=2.0)}
+        self.sp.apply(rows, now=NOW_); self.assertNotIn("store_price", rows[9]["flags"])
+        day = __import__("datetime").timedelta(days=1)
+        self.assertEqual(self.sp.due_ids([row(9)], recs, NOW_ + 6 * day, cfg=dict(CFG)), [])
+        self.assertEqual(self.sp.due_ids([row(9)], recs, NOW_ + 7 * day, cfg=dict(CFG)), [9])
+        self.assertEqual(self.sp.due_ids([row(8)], recs, NOW_ + 7 * day, cfg=dict(CFG)), [8], "7-day cfg: a priced row too")
+
+    def test_an_outage_stops_the_pass_after_two_dead_chunks_and_keeps_what_it_got(self):
+        # due order is by id as text: chunks are 10-29, 30-49, then 5-9 and 50; the last two fail entirely
+        wm = BrokenIdStoreWM(bad=set(range(30, 51)) | {5, 6, 7, 8, 9})
+        with self.assertRaises(self.sp.Unavailable) as cm:
+            self.sp.refresh(wm, 60, now=NOW_)
+        self.assertIn("2 chunks in a row", str(cm.exception)); self.assertIn("HTTP 502", str(cm.exception))
+        recs = self.sp.load("2266")
+        self.assertEqual(sum(1 for r in recs.values() if r.get("p") is not None), 19, "the first chunk is priced and saved")
+        self.assertEqual(sum(1 for r in recs.values() if r.get("e") == 502), 26, "two dead chunks, then it stops")
+        latest = self.store.read_json(self.tmp / "store_prices" / "latest.json")
+        self.assertEqual((latest["due"], latest["by_dept"]["Food"]["error"]), (0, 26))
+        # a pass over three chunks where only the middle one is dead carries on: one dead chunk is not an outage
+        self.store.write_jsonl_gz(self.tmp / "store_prices" / "2266.jsonl.gz", [])
+        wm = BrokenIdStoreWM(bad=set(range(30, 50)))
+        res = self.sp.refresh(wm, 60, now=NOW_)
+        self.assertEqual((res["status"], res["errors"], res["priced"]), ("done", 20, 25))
 
     def test_a_throttled_refresh_keeps_what_it_got(self):
         from crawler.wm import Throttled

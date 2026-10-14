@@ -150,6 +150,26 @@ class NonJson(unittest.TestCase):
         self.assertTrue(any("HTTP 502" in m for m in logs), logs)
         self.assertEqual(c._ok_streak, 1, "only the parsed success counts towards pace recovery")
 
+    def test_server_retries_bounds_the_5xx_and_network_retries(self):
+        sleeps = []
+        p = mock.patch("crawler.wm.time.sleep", side_effect=sleeps.append); p.start(); self.addCleanup(p.stop)
+        c, _ = _client([502] * 10)
+        with self.assertRaises(RuntimeError):
+            c.get("/x", server_retries=1)
+        self.assertEqual(c.calls, 2, "one retry, then the error")
+        c, _ = _client([502] * 10)
+        with self.assertRaises(RuntimeError):
+            c.get("/x", server_retries=0)
+        self.assertEqual(c.calls, 1)
+        c, _ = _client([requests.ConnectionError("reset")] * 10)
+        with self.assertRaises(requests.ConnectionError):
+            c.get("/x", server_retries=2)
+        self.assertEqual(c.calls, 3)
+        c, _ = _client([502] * 10)
+        with self.assertRaises(RuntimeError):
+            c.get("/x")
+        self.assertEqual(c.calls, 1 + wm.SERVER_RETRIES, "the default is unchanged")
+
     def test_a_200_that_never_parses_gives_up_after_the_server_error_retries(self):
         p = mock.patch("crawler.wm.time.sleep"); p.start(); self.addCleanup(p.stop)
         c, _ = _client([])

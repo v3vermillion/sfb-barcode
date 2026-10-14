@@ -5,7 +5,8 @@
 
 The store is data/store.json. `refresh` asks Walmart for the store's price and stock of the snapshot's barcode
 rows, 20 per call, consumable departments first and the oldest check first, and keeps them in
-store_prices/<store_id>.jsonl.gz (one record per Walmart item id: p price, s stock, t date checked, g gone).
+store_prices/<store_id>.jsonl.gz (one record per Walmart item id: p price, s stock, t date checked, g gone,
+  e the HTTP status when Walmart could not answer for the id).
 store_prices/latest.json says how many rows are still due; ci.decide() runs `store` while any are.
 process.build() then shows the store price of every row checked within max_age_days (apply()).
 
@@ -24,11 +25,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+import requests
+
+from .wm import SERVER_RETRIES
+
 from . import store
 
 CONFIG = Path(__file__).resolve().parent.parent / "data" / "store.json"
 DIR = store.ROOT / "store_prices"
 CHUNK = 20                    # /items takes up to 20 ids per call
+SPLIT_RETRIES = 1             # 5xx retries per call while a failing chunk is split (the chunk itself had the full retries)
+ERROR_RETRY_DAYS = 7          # an id Walmart answers with a server error is asked again after this many days
+DEAD_CHUNKS = 2               # consecutive chunks with every id failing on a server error: Walmart is down, stop the pass
 SAVE_EVERY_S = 15 * 60
 RECORD_VERSION = 2            # v1 records (2026-10-13) kept marketplace offers as store prices; they are refetched
 
@@ -230,7 +238,7 @@ def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=No
         rank, every = tier
         rec = recs.get(r["id"])
         age = _age_days(rec["t"], now) if rec else None
-        if age is not None and age < every:
+        if age is not None and age < (min(every, ERROR_RETRY_DAYS) if rec.get("e") else every):
             continue
         due.append((rank, rec is not None, -(age or 0), str(r["id"]), r["id"]))
         if meta is not None:
@@ -242,13 +250,26 @@ def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=No
 NOT_FOUND = ("HTTP 400 ", "HTTP 404 ")
 
 
-def _fetch(wm, ids, sid, calls):
+class Unavailable(Exception):
+    """Walmart answered every id of DEAD_CHUNKS chunks in a row with a server error: an outage, not bad ids."""
+
+
+def _status(e):
+    """The HTTP status behind a requests error, or "network" when the request never got an answer."""
+    r = getattr(e, "response", None)
+    return int(r.status_code) if r is not None and getattr(r, "status_code", None) else "network"
+
+
+def _fetch(wm, ids, sid, calls, errors=None, retries=None):
     """The store's listings for ids: {itemId: item}. Walmart answers a chunk whose ids it cannot all serve at the store
-    with HTTP 400 "Results not found" (2026-10-13, run 55) instead of an empty page: the chunk is split in halves down
-    to single ids, so the ids it does serve are still priced and only the rest are recorded as gone. Returns the
-    items found; calls[0] counts the requests made."""
+    with HTTP 400 "Results not found" (2026-10-13, run 55) instead of an empty page, and a chunk holding certain ids
+    with HTTP 502 on every attempt (2026-10-14, runs 58-61: the same 20 ids three times): either way the chunk is split
+    in halves down to single ids, so the ids it does serve are still priced. A single id refused with 400 is gone; one
+    that still fails on a server error (after SPLIT_RETRIES retries per call) is put in `errors` as (id, status) so the
+    caller can record it and ask again later. Returns the items found; calls[0] counts the requests made."""
+    path = f"/items?ids={','.join(str(x) for x in ids)}&storeId={quote(sid)}"
     try:
-        page = wm.get(f"/items?ids={','.join(str(x) for x in ids)}&storeId={quote(sid)}")
+        page = wm.get(path) if retries is None else wm.get(path, server_retries=retries)
         calls[0] += 1
     except RuntimeError as e:
         if not str(e).startswith(NOT_FOUND):
@@ -257,7 +278,16 @@ def _fetch(wm, ids, sid, calls):
         if len(ids) == 1:
             return {}
         mid = len(ids) // 2
-        return {**_fetch(wm, ids[:mid], sid, calls), **_fetch(wm, ids[mid:], sid, calls)}
+        return {**_fetch(wm, ids[:mid], sid, calls, errors, retries), **_fetch(wm, ids[mid:], sid, calls, errors, retries)}
+    except requests.RequestException as e:
+        calls[0] += 1 + (SERVER_RETRIES if retries is None else retries)
+        if len(ids) == 1:
+            if errors is not None:
+                errors.append((ids[0], _status(e)))
+            return {}
+        mid = len(ids) // 2
+        return {**_fetch(wm, ids[:mid], sid, calls, errors, SPLIT_RETRIES),
+                **_fetch(wm, ids[mid:], sid, calls, errors, SPLIT_RETRIES)}
     return {it.get("itemId"): it for it in _items(page)}
 
 
@@ -278,21 +308,32 @@ def refresh(wm, budget_min, now=None, cfg=None):
     done = calls = got = gone = 0
     by_dept = {}
     outcome = "done"
+    dead = failed = 0
     try:
         for i in range(0, len(ids), CHUNK):
             if time.time() > deadline:
                 outcome = "budget"; break
             chunk = ids[i:i + CHUNK]
-            n_calls = [0]
-            items = _fetch(wm, chunk, sid, n_calls)
+            n_calls, errors = [0], []
+            items = _fetch(wm, chunk, sid, n_calls, errors)
             calls += n_calls[0]
+            errored = {iid: status for iid, status in errors}
+            dead = dead + 1 if len(chunk) > 1 and len(errored) == len(chunk) else 0
             day = _day(now)
             for iid in chunk:
                 it = items.get(iid) or items.get(str(iid))
                 dept, online = meta.get(iid, (None, None))
                 st = by_dept.setdefault(dept or "?", {"checked": 0, "priced": 0, "gone": 0, "not_walmart": 0, "out_of_stock": 0,
-                                                       "compared": 0, "same": 0, "within_5pct": 0, "higher": 0, "lower": 0})
+                                                       "compared": 0, "same": 0, "within_5pct": 0, "higher": 0, "lower": 0,
+                                                       "error": 0})
                 st["checked"] += 1
+                if iid in errored:
+                    # Walmart could not answer for this id (a server error on every attempt): no price, asked again
+                    # after ERROR_RETRY_DAYS rather than first thing next run
+                    recs[iid] = {"id": iid, "p": None, "s": None, "t": day, "d": dept, "v": RECORD_VERSION, "g": True,
+                                 "e": errored[iid]}
+                    failed += 1; st["error"] += 1
+                    continue
                 if it is None or not walmart_sold(it):
                     # no listing, or a marketplace seller's buy box: the store has no shelf price for it
                     recs[iid] = {"id": iid, "p": None, "s": None, "t": day, "d": dept, "v": RECORD_VERSION, "g": True}
@@ -314,6 +355,12 @@ def refresh(wm, budget_min, now=None, cfg=None):
                             st["within_5pct"] += 1
                         st["higher" if p > online else "lower"] += 1
             done += len(chunk)
+            if dead >= DEAD_CHUNKS:
+                outcome = "unavailable"
+                last = errored[chunk[-1]]
+                raise Unavailable(f"Walmart answered every id of {dead} chunks in a row with a server error "
+                                  f"(last: {'HTTP %d' % last if isinstance(last, int) else 'network error'}); "
+                                  f"{len(ids) - done} rows left for a later run")
             if time.time() - last_save > SAVE_EVERY_S:
                 save(sid, recs); _marker(sid, len(ids) - done, now, recs, cfg, by_dept)
                 store.checkpoint(f"store prices {sid}: {done}/{len(ids)}")
@@ -326,7 +373,7 @@ def refresh(wm, budget_min, now=None, cfg=None):
         latest = _marker(sid, len(ids) - done, now, recs, cfg, by_dept)
         store.checkpoint(f"store prices {sid}: {done}/{len(ids)} ({outcome})")
     return {"status": outcome, "store_id": sid, "due": len(ids), "checked": done, "priced": got, "gone": gone,
-            "calls": calls, "remaining": latest["due"], "by_dept": by_dept}
+            "errors": failed, "calls": calls, "remaining": latest["due"], "by_dept": by_dept}
 
 
 def _marker(sid, remaining, now, recs, cfg, by_dept=None):

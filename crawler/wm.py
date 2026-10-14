@@ -30,6 +30,7 @@ RECOVER_STEP = 0.10     # fraction of min_interval removed at each easing
 WINDOW_S = 60.0         # length of the sliding window max_per_min applies to
 CAP_CUT_PCT = 85        # a 429 under a cap lowers it to this percentage for the rest of the run ...
 CAP_FLOOR = 6           # ... never below this (throttle.MIN_PER_MIN); recovery raises it back towards the start cap
+SERVER_RETRIES = 5      # retries of a 5xx or network error before get() gives up (5 s doubling: about 2.5 min in all)
 
 
 class Throttled(Exception):
@@ -106,9 +107,13 @@ class Walmart:
     def _record(self, status):
         self.events.append((round(self._last, 3), status))
 
-    def get(self, path_or_url: str) -> dict:
+    def get(self, path_or_url: str, server_retries=None) -> dict:
+        """One request with pacing and retries. server_retries: how many times a 5xx or network error is retried before
+        the error propagates (default SERVER_RETRIES); a caller that already knows the answer is a persistent server
+        error for these ids (storeprice._fetch splitting a chunk) passes fewer."""
         backoff = 5.0
         server_errors = 0
+        retries = SERVER_RETRIES if server_retries is None else max(0, int(server_retries))
         while True:
             wait = self.min_interval - (time.time() - self._last)
             if wait > 0:
@@ -125,7 +130,7 @@ class Walmart:
                 self._record(0)
                 self._ok_streak = 0
                 server_errors += 1
-                if server_errors > 5:
+                if server_errors > retries:
                     raise
                 self.log(f"network error ({e}); retry in {backoff:.0f}s")
                 time.sleep(backoff)
@@ -160,7 +165,7 @@ class Walmart:
                 continue
             if r.status_code >= 500:
                 server_errors += 1
-                if server_errors > 5:
+                if server_errors > retries:
                     r.raise_for_status()
                 self.log(f"HTTP {r.status_code}; retry in {backoff:.0f}s")
                 time.sleep(backoff)

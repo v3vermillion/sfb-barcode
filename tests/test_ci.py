@@ -942,6 +942,30 @@ class LiveState(PlanBase):
         self.run_plan("--plan", "continue", "--budget-min", "5")
         self.assertEqual(self.run_plan("--plan", "peek")[0]["work"], "build")
 
+class StoreJob(PlanBase):
+    def test_a_walmart_outage_pauses_store_prices_without_failing_the_run_or_chaining(self):
+        sp = ci.storeprice
+        def refresh(wm, budget_min, now=None, cfg=None):
+            raise sp.Unavailable("Walmart answered every id of 2 chunks in a row with a server error (last: HTTP 502); 40 rows left")
+        ci._outputs.pop("next", None)
+        with mock.patch.object(sp, "refresh", refresh):
+            self.assertEqual(ci._store(60, wm=self.wm), "unavailable")
+        self.assertNotIn("next", ci._outputs, "the schedule retries later; no chained run")
+        text = (self.tmp / "summary.md").read_text()
+        self.assertIn("Store prices paused", text); self.assertIn("HTTP 502", text)
+
+    def test_a_pass_with_server_errors_reports_them_and_chains_while_rows_remain(self):
+        sp = ci.storeprice
+        res = {"status": "budget", "store_id": "2266", "due": 100, "checked": 60, "priced": 50, "gone": 7, "errors": 3,
+               "calls": 20, "remaining": 40, "by_dept": {}}
+        ci._outputs.pop("next", None)
+        with mock.patch.object(sp, "refresh", lambda wm, b, now=None, cfg=None: res):
+            self.assertEqual(ci._store(60, wm=self.wm), "budget")
+        self.assertEqual(ci._outputs.get("next"), "continue")
+        text = (self.tmp / "summary.md").read_text()
+        self.assertIn("3 server errors (retried in 7 days)", text); self.assertIn("40 still due", text)
+
+
 class OtherPlans(PlanBase):
     def test_full_plan_on_a_finished_unbuilt_crawl_builds_it_and_chains_the_full_crawl(self):
         self.write("state/run.json", state("crawled", run_id="run-7"))

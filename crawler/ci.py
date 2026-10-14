@@ -942,8 +942,13 @@ def _store(budget_min, wm=None):
         summary(f"Store prices paused by Walmart rate limiting ({e}); chaining the next run.")
         set_out("next", "continue")
         return "throttled"
+    except storeprice.Unavailable as e:
+        # an outage on Walmart's side: what was priced is saved; the 30-minute schedule picks the rest up later
+        summary(f"Store prices paused: {e}. The rows checked so far are saved; the schedule retries later.")
+        return "unavailable"
+    errs = f", {res['errors']} server errors (retried in {storeprice.ERROR_RETRY_DAYS} days)" if res.get("errors") else ""
     summary(f"- store prices ({res.get('store_id')}): {res.get('checked', 0)} of {res.get('due', 0)} due rows checked, "
-            f"{res.get('priced', 0)} priced, {res.get('gone', 0)} no longer listed, {res.get('calls', 0)} calls; "
+            f"{res.get('priced', 0)} priced, {res.get('gone', 0)} no longer listed{errs}, {res.get('calls', 0)} calls; "
             f"{res.get('remaining', 0)} still due")
     if res.get("remaining"):
         set_out("next", "continue")
