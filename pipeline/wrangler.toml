@@ -4,6 +4,17 @@ compatibility_date = "2026-10-01"
 
 [vars]
 WM_KEY_VERSION = "1"
+# Schedule watchdog (scheduled handler in src/index.js): GitHub delays and drops the pipeline's 30-minute schedule for
+# hours at a time, so every 20 minutes this Worker starts a `continue` run itself when no pipeline run is in progress
+# and none started in the last WATCHDOG_GAP_MIN minutes. It needs the secret GH_DISPATCH_TOKEN (a fine-grained GitHub
+# token for GH_REPO with Actions: read and write); without it the cron does nothing and the pipeline opens a
+# [schedule-gap] issue when runs arrive hours apart. Move GH_REPO with the repository.
+GH_REPO = "v3vermillion/sfb-valuation"
+GH_BRANCH = "main"
+WATCHDOG_GAP_MIN = "40"
+
+[triggers]
+crons = ["*/20 * * * *"]
 # Strongsville Supercenter (8585 Pearl Rd): live prices are this store's shelf prices, like the app's (data/store.json)
 STORE_ID = "2266"
 

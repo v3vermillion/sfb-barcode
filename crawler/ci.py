@@ -37,6 +37,10 @@ Alert keys (one GitHub issue per key, label pipeline-alert, see .github/actions/
   review-credits      the sample review's API call failed because the Anthropic account is out of credits
   review-key-missing  the sample review was skipped because ANTHROPIC_API_KEY is not set, so the
                       snapshot is held
+  review-model        the review model is retired or not on the key (404) and no replacement could be listed
+                      (the review itself first tries the newest current model: review.fallback_model)
+  schedule-gap        pipeline runs arrived more than SCHEDULE_GAP_HOURS apart while idle: GitHub is dropping the
+                      30-minute schedule and the Cloudflare watchdog (pipeline Worker cron) is not dispatching
   audit-regression    the weekly live audit found the published prices drifting (audit.run alert flag)
   accuracy-budget     the per-department refresh plan cannot hold the target within the Walmart quota (cadence.plan fits=false)
   data-store-size     the files on the data-store branch passed 1 GB (store.STORE_ALERT_BYTES)
@@ -46,7 +50,8 @@ Alert keys (one GitHub issue per key, label pipeline-alert, see .github/actions/
   throttled           three or more consecutive crawl runs ended rate limited (state.throttled_runs)
   deploy-failed / deploy-mismatch   raised by deploy-app.yml
   tests-failed        raised by tests.yml on main
-Resolution: published -> gates-hold, review-key-missing, review-key-invalid, review-credits, stale-prices; crawl progress -> throttled;
+Resolution: published -> gates-hold, review-key-missing, review-key-invalid, review-credits, review-model, stale-prices (a publish
+under the review grace keeps the review-* issues open); crawl progress -> throttled; runs close together -> schedule-gap;
 audit ok -> audit-regression, audit-failed; a successful run -> pipeline-failed (done by the workflow).
 
 Local use: WM_CONSUMER_ID / WM_PRIVATE_KEY set and SFB_STORE pointing at a data-store checkout.
@@ -72,7 +77,10 @@ SIZING_ERROR_RETRY_DAYS = 1
 # a hold that qa marked transient (live check or review could not run) is re-checked this often, not every 30 min
 TRANSIENT_RETRY_HOURS = 6
 AUDIT_ERRORS_ALERT = 3          # consecutive failed audit attempts (one per TRANSIENT_RETRY_HOURS) before audit-failed
-PUBLISH_RESOLVES = ("gates-hold", "review-key-missing", "review-key-invalid", "review-credits", "stale-prices")
+PUBLISH_RESOLVES = ("gates-hold", "review-key-missing", "review-key-invalid", "review-credits", "review-model", "stale-prices")
+REVIEW_ALERTS = ("review-key-missing", "review-key-invalid", "review-credits", "review-model")
+SCHEDULE_GAP_HOURS = 3          # an idle gap between pipeline runs longer than this (within SCHEDULE_GAP_WINDOW_H) is a
+SCHEDULE_GAP_WINDOW_H = 24      # dropped schedule: the watchdog (pipeline Worker cron, RUNBOOK) should keep it under an hour
 
 # store paths (functions, so a reloaded store.ROOT is honoured)
 _state_path = lambda: store.ROOT / "state" / "run.json"
@@ -682,12 +690,17 @@ def _publish(state, approve=False):
         return False
     store.checkpoint(f"{state.get('run_id')} published" + (" (approved manually)" if approve else ""))
     compact_store()
-    resolve(*PUBLISH_RESOLVES)
+    man = store.read_json(_manifest_path()) or {}
+    grace = (man.get("gates") or {}).get("review_grace") if isinstance(man.get("gates"), dict) else None
+    resolve(*(k for k in PUBLISH_RESOLVES if not (grace and k in REVIEW_ALERTS)))
     _archive_published()
     set_out("next", "continue")
-    man = store.read_json(_manifest_path()) or {}
+    note = ""
+    if grace:
+        note = (f" Published under the review grace: the sample review has been unavailable since {str(grace.get('since'))[:10]} "
+                f"({grace.get('days')} days; {grace.get('kind')}), so the deterministic gates alone decided; the review issue stays open.")
     summary(f"**Published {man.get('version', state.get('run_id'))}**: {man.get('items', '?')} items. "
-            "deploy-app follows; the next run refreshes identification data if due.")
+            "deploy-app follows; the next run refreshes identification data if due." + note)
     return True
 
 
@@ -750,9 +763,15 @@ def _hold(state):
     report = _read_text(_report_path(), "(no report written)")
     verdict, _ = _load(_verdict_path())
     kind = verdict.get("error_kind") if isinstance(verdict, dict) and verdict.get("status") == "error" else None
-    if kind in ("auth", "permission", "credits"):
-        key = "review-credits" if kind == "credits" else "review-key-invalid"
-        if kind == "credits":
+    grace = _grace_note()
+    if kind in ("auth", "permission", "credits", "model"):
+        key = {"credits": "review-credits", "model": "review-model"}.get(kind, "review-key-invalid")
+        if kind == "model":
+            title = f"sample review: model unavailable, snapshot {run_id} held"
+            fix = ("**Set the review model**: the Anthropic API answered HTTP 404 for the review model and no replacement "
+                   "could be listed on this key. Set the repository variable `SFB_REVIEW_MODEL` to a current model id "
+                   "(Settings > Secrets and variables > Actions > Variables), or check the key's model access.")
+        elif kind == "credits":
             title = f"sample review: Anthropic credits exhausted, snapshot {run_id} held"
             fix = ("**Add credits** to the Anthropic account that owns `ANTHROPIC_API_KEY` (Anthropic Console > Billing; "
                    "auto-reload is off, so it does not top up by itself). The key itself is fine.")
@@ -767,14 +786,14 @@ def _hold(state):
         body = (fix + f"\n\nAPI response: `{str(verdict.get('reason') or '')[:300]}`\n\n"
                 "The held candidate is re-checked every few hours; once fixed, the next re-check runs the review and "
                 "publishes if it passes (this issue then closes). To publish without the review, run the workflow with "
-                "plan=approve.\n\n## Report\n\n" + report)
+                f"plan=approve.{grace}\n\n## Report\n\n" + report)
     elif isinstance(verdict, dict) and verdict.get("status") == "skipped":
         key = "review-key-missing"
         title = f"sample review skipped, snapshot {run_id} held"
         body = (f"The sample review did not run: {verdict.get('reason', 'ANTHROPIC_API_KEY missing')}.\n\n"
                 "Add the repository secret `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions); the next "
                 "`continue` re-checks the candidate and publishes when the review passes. To publish without the review, "
-                "run the workflow with plan=approve.\n\n## Report\n\n" + report)
+                f"run the workflow with plan=approve.{grace}\n\n## Report\n\n" + report)
     else:
         key = "gates-hold"
         title = f"snapshot {run_id} held by the gates"
@@ -784,6 +803,17 @@ def _hold(state):
                 "## Report\n\n" + report)
     alert(key, title, body)
     summary(f"**Held.** {title}. The previous snapshot stays live.")
+
+
+def _grace_note():
+    """One sentence for the review alerts: what happens when nobody fixes the review."""
+    sr = (qa.gates_config() or {}).get("sample_review") or {}
+    days = sr.get("unavailable_grace_days", qa.DEFAULTS["sample_review"]["unavailable_grace_days"])
+    if not isinstance(days, (int, float)) or isinstance(days, bool):
+        return ""
+    return (f" If the review stays unavailable for {days:g} days, the candidate publishes on the deterministic gates "
+            "alone (sample_review.unavailable_grace_days in data/gates.json) and this issue stays open until the "
+            "review runs again.")
 
 
 def _finish():
@@ -926,9 +956,78 @@ def _peek(inp, now):
                   f"({age:.0f} days ago; the limit is {inp['cfg']['stale_days']} days) and no crawl is running.\n\n"
                   "The pipeline starts a refresh by itself when one is due; if this stays open, look at the latest "
                   "pipeline runs and the other open pipeline-alert issues (a hold or repeated failures).")
+    _schedule_gap(now)
     if work == "none":
         summary("Nothing to do.")
     return work
+
+
+def idle_gaps(runs, now, window_h=SCHEDULE_GAP_WINDOW_H):
+    """Hours of idle time between consecutive pipeline runs (one run's end to the next run's start) inside the last
+    window_h hours, newest first; the gap from the newest completed run to `now` is included when nothing is running.
+    runs: GitHub workflow run dicts (created_at, updated_at, status), any order."""
+    def ts(v):
+        try:
+            return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    rows = sorted((r for r in runs if ts(r.get("created_at"))), key=lambda r: ts(r["created_at"]))
+    start = now - __import__("datetime").timedelta(hours=window_h)
+    gaps, prev_end = [], None
+    for r in rows:
+        began = ts(r["created_at"])
+        if prev_end is not None and began >= start:
+            gaps.append(max(0.0, (began - prev_end).total_seconds() / 3600))
+        ended = ts(r.get("updated_at")) if r.get("status") == "completed" else None
+        prev_end = max(prev_end, ended) if (prev_end and ended) else (ended or prev_end)
+        if r.get("status") != "completed":
+            prev_end = None            # still running: the next start is not an idle gap
+    if prev_end is not None and rows:
+        gaps.append(max(0.0, (now - prev_end).total_seconds() / 3600))
+    return list(reversed(gaps))
+
+
+def _recent_runs(limit=40):
+    """The newest pipeline runs from the GitHub API (gh); [] when gh or the repository is not available."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not repo or os.environ.get("SFB_NO_GH"):
+        return []
+    try:
+        out = subprocess.run(["gh", "api", f"repos/{repo}/actions/workflows/pipeline.yml/runs?per_page={limit}",
+                              "--jq", "[.workflow_runs[] | {created_at, updated_at, status, conclusion, event}]"],
+                             check=True, capture_output=True, text=True, timeout=60).stdout
+        runs = json.loads(out or "[]")
+        return runs if isinstance(runs, list) else []
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        print(f"schedule gap: could not list runs ({type(e).__name__}); skipped")
+        return []
+
+
+def _schedule_gap(now):
+    """Alert schedule-gap when the pipeline sat idle for more than SCHEDULE_GAP_HOURS between runs in the last day
+    (GitHub drops scheduled runs for hours at a time; the watchdog cron in the pipeline Worker is meant to fill that:
+    RUNBOOK "Schedule"); resolve it when every gap is short."""
+    runs = _recent_runs()
+    if len(runs) < 2:
+        return
+    gaps = idle_gaps(runs, now)
+    if not gaps:
+        return
+    worst = max(gaps)
+    if worst > SCHEDULE_GAP_HOURS:
+        alert("schedule-gap", f"pipeline runs {worst:.1f} h apart: the schedule is being dropped",
+              f"In the last {SCHEDULE_GAP_WINDOW_H} h the pipeline sat idle for up to {worst:.1f} h between runs "
+              f"(limit {SCHEDULE_GAP_HOURS} h; gaps, newest first: {', '.join(f'{g:.1f}' for g in gaps[:8])} h). GitHub delays and "
+              "drops scheduled workflow runs; the pipeline Worker's watchdog cron is meant to start a `continue` run "
+              "whenever none has run for 40 minutes.\n\n"
+              "**Fix**: give the Worker a GitHub token so it can dispatch runs: create a fine-grained personal access "
+              "token for this repository with *Actions: Read and write* (GitHub > Settings > Developer settings), then "
+              "add it as the secret `GH_DISPATCH_TOKEN` on the `sfb-valuation` Worker (Cloudflare dashboard > Workers "
+              "> sfb-valuation > Settings > Variables and Secrets). If the token exists, it may have expired: make a "
+              "new one. `/watchdog?token=<ADMIN_TOKEN>&dry=1` on the Worker shows what the watchdog sees. This issue "
+              "closes itself once runs arrive less than 3 h apart.")
+    else:
+        resolve("schedule-gap")
 
 
 def _store(budget_min, wm=None):

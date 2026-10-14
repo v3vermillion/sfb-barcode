@@ -1,2 +1,2 @@
 cryptography>=42
-requests>=2.31
+requests>=2.31,<3

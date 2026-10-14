@@ -22,6 +22,14 @@ def api_response(text, stop_reason="end_turn", status=200, usage=None):
 GOOD = json.dumps({"systematic_junk": False, "junk_rate": 0.01, "junk_examples": [{"id": 1001, "why": "odd size"}], "notes": "Looks clean."})
 
 
+def models_response(ids, status=200):
+    """GET /v1/models: ids given oldest first; created_at rises with the position."""
+    r = mock.Mock(); r.status_code = status; r.text = "" if status == 200 else "{}"
+    r.json.return_value = {"data": [{"type": "model", "id": m, "display_name": m, "created_at": f"2026-01-{i + 1:02d}T00:00:00Z"}
+                                    for i, m in enumerate(ids)], "has_more": False}
+    return r
+
+
 class Review(StoreCase, unittest.TestCase):
     def setUp(self):
         self.setup_store()
@@ -240,15 +248,44 @@ class Review(StoreCase, unittest.TestCase):
                  (402, err("billing_error", "add credits"), "credits"),
                  (400, err("invalid_request_error", "Your credit balance is too low to access the Anthropic API."), "credits"),
                  (400, err("invalid_request_error", "bad model"), "api"),
-                 (404, err("not_found_error", "model"), "api")]
+                 (404, err("not_found_error", "model: claude-old"), "model")]
         for status, body, kind in cases:
-            v, post = self.run_review(api_response(body, status=status))
+            with mock.patch("crawler.review.requests.get", return_value=models_response([])):   # no replacement model
+                v, post = self.run_review(api_response(body, status=status))
             self.assertEqual((v["status"], v["error_kind"]), ("error", kind), body)
             self.assertEqual(post.call_count, 1, "never retried")
             self.assertEqual(self.verdict_file()["error_kind"], kind)
             self.assertNotIn(KEY, json.dumps(self.verdict_file()), "the key never reaches the verdict")
         self.assertEqual(self.review.error_kind(401, "not json"), "auth")
         self.assertEqual(self.review.error_kind(402, ""), "credits")
+
+    def test_a_retired_model_is_replaced_by_the_newest_current_model_of_its_family(self):
+        gone = api_response(json.dumps({"type": "error", "error": {"type": "not_found_error", "message": "model: claude-sonnet-5-5"}}), status=404)
+        listed = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-sonnet-6", "claude-opus-6", "claude-sonnet-6-5", "claude-opus-7"]
+        with mock.patch("crawler.review.requests.get", return_value=models_response(listed)) as get:
+            v, post = self.run_review(gone, api_response(GOOD))
+        self.assertEqual(v["status"], "pass")
+        self.assertEqual(v["model"], "claude-sonnet-6-5", "the newest sonnet the key lists, not the newest model")
+        self.assertEqual(v["model_fallback"]["requested"], "claude-sonnet-5-5"); self.assertIn("404", v["model_fallback"]["reason"])
+        self.assertEqual(post.call_count, 2); self.assertEqual(get.call_count, 1)
+        self.assertEqual(post.call_args_list[1].kwargs["json"]["model"], "claude-sonnet-6-5")
+        self.assertEqual(self.verdict_file()["model"], "claude-sonnet-6-5")
+        # no sonnet at all: the newest model of any family; nothing listed: a "model" error for the alert
+        with mock.patch("crawler.review.requests.get", return_value=models_response(["claude-haiku-9", "claude-opus-9"])):
+            self.assertEqual(self.review.fallback_model(KEY, "claude-sonnet-5-5"), "claude-opus-9")
+        with mock.patch("crawler.review.requests.get", return_value=models_response(["claude-sonnet-5-5"])):
+            with self.assertRaises(self.review.ReviewError) as cm:
+                self.review.fallback_model(KEY, "claude-sonnet-5-5")
+            self.assertEqual(cm.exception.kind, "model")
+        with mock.patch("crawler.review.requests.get", return_value=models_response([], status=401)):
+            with self.assertRaises(self.review.ReviewError) as cm:
+                self.review.fallback_model(KEY, "claude-sonnet-5-5")
+            self.assertEqual(cm.exception.kind, "auth")
+        # a 404 on a later batch (after a good first one) is not retried with another model
+        self.write_gates(sample_review={"batch_size": 150})
+        with mock.patch("crawler.review.requests.get") as get:
+            v, post = self.run_review(api_response(GOOD), gone)
+        self.assertEqual((v["status"], v["error_kind"]), ("error", "model")); self.assertEqual(get.call_count, 0)
 
     def test_non_json_200_is_an_error(self):
         r = mock.Mock(); r.status_code = 200; r.text = "<html>"; r.json.side_effect = ValueError("x")

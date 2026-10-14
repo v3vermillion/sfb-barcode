@@ -340,7 +340,7 @@ class PlanBase(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        self.env = mock.patch.dict(os.environ, {"SFB_STORE": str(self.tmp / "store"), "SFB_NO_COMMIT": "1",
+        self.env = mock.patch.dict(os.environ, {"SFB_STORE": str(self.tmp / "store"), "SFB_NO_COMMIT": "1", "SFB_NO_GH": "1",
                                                 "GITHUB_OUTPUT": str(self.tmp / "out.txt"), "RUNNER_TEMP": str(self.tmp / "rt"),
                                                 "GITHUB_STEP_SUMMARY": str(self.tmp / "summary.md"),
                                                 "WM_CONSUMER_ID": "cid", "WM_PRIVATE_KEY": "key"})
@@ -395,6 +395,48 @@ class PlanBase(unittest.TestCase):
         self.store.write_jsonl_gz(cand / "items.jsonl.gz", [{"id": 1}])
         self.write("build/candidate/stats.json", {"run_id": "run-1", "items": 1})
         (cand / "report.md").write_text(report)
+
+
+GAP_NOW = datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def run_at(created_h, ended_h=None, status="completed"):
+    """A GitHub workflow run dict: started created_h hours ago, ended ended_h hours ago (None: still running)."""
+    f = lambda h: (GAP_NOW - timedelta(hours=h)).isoformat().replace("+00:00", "Z")
+    return {"created_at": f(created_h), "updated_at": f(ended_h if ended_h is not None else created_h), "status": status,
+            "conclusion": "success" if status == "completed" else None, "event": "schedule"}
+
+
+class ScheduleGap(PlanBase):
+    NOW = GAP_NOW
+
+    def test_idle_gaps_measure_end_to_next_start_inside_the_window(self):
+        runs = [run_at(60, 59), run_at(50, 49), run_at(20, 19.5), run_at(10, 4), run_at(2, 1.5), run_at(0.5, 0.2)]   # oldest first
+        gaps = ci.idle_gaps(runs, self.NOW)
+        self.assertEqual([round(g, 2) for g in gaps], [0.2, 1.0, 2.0, 9.5, 29.0],
+                         "newest first; a gap that ended inside the window counts, the 59-to-50 h one does not")
+        # a run still in progress: no gap is open; the chained run after a six-hour crawl is not a gap
+        running = [run_at(10, 4), run_at(4, None, status="in_progress")]
+        self.assertEqual([round(g, 2) for g in ci.idle_gaps(running, self.NOW)], [0.0])
+        self.assertEqual(ci.idle_gaps([], self.NOW), []); self.assertEqual(ci.idle_gaps([{"created_at": "junk"}], self.NOW), [])
+
+    def test_peek_alerts_on_a_long_idle_gap_and_resolves_when_runs_are_close(self):
+        with mock.patch.object(ci, "_recent_runs", lambda limit=40: [run_at(9, 8.5), run_at(3, 2.5), run_at(0.5, 0.2)]):
+            o, _ = self.run_plan("--plan", "peek")
+        self.assertEqual(o["alert"], "schedule-gap"); body = self.body(o)
+        self.assertIn("5.5 h", body); self.assertIn("GH_DISPATCH_TOKEN", body); self.assertIn("/watchdog", body)
+        with mock.patch.object(ci, "_recent_runs", lambda limit=40: [run_at(2, 1.5), run_at(1, 0.8), run_at(0.5, 0.2)]):
+            o, _ = self.run_plan("--plan", "peek")
+        self.assertEqual(o["alert"], "none"); self.assertIn("schedule-gap", o["resolve"].split(","))
+        with mock.patch.object(ci, "_recent_runs", lambda limit=40: []):          # gh unavailable: silent
+            o, _ = self.run_plan("--plan", "peek")
+        self.assertEqual(o["alert"], "none"); self.assertNotIn("schedule-gap", o["resolve"])
+
+    def test_recent_runs_is_silent_without_a_repository(self):
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": ""}):
+            self.assertEqual(ci._recent_runs(), [])
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r", "PATH": "/nonexistent"}):
+            self.assertEqual(ci._recent_runs(), [])
 
 
 class Peek(PlanBase):
@@ -1007,6 +1049,31 @@ class OtherPlans(PlanBase):
                 o, _ = self.run_plan("--plan", "finish")
             self.assertEqual(o["alert"], key, kind); self.assertIn(words, self.body(o))
         self.assertIn("review-credits", ci.PUBLISH_RESOLVES); self.assertIn("review-key-invalid", ci.PUBLISH_RESOLVES)
+        self.assertIn("21 days, the candidate publishes on the deterministic gates alone", self.body(o))
+
+    def test_finish_hold_on_a_retired_model_names_the_variable(self):
+        self.write("state/run.json", state("built"))
+        self.candidate("# report\n\n- FAIL sample_review\n")
+        self.write("build/candidate/review-verdict.json", {"status": "error", "error_kind": "model", "reason": "HTTP 404: not_found_error"})
+        with mock.patch.object(self.qa, "finalize", lambda: "hold", create=True):
+            o, _ = self.run_plan("--plan", "finish")
+        self.assertEqual(o["alert"], "review-model"); self.assertIn("SFB_REVIEW_MODEL", self.body(o))
+        self.assertIn("review-model", ci.PUBLISH_RESOLVES)
+
+    def test_a_publish_under_the_review_grace_keeps_the_review_issue_open(self):
+        self.write("state/run.json", state("built"))
+        self.candidate("# report\n\nStatus: ready\n")
+        def publish(approve=False):
+            self.write("build/published/manifest.json", {"version": "run-1", "items": 1, "published": iso(0),
+                                                         "gates": {"status": "ready", "review_grace": {"since": "2026-09-20T00:00:00+00:00", "days": 22.0, "grace_days": 21, "kind": "credits"}}})
+            self.write("state/run.json", state("published")); return True
+        with mock.patch.object(self.qa, "finalize", lambda: "ready", create=True), mock.patch.object(self.qa, "publish", publish):
+            o, _ = self.run_plan("--plan", "finish")
+        self.assertEqual(o["alert"], "none")
+        resolved = set(o["resolve"].split(","))
+        self.assertTrue(resolved.isdisjoint(ci.REVIEW_ALERTS), resolved)
+        self.assertIn("gates-hold", resolved); self.assertIn("stale-prices", resolved)
+        self.assertIn("review grace", Path(os.environ["GITHUB_STEP_SUMMARY"]).read_text())
 
     def test_finish_without_finalize_is_a_clear_error(self):
         self.write("state/run.json", state("built"))
@@ -1081,7 +1148,7 @@ def _workflow_step(step_id):
 class CollectOutputs(unittest.TestCase):
     """The workflow's 'Collect outputs' step merges peek / run / finish results; run with GitHub's bash flags."""
 
-    BASE = {"PEEK_ALERT": "none", "PEEK_TITLE": "", "PEEK_BODY": "", "CI_OUTCOME": "skipped", "CI_ALERT": "", "CI_TITLE": "",
+    BASE = {"PEEK_ALERT": "none", "PEEK_TITLE": "", "PEEK_BODY": "", "PEEK_RESOLVE": "", "CI_OUTCOME": "skipped", "CI_ALERT": "", "CI_TITLE": "",
             "CI_BODY": "", "CI_RESOLVE": "", "CI_NEXT": "", "FIN_OUTCOME": "skipped", "FIN_ALERT": "", "FIN_TITLE": "",
             "FIN_BODY": "", "FIN_RESOLVE": "", "FIN_NEXT": ""}
 
@@ -1116,6 +1183,12 @@ class CollectOutputs(unittest.TestCase):
     def test_alerts_from_failed_steps_are_ignored(self):
         o = self.collect(CI_OUTCOME="failure", CI_ALERT="throttled", FIN_OUTCOME="failure", FIN_ALERT="gates-hold")
         self.assertEqual(o["alert"], "none"); self.assertEqual(o["resolve"], "")
+
+    def test_peek_resolves_are_merged_even_when_the_run_was_skipped(self):
+        o = self.collect(PEEK_RESOLVE="schedule-gap")
+        self.assertEqual(o["resolve"], "schedule-gap"); self.assertEqual(o["alert"], "none")
+        o = self.collect(PEEK_ALERT="schedule-gap", PEEK_TITLE="gap", PEEK_BODY="/b", CI_OUTCOME="success", CI_RESOLVE="gates-hold")
+        self.assertEqual(o["alert"], "schedule-gap"); self.assertEqual(o["resolve"], "gates-hold,pipeline-failed")
 
     def test_alert_raised_and_resolved_in_one_run_is_dropped(self):
         o = self.collect(CI_OUTCOME="success", PEEK_ALERT="stale-prices", CI_RESOLVE="gates-hold,stale-prices")

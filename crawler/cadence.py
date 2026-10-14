@@ -23,7 +23,7 @@ from . import store
 DEFAULTS = {
     "target_close_rate": 0.92,       # cycle-average share of listed rows within the tolerance (audit bar 0.90 + margin)
     "min_days": 5,
-    "max_days": 60,
+    "max_days": 120,
     "default_drift_per_day": 0.023,  # prior: 8% of prices beyond 5% after 3.5 days (gate and audit, 2026-10-13)
     "prior_weight": 200.0,           # row-days of evidence the prior is worth: ~50 rows a week for a month overrule it
     "crawl_share": 0.5,              # share of the daily Walmart quota the refresh crawls may use
