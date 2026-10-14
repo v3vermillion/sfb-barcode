@@ -105,6 +105,12 @@ the app labels it "Strongsville Walmart shelf price". The live_match gate and th
 with the store's live price. Manual: Actions → pipeline → plan `store`. At about 8 calls a minute a pass over a million
 rows takes several days of pipeline time; consumable departments come first so food and household items are covered
 soonest. `store-price-probe.yml` (manual, read-only) re-checks which store id the API returns near a ZIP code.
+Chunks Walmart cannot serve: an HTTP 400 "Results not found" or a 502 on every attempt (certain ids make the store lookup
+fail server-side; runs 58-61 died on the same 20 ids) splits the chunk in halves down to single ids, with one retry per
+call during the split. A single id refused with 400 is recorded as gone; one that still fails with a server error is
+recorded with `e` (the status) and asked again after 7 days (`ERROR_RETRY_DAYS`) so it is neither shown as a store price
+nor first in line every run. Two whole chunks in a row failing on server errors is an outage: the pass stops with
+`Unavailable`, what it priced is saved, the run ends normally and the schedule retries later; it does not open an issue.
 
 ### Search gold set
 `data/gold-search.json` holds 330 queries as volunteers type them, each with the words the right item must contain (and a
