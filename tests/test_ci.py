@@ -179,6 +179,45 @@ class Decide(unittest.TestCase):
         self.assertGreaterEqual(len(fulls), 4, fulls)
         self.assertTrue(all(b - a <= 32 for a, b in zip(fulls, fulls[1:])), fulls)
 
+    def test_per_department_cadence_decides_what_to_refresh(self):
+        scope = [{"name": "Food", "consumable": True}, {"name": "Home", "consumable": False}]
+        man = {**manifest(2), "full_published": iso(10),
+               "departments": {"Food": {"crawled": iso(8)}, "Home": {"crawled": iso(10)}}}
+        fresh = dict(audit={"checked": iso(1)}, identify={"refreshed": iso(1)})
+        # no plan yet: the legacy floors (consumable 7 days, the rest 30)
+        self.assertEqual(ci.decide(state("published"), man, None, fresh["audit"], None, CFG, NOW, current_hash=HASH,
+                                   identify_latest=fresh["identify"], scope=scope), "start-refresh")
+        self.assertEqual(ci.due_departments(man, None, CFG, scope, NOW), (["Food"], False))
+        # a plan: Home every 9 days, Food every 12
+        plan = {"departments": {"Food": {"interval_days": 12}, "Home": {"interval_days": 9}}}
+        self.assertEqual(ci.due_departments(man, plan, CFG, scope, NOW), (["Home"], False))
+        self.assertEqual(ci.decide(state("published"), man, None, fresh["audit"], None, CFG, NOW, current_hash=HASH,
+                                   identify_latest=fresh["identify"], scope=scope, cadence=plan), "start-refresh")
+        plan = {"departments": {"Food": {"interval_days": 12}, "Home": {"interval_days": 30}}}
+        self.assertEqual(ci.decide(state("published"), man, None, fresh["audit"], None, CFG, NOW, current_hash=HASH,
+                                   identify_latest=fresh["identify"], scope=scope, cadence=plan, store_latest=STORE_FRESH), "none")
+        # everything due = a full crawl; a manifest without per-department dates falls back to the publish dates
+        plan = {"departments": {"Food": {"interval_days": 5}, "Home": {"interval_days": 5}}}
+        self.assertEqual(ci.due_departments(man, plan, CFG, scope, NOW), (["Food", "Home"], True))
+        self.assertEqual(ci.decide(state("published"), man, None, None, None, CFG, NOW, current_hash=HASH, scope=scope, cadence=plan), "start-full")
+        legacy = {**manifest(8), "full_published": iso(31)}
+        self.assertEqual(ci.due_departments(legacy, None, CFG, scope, NOW), (["Food", "Home"], True))
+        self.assertEqual(ci.due_departments(manifest(8), None, CFG, scope, NOW), (["Food"], False))
+        self.assertEqual(ci.decide(None, None, None, None, None, CFG, NOW, current_hash=HASH, scope=scope), "start-full")
+        # a rollback pauses new crawls for one core period
+        rolled = {**man, "rolled_back_at": iso(1)}
+        self.assertEqual(ci.decide(state("published"), rolled, None, fresh["audit"], None, CFG, NOW, current_hash=HASH,
+                                   identify_latest=fresh["identify"], scope=scope, store_latest=STORE_FRESH), "none")
+
+    def test_volunteer_hours_cap_the_pipeline_pace(self):
+        cfg = {"volunteer_hours": {"tz": "America/New_York", "days": [1, 2, 3, 4, 5], "from": "08:00", "to": "17:00", "per_min": 3}}
+        wed_noon_ny = datetime(2026, 10, 14, 16, 0, tzinfo=timezone.utc)      # 12:00 in New York (EDT)
+        self.assertEqual(ci.volunteer_cap(cfg, wed_noon_ny), 3)
+        self.assertIsNone(ci.volunteer_cap(cfg, datetime(2026, 10, 14, 23, 30, tzinfo=timezone.utc)), "19:30 New York")
+        self.assertIsNone(ci.volunteer_cap(cfg, datetime(2026, 10, 17, 16, 0, tzinfo=timezone.utc)), "Saturday")
+        self.assertIsNone(ci.volunteer_cap({}, wed_noon_ny)); self.assertIsNone(ci.volunteer_cap({"volunteer_hours": {"from": "x"}}, wed_noon_ny))
+        self.assertEqual(ci.volunteer_cap({"volunteer_hours": {"tz": "UTC", "days": [3], "from": "15:30", "to": "16:30", "per_min": 2}}, wed_noon_ny), 2)
+
     def test_failed_audit_is_retried_after_hours_not_every_run(self):
         fresh = dict(st=state("published"), man=manifest(1), identify={"refreshed": iso(1)})
         self.assertEqual(dec(**fresh, audit={"status": "error", "checked": iso(0.1)}), "none")
@@ -378,7 +417,7 @@ class Peek(PlanBase):
         self.write("build/published/manifest.json", manifest(20))
         with mock.patch.object(ci, "utcnow", lambda: NOW):
             o, _ = self.run_plan("--plan", "peek")
-        self.assertEqual(o["work"], "start-core")
+        self.assertEqual(o["work"], "start-refresh")
         self.assertEqual(o["alert"], "stale-prices")
         self.assertIn("20 days", o["alert_title"])
         self.assertIn("run-1", self.body(o)); self.assertIn("14 days", self.body(o))
@@ -523,9 +562,12 @@ class Continue(PlanBase):
             self.write("build/published/manifest.json", manifest(8))
             with mock.patch.object(ci, "utcnow", lambda: NOW):
                 o, _ = self.run_plan("--plan", "continue")
-            self.assertEqual(o["work"], "start-core")
-            self.assertEqual(self.read("state/run.json")["plan"], "core")
-        self.assertEqual(seen, ["full", "core"])
+            self.assertEqual(o["work"], "start-refresh", "8 days: the consumable departments are past their 7-day floor")
+            st = self.read("state/run.json")
+            self.assertEqual(st["plan"], "refresh")
+            names = {d["name"] for d in st["departments"]}
+            self.assertIn("Food", names); self.assertNotIn("Home", names, "durable departments keep their 30-day floor")
+        self.assertEqual(seen, ["full", "refresh"])
 
     def test_sizing_throttled_counts_as_a_throttled_run(self):
         from crawler.wm import Throttled

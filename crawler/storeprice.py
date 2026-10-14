@@ -30,6 +30,7 @@ CONFIG = Path(__file__).resolve().parent.parent / "data" / "store.json"
 DIR = store.ROOT / "store_prices"
 CHUNK = 20                    # /items takes up to 20 ids per call
 SAVE_EVERY_S = 15 * 60
+RECORD_VERSION = 2            # v1 records (2026-10-13) kept marketplace offers as store prices; they are refetched
 
 FIELDS = ("salePrice", "stock", "availableOnline", "offerType")
 
@@ -146,11 +147,47 @@ def path(store_id):
 
 
 def load(store_id):
-    """{item id: {"p": price | None, "s": stock, "t": "YYYY-MM-DD", "g": True when Walmart no longer returns it}}"""
+    """{item id: {"p": price | None, "s": stock, "t": "YYYY-MM-DD", "d": department, "v": RECORD_VERSION,
+    "g": True when the store has no Walmart-sold offer for it}}. Records of an older version are dropped: they were
+    taken before the sold-by-Walmart rule and may hold a marketplace seller's price (a 15 oz soup at $10)."""
     p = path(store_id)
     if not store.jsonl_exists(p):
         return {}
-    return {r["id"]: r for r in store.iter_jsonl_gz(p) if "id" in r}
+    return {r["id"]: r for r in store.iter_jsonl_gz(p) if "id" in r and r.get("v") == RECORD_VERSION}
+
+
+def walmart_sold(it):
+    """The same rule as the app's live check (pipeline/src/index.js walmartSold): Walmart's own offer with a price.
+    With storeId Walmart answers with the buy-box offer, which is a marketplace seller's when the store does not
+    carry the item; that price is not the shelf price."""
+    if not isinstance(it, dict) or it.get("marketplace") is True:
+        return False
+    seller = str(it.get("sellerInfo") or "").strip().lower()
+    if seller and seller != "walmart.com":
+        return False
+    p = it.get("salePrice")
+    return isinstance(p, (int, float)) and not isinstance(p, bool) and p > 0
+
+
+def tiers(cfg):
+    """[(rank, department set, refresh_every_days, max_age_days)] from data/store.json `tiers`; without tiers, one tier of
+    every consumable department (the 2026-10-09 behaviour) with the top-level cadence."""
+    out = []
+    for i, t in enumerate(cfg.get("tiers") or []):
+        if isinstance(t, dict) and t.get("departments"):
+            out.append((i, set(t["departments"]), int(t.get("refresh_every_days") or cfg.get("refresh_every_days") or 7),
+                        int(t.get("max_age_days") or cfg.get("max_age_days") or 21)))
+    if out:
+        return out
+    return [(0, _consumable_depts(), int(cfg.get("refresh_every_days") or 7), int(cfg.get("max_age_days") or 21))]
+
+
+def tier_of(dept, cfg):
+    """(rank, refresh_every_days, max_age_days) for a department, None when it is outside the store-price scope."""
+    for rank, depts, every, max_age in tiers(cfg):
+        if dept in depts:
+            return rank, every, max_age
+    return None
 
 
 def save(store_id, recs):
@@ -172,19 +209,32 @@ def _consumable_depts():
         return set()
 
 
-def due_ids(rows, recs, now, every_days, consumable=None):
-    """Barcode rows (primary listing, not a placeholder) whose store price is missing or older than every_days:
-    consumable departments first, never checked before checked long ago, then by id (stable)."""
-    consumable = consumable if consumable is not None else _consumable_depts()
+def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=None):
+    """Barcode rows (primary listing, not a placeholder) inside the store-price scope (tiers) whose store price is
+    missing or older than their tier's refresh_every_days: lower tier first, never checked before checked long ago,
+    then by id (stable). `meta` (optional dict) receives {id: (department, online price)} for the due rows."""
+    cfg = cfg if cfg is not None else (config() or {})
+    if every_days is not None and not cfg.get("tiers"):
+        cfg = dict(cfg, refresh_every_days=every_days)
+    if consumable is not None and not cfg.get("tiers"):
+        tier_list = [(0, set(consumable), int(cfg.get("refresh_every_days") or 7), int(cfg.get("max_age_days") or 21))]
+    else:
+        tier_list = tiers(cfg)
     due = []
     for r in rows:
         if not r.get("primary") or not r.get("upc") or "placeholder" in (r.get("flags") or []):
             continue
+        tier = next(((rank, every) for rank, depts, every, _ in tier_list if r.get("dept") in depts), None)
+        if tier is None:
+            continue
+        rank, every = tier
         rec = recs.get(r["id"])
         age = _age_days(rec["t"], now) if rec else None
-        if age is not None and age < every_days:
+        if age is not None and age < every:
             continue
-        due.append((r.get("dept") not in consumable, rec is not None, -(age or 0), str(r["id"]), r["id"]))
+        due.append((rank, rec is not None, -(age or 0), str(r["id"]), r["id"]))
+        if meta is not None:
+            meta[r["id"]] = (r.get("dept"), r.get("price"))
     due.sort()
     return [d[-1] for d in due]
 
@@ -219,12 +269,14 @@ def refresh(wm, budget_min, now=None, cfg=None):
     if not cfg:
         return {"status": "skipped", "reason": "no data/store.json store_id"}
     now = now or _now()
-    sid, every = str(cfg["store_id"]), int(cfg.get("refresh_every_days") or 7)
+    sid = str(cfg["store_id"])
     recs = load(sid)
-    ids = due_ids(source_rows(), recs, now, every)
+    meta = {}
+    ids = due_ids(source_rows(), recs, now, cfg=cfg, meta=meta)
     deadline = time.time() + budget_min * 60
     last_save = time.time()
     done = calls = got = gone = 0
+    by_dept = {}
     outcome = "done"
     try:
         for i in range(0, len(ids), CHUNK):
@@ -237,16 +289,33 @@ def refresh(wm, budget_min, now=None, cfg=None):
             day = _day(now)
             for iid in chunk:
                 it = items.get(iid) or items.get(str(iid))
-                if it is None:
-                    recs[iid] = {"id": iid, "p": None, "s": None, "t": day, "g": True}; gone += 1
-                else:
-                    p = it.get("salePrice")
-                    recs[iid] = {"id": iid, "p": float(p) if isinstance(p, (int, float)) and not isinstance(p, bool) else None,
-                                 "s": it.get("stock"), "t": day}
-                    got += 1
+                dept, online = meta.get(iid, (None, None))
+                st = by_dept.setdefault(dept or "?", {"checked": 0, "priced": 0, "gone": 0, "not_walmart": 0, "out_of_stock": 0,
+                                                       "compared": 0, "same": 0, "within_5pct": 0, "higher": 0, "lower": 0})
+                st["checked"] += 1
+                if it is None or not walmart_sold(it):
+                    # no listing, or a marketplace seller's buy box: the store has no shelf price for it
+                    recs[iid] = {"id": iid, "p": None, "s": None, "t": day, "d": dept, "v": RECORD_VERSION, "g": True}
+                    gone += 1; st["gone"] += 1
+                    if it is not None:
+                        st["not_walmart"] += 1
+                    continue
+                p = float(it["salePrice"])
+                recs[iid] = {"id": iid, "p": p, "s": it.get("stock"), "t": day, "d": dept, "v": RECORD_VERSION}
+                got += 1; st["priced"] += 1
+                if it.get("stock") != "Available":
+                    st["out_of_stock"] += 1
+                if isinstance(online, (int, float)) and online > 0:
+                    st["compared"] += 1
+                    if abs(p - online) < 0.005:
+                        st["same"] += 1; st["within_5pct"] += 1
+                    else:
+                        if abs(p - online) <= 0.05 * online:
+                            st["within_5pct"] += 1
+                        st["higher" if p > online else "lower"] += 1
             done += len(chunk)
             if time.time() - last_save > SAVE_EVERY_S:
-                save(sid, recs); _marker(sid, len(ids) - done, now, recs, every)
+                save(sid, recs); _marker(sid, len(ids) - done, now, recs, cfg, by_dept)
                 store.checkpoint(f"store prices {sid}: {done}/{len(ids)}")
                 last_save = time.time()
     except Throttled:
@@ -254,17 +323,25 @@ def refresh(wm, budget_min, now=None, cfg=None):
         raise
     finally:
         save(sid, recs)
-        latest = _marker(sid, len(ids) - done, now, recs, every)
+        latest = _marker(sid, len(ids) - done, now, recs, cfg, by_dept)
         store.checkpoint(f"store prices {sid}: {done}/{len(ids)} ({outcome})")
     return {"status": outcome, "store_id": sid, "due": len(ids), "checked": done, "priced": got, "gone": gone,
-            "calls": calls, "remaining": latest["due"]}
+            "calls": calls, "remaining": latest["due"], "by_dept": by_dept}
 
 
-def _marker(sid, remaining, now, recs, every):
-    oldest = min((r["t"] for r in recs.values() if r.get("t")), default=None)
-    next_due = (datetime.fromisoformat(oldest) + timedelta(days=every)).date().isoformat() if oldest else _day(now)
+def _marker(sid, remaining, now, recs, cfg, by_dept=None):
+    """store_prices/latest.json: rows still due, when the next pass is due (the oldest record of each tier plus the
+    tier's cadence), the scope, and this pass's per-department comparison with Walmart.com's price."""
+    next_due = None
+    for rank, depts, every, _ in tiers(cfg):
+        oldest = min((r["t"] for r in recs.values() if r.get("t") and r.get("d") in depts), default=None)
+        nd = (datetime.fromisoformat(oldest) + timedelta(days=every)).date().isoformat() if oldest else _day(now)
+        next_due = nd if next_due is None or nd < next_due else next_due
     latest = {"store_id": sid, "checked": now.isoformat(timespec="seconds"), "due": max(0, remaining),
-              "records": len(recs), "next_due": next_due}
+              "records": len(recs), "next_due": next_due or _day(now),
+              "scope": [{"departments": sorted(d), "refresh_every_days": e, "max_age_days": m} for _, d, e, m in tiers(cfg)]}
+    if by_dept:
+        latest["by_dept"] = by_dept
     store.write_json(DIR / "latest.json", latest)
     return latest
 
@@ -303,13 +380,18 @@ def apply(rows, now=None, cfg=None):
     recs = load(str(cfg["store_id"]))
     if not recs:
         return 0
-    max_age, n = int(cfg.get("max_age_days") or 21), 0
+    n = 0
     for r in rows.values():
         rec = recs.get(r["id"])
         if not rec or rec.get("g") or not isinstance(rec.get("p"), (int, float)) or rec["p"] <= 0:
             continue
+        if rec.get("s") != "Available":
+            continue                                  # the shelf price of an item the store is out of: not shown
+        tier = tier_of(rec.get("d") or r.get("dept"), cfg)
+        if tier is None:
+            continue
         age = _age_days(rec.get("t"), now)
-        if age is None or age > max_age:
+        if age is None or age > tier[2]:
             continue
         old = r.get("price")
         r["online_price"] = old

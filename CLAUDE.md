@@ -17,8 +17,9 @@ Nothing waits for a human. `.github/workflows/pipeline.yml` is scheduled every 3
 a cheap peek reads `state/run.json`, the published manifest, `sizing.json`, `audit/latest.json` and the candidate `gates.json`
 through the GitHub API and stops when nothing is due. Otherwise `crawler/ci.py` picks ONE Walmart job per run, in priority order:
 sizing pass (once per 30 days) > crawl resume > build + gates + publish > weekly live audit > identify refresh >
-Strongsville store prices (weekly; the app shows the store's shelf price where Walmart gives one, data/store.json). Cadence lives in
-`data/schedule.json`; gate thresholds in `data/gates.json`; the 600-row sample review (two batches of 300, judged on evidence: docs/DECISIONS.md 2026-10-13) uses the `ANTHROPIC_API_KEY` secret.
+Strongsville store prices (tiers in data/store.json: consumable departments on 28/56-day cycles; only Walmart's own in-stock offer counts). Each department is re-crawled on its own interval from `state/cadence.json`
+(crawler/cadence.py: drift measured by the weekly audit per department, intervals planned under the Walmart quota, docs/DECISIONS.md 2026-10-14; floors 7 days consumable / 30 durable until measured). Cadence lives in
+`data/schedule.json` (also `volunteer_hours`: the pipeline's pace while volunteers may be using the live check); gate thresholds in `data/gates.json`; the 600-row sample review (two batches of 300, judged on evidence: docs/DECISIONS.md 2026-10-13) uses the `ANTHROPIC_API_KEY` secret.
 A snapshot publishes only when every gate passes; otherwise it holds and an issue is opened.
 
 ## What the owner decides (everything else is automatic)
@@ -26,7 +27,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
   or run `plan=approve` to override), `[review-key-missing]` (add the `ANTHROPIC_API_KEY` secret or set
   `sample_review.required=false` in data/gates.json), `[review-key-invalid]` (replace the key: 401/403), `[review-credits]`
   (add Anthropic credits; auto-reload is off), `[pipeline-failed]`, `[deploy-failed]`, `[deploy-mismatch]`,
-  `[audit-regression]`, `[audit-failed]`, `[data-store-size]` (branch past 1 GB: decide where raw pages move), `[snapshot-archive]`, `[stale-prices]`, `[throttled]`, `[search-gold]` (the 330-query search gold set fell below 95%: fix ranking or a wrong expectation), `[crawl-truncated]` (a department ended far short of Walmart's page count or its id was refused: give it a `split` or fix the node id), `[tests-failed]`. Issues close themselves when the condition clears.
+  `[audit-regression]`, `[audit-failed]`, `[accuracy-budget]` (the per-department refresh plan cannot hold the target inside the Walmart quota: raise `refresh.crawl_share` or lower `refresh.target_close_rate` in data/schedule.json, or widen `live_match_tolerance`), `[data-store-size]` (branch past 1 GB: decide where raw pages move), `[snapshot-archive]`, `[stale-prices]`, `[throttled]`, `[search-gold]` (the 330-query search gold set fell below 95%: fix ranking or a wrong expectation), `[crawl-truncated]` (a department ended far short of Walmart's page count or its id was refused: give it a `split` or fix the node id), `[tests-failed]`. Issues close themselves when the condition clears.
 - Changing scope or rules: edit `data/categories.json`, `data/sentinels.json`, `data/gates.json`, `data/schedule.json`;
   the next run re-evaluates a held candidate automatically when those files change.
 - When Claude Code is asked to look: read the open alert issues and `data-store:build/candidate/report.md`, diagnose, propose fixes
@@ -37,7 +38,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
 
 ## Commands (also runnable locally with WM_CONSUMER_ID / WM_PRIVATE_KEY set and SFB_STORE pointing at a data-store checkout)
 - `python -m crawler.ci --plan continue|core|full|approve|identify|audit|size|status|peek|finish|rollback|store`
-- `python -m unittest discover tests` (337 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
+- `python -m unittest discover tests` (352 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
 - `cd app && node --test tests/*.test.mjs`
 
 ## Layout
@@ -45,7 +46,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
   qa.py (gates/publish), releases.py (kept snapshots, rollback), classify.py (store categories, exclusions, placeholders),
   valuation.py (price sanity, equivalent values), audit.py (weekly live audit), history.py (price history), review.py (sample review),
   sizing.py (department sizes), throttle.py (429 analysis, pace cap), identify.py (non-Walmart barcodes → equivalents),
-  storeprice.py (Strongsville store prices: refresh, apply, probe), ci.py (orchestrator + decide())
+  storeprice.py (Strongsville store prices: refresh, apply, probe), cadence.py (per-department refresh intervals from measured drift), ci.py (orchestrator + decide())
 - data/categories.json — scope (departments, consumable or not, `split` child nodes for Home and Home Improvement; edits apply to the crawl in progress), category ids and path hints; docs/CATEGORIES.md — how every item is labelled
 - data/sentinels.json — items that must always be found and priced; data/store.json — the store whose shelf prices are shown
 - data/gold-search.json — search gold set (330 queries, checked on every real deploy by app/tools/gold.mjs)

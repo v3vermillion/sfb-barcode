@@ -38,6 +38,7 @@ Alert keys (one GitHub issue per key, label pipeline-alert, see .github/actions/
   review-key-missing  the sample review was skipped because ANTHROPIC_API_KEY is not set, so the
                       snapshot is held
   audit-regression    the weekly live audit found the published prices drifting (audit.run alert flag)
+  accuracy-budget     the per-department refresh plan cannot hold the target within the Walmart quota (cadence.plan fits=false)
   data-store-size     the files on the data-store branch passed 1 GB (store.STORE_ALERT_BYTES)
   snapshot-archive    a published snapshot could not be kept as a GitHub Release for rollback
   audit-failed        the live audit could not reach Walmart (an HTTP 4xx at once, else AUDIT_ERRORS_ALERT attempts)
@@ -61,7 +62,7 @@ SCHEDULE = DATA / "schedule.json"
 CONFIG_FILES = (DATA / "gates.json", DATA / "sentinels.json", DATA / "categories.json")
 SCHEDULE_DEFAULTS = {"full_every_days": 30, "core_every_days": 7, "audit_every_days": 7, "identify_every_days": 30,
                      "sizing_every_days": 30, "stale_days": 14, "budget_min": 300}
-KINDS = ("size", "crawl", "build", "recheck", "start-full", "start-core", "audit", "identify", "store", "none")
+KINDS = ("size", "crawl", "build", "recheck", "start-full", "start-core", "start-refresh", "audit", "identify", "store", "none")
 PLANS = ("continue", "full", "core", "approve", "identify", "audit", "size", "status", "peek", "finish", "rollback", "store")
 # gates.json statuses that mean "held, waiting for a decision" (new qa: hold; old qa: needs_review / awaiting_approval)
 HOLD_STATUSES = ("hold", "needs_review", "awaiting_approval")
@@ -83,6 +84,7 @@ _sizing_path = lambda: store.ROOT / "sizing.json"
 _audit_path = lambda: store.ROOT / "audit" / "latest.json"
 _identify_path = lambda: store.ROOT / "identify" / "latest.json"
 _store_prices_path = lambda: store.ROOT / "store_prices" / "latest.json"
+_cadence_path = lambda: store.ROOT / "state" / "cadence.json"
 
 
 # ----------------------------------------------------------------------------- outputs
@@ -195,6 +197,36 @@ def _load(path):
         return None, f"unreadable: {e}"
 
 
+def _scope():
+    """[{"name", "consumable"}] for every department in data/categories.json (the per-department cadence's scope)."""
+    try:
+        return [{"name": d["name"], "consumable": bool(d.get("consumable", True))} for d in store.config()["departments"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def volunteer_cap(cfg, now):
+    """The per-minute cap the pipeline keeps to during volunteer hours (schedule.json volunteer_hours: tz, days
+    1=Monday..7, from, to, per_min), so the app's live checks (the same Walmart key, through the Worker) are not
+    starved while volunteers work. None outside those hours or without the setting."""
+    vh = (cfg or {}).get("volunteer_hours")
+    if not isinstance(vh, dict):
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        local = now.astimezone(ZoneInfo(str(vh.get("tz") or "America/New_York")))
+        days = {int(d) for d in (vh.get("days") or [1, 2, 3, 4, 5])}
+        h1, m1 = (int(x) for x in str(vh.get("from") or "08:00").split(":")[:2])
+        h2, m2 = (int(x) for x in str(vh.get("to") or "17:00").split(":")[:2])
+        per_min = int(vh.get("per_min") or 3)
+    except (ValueError, TypeError, KeyError):
+        return None
+    if local.isoweekday() not in days:
+        return None
+    minute = local.hour * 60 + local.minute
+    return per_min if h1 * 60 + m1 <= minute < h2 * 60 + m2 else None
+
+
 def _departments():
     """Ids sizing.json must cover: every department, and every child node of a split one."""
     try:
@@ -210,7 +242,8 @@ def _departments():
 def inputs():
     """Everything decide() needs, read from the store (missing or unreadable files become None)."""
     files = {"state": _state_path(), "manifest": _manifest_path(), "sizing": _sizing_path(), "audit": _audit_path(),
-             "gates": _gates_path(), "identify": _identify_path(), "store_prices": _store_prices_path()}
+             "gates": _gates_path(), "identify": _identify_path(), "store_prices": _store_prices_path(),
+             "cadence": _cadence_path()}
     objs, status = {}, {}
     for k, p in files.items():
         objs[k], status[k] = _load(p)
@@ -218,6 +251,7 @@ def inputs():
     objs["cfg"] = schedule()
     objs["config_hash"] = config_hash()
     objs["departments"] = _departments()
+    objs["scope"] = _scope()
     return objs
 
 
@@ -290,8 +324,32 @@ def sizing_stale(sizing, cfg, now, departments=None):
 
 # ----------------------------------------------------------------------------- the decision
 
+def due_departments(manifest, cadence, cfg, scope, now):
+    """The departments whose last crawl (manifest.departments, else the publish dates) is older than their refresh
+    interval (state/cadence.json, else the legacy core/full cadence). scope: [{"name", "consumable"}]. Returns
+    (due names in scope order, every department due)."""
+    from . import cadence as cad
+    cfg = {**SCHEDULE_DEFAULTS, **(cfg or {})}
+    manifest = manifest if isinstance(manifest, dict) else {}
+    dates = manifest.get("departments") if isinstance(manifest.get("departments"), dict) else {}
+    fallback_full = manifest.get("full_published") or manifest.get("published")
+    due = []
+    for d in scope or []:
+        name = d.get("name")
+        entry = dates.get(name)
+        when = entry.get("crawled") if isinstance(entry, dict) else None
+        if when is None:
+            # a manifest from before per-department dates: a consumable department is as old as the last publish of any
+            # kind (core publishes refreshed it), the rest as old as the last full publish
+            when = manifest.get("published") if d.get("consumable") else fallback_full
+        age = age_days(when, now)
+        if age is None or age > cad.interval_for(name, cadence, bool(d.get("consumable")), cfg):
+            due.append(name)
+    return due, bool(scope) and len(due) == len(scope)
+
+
 def decide(state, manifest, sizing, audit_latest, gates, cfg, now, *, current_hash=None, identify_latest=None,
-           departments=None, store_latest=None):
+           departments=None, store_latest=None, cadence=None, scope=None):
     """Pure: pick the one kind of work the next run should do.
 
     Inputs are the parsed JSON files (or None when missing/unreadable): state/run.json, build/published/manifest.json,
@@ -348,10 +406,18 @@ def decide(state, manifest, sizing, audit_latest, gates, cfg, now, *, current_ha
     # a rollback holds new crawl starts for one core period, so the restored prices stay live while the cause is fixed
     since_rollback = age_days(manifest.get("rolled_back_at"), now) if manifest else None
     paused = since_rollback is not None and since_rollback <= cfg["core_every_days"]
-    if not paused and (manifest is None or age is None or full_age is None or full_age > cfg["full_every_days"]):
-        return "start-full"
-    if not paused and age > cfg["core_every_days"]:
-        return "start-core"
+    if scope:
+        # per-department cadence (crawler/cadence.py): refresh what is older than its interval, all of it = a full crawl
+        due, all_due = due_departments(manifest, cadence, cfg, scope, now)
+        if not paused and (manifest is None or age is None or all_due):
+            return "start-full"
+        if not paused and due:
+            return "start-refresh"
+    else:
+        if not paused and (manifest is None or age is None or full_age is None or full_age > cfg["full_every_days"]):
+            return "start-full"
+        if not paused and age > cfg["core_every_days"]:
+            return "start-core"
     audit_every = cfg["audit_every_days"]
     if isinstance(audit_latest, dict) and audit_latest.get("status") == "error":
         audit_every = TRANSIENT_RETRY_HOURS / 24      # a failed audit is retried every few hours, not every 30 minutes
@@ -368,7 +434,7 @@ def decide(state, manifest, sizing, audit_latest, gates, cfg, now, *, current_ha
 def decide_from(inp, now=None):
     return decide(inp["state"], inp["manifest"], inp["sizing"], inp["audit"], inp["gates"], inp["cfg"], now or utcnow(),
                   current_hash=inp["config_hash"], identify_latest=inp["identify"], departments=inp["departments"],
-                  store_latest=inp.get("store_prices"))
+                  store_latest=inp.get("store_prices"), cadence=inp.get("cadence"), scope=inp.get("scope"))
 
 
 def _describe(inp, now):
@@ -385,6 +451,11 @@ def _describe(inp, now):
          + (" (config unchanged)" if gates.get("config_hash") == inp["config_hash"] else " (config changed or no hash)" if gates else "")
          + (" (transient hold: retried every %d h)" % TRANSIENT_RETRY_HOURS if gates.get("transient") is True else ""),
          f"- identify: {inp['status']['identify']}"]
+    cad = inp.get("cadence")
+    if isinstance(cad, dict) and cad.get("departments"):
+        due, _ = due_departments(man, cad, inp["cfg"], inp.get("scope"), now)
+        L.append(f"- cadence: plan of {str(cad.get('computed'))[:10]}, expected {cad.get('expected_close_rate')} vs target "
+                 f"{cad.get('target_close_rate')} ({'fits' if cad.get('fits') else 'does not fit'}); due: {', '.join(due) or 'none'}")
     return "\n".join(L)
 
 
@@ -406,6 +477,10 @@ def _wm():
     so sizing, crawling, the live gate and the audit all share the same budget and the same cap."""
     from .wm import Walmart
     cap = ((store.read_json(_state_path()) or {}).get("pace") or {}).get("per_min")
+    quiet = volunteer_cap(schedule(), utcnow())
+    if quiet:
+        cap = min(int(cap), quiet) if cap else quiet
+        print(f"volunteer hours: the pipeline keeps to {cap} calls/min")
     return Walmart(max_per_min=cap)
 
 
@@ -452,7 +527,12 @@ def _crawl(budget_min, inp, start_plan=None, wm=None):
         set_out("next", start_plan)
         return "built"
     if start_plan and not (state and state.get("status") == "crawling"):
-        crawl.start(start_plan)
+        if start_plan == "refresh":
+            due, _ = due_departments(inp.get("manifest"), inp.get("cadence"), inp.get("cfg"), inp.get("scope"), utcnow())
+            summary(f"- refresh crawl of: {', '.join(due) or 'every department'}")
+            crawl.start("refresh", departments=due)
+        else:
+            crawl.start(start_plan)
         state = _read_state()
     if not (state and state.get("status") == "crawling"):
         summary("No crawl in progress.")
@@ -779,6 +859,20 @@ def _audit():
     if status != "ok":
         return res          # skipped: waits a full period, no alert
     resolve("audit-failed")
+    plan = res.get("cadence")
+    if isinstance(plan, dict):
+        from . import cadence as cad
+        summary("\n" + cad.markdown(plan))
+        if plan.get("fits") is False:
+            alert("accuracy-budget", f"refresh plan reaches {plan.get('expected_close_rate', 0):.1%} within tolerance, target "
+                                     f"{plan.get('target_close_rate', 0):.0%}, inside the Walmart quota",
+                  "The per-department refresh plan (crawler/cadence.py, from the drift the weekly audits measured) cannot keep "
+                  "every department at the target share of prices within tolerance with the calls the quota allows. Two levers in "
+                  "data/schedule.json `refresh`: raise `crawl_share` (more of the daily quota for refresh crawls) or lower "
+                  "`target_close_rate`; or widen `live_match_tolerance` in data/gates.json. The plan below shows each department's "
+                  "measured drift, its interval and its cost.\n\n" + cad.markdown(plan))
+        else:
+            resolve("accuracy-budget")
     if res.get("alert"):
         rate = res.get("close_rate")
         shown = f"{rate:.1%}" if isinstance(rate, (int, float)) and not isinstance(rate, bool) else "?"
@@ -865,7 +959,7 @@ def _continue(budget_min):
     summary(f"### continue: {work}\n{_describe(inp, now)}")
     if work in ("size", "crawl"):
         _crawl(budget_min, inp)
-    elif work in ("start-full", "start-core"):
+    elif work in ("start-full", "start-core", "start-refresh"):
         _crawl(budget_min, inp, start_plan=work.split("-")[1])
     elif work == "build":
         _build()

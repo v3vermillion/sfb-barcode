@@ -1,8 +1,31 @@
 {
- "note": "The store whose shelf prices the app shows (crawler/storeprice.py). Walmart's Product Lookup returns a store's own price and stock with storeId; the category listing ignores it, so store prices are fetched 20 items per call after the crawl, consumable departments first. A row with a store price checked within max_age_days shows it (labelled with the store); otherwise Walmart.com's price. Probe of 2026-10-09: store prices differed for 3 of 12 sampled items, all lower (Cheerios GF 8.9 oz $5.00 online, $2.97 in store).",
+ "note": "The store whose shelf prices the app shows (crawler/storeprice.py). Walmart's Product Lookup returns a store's own price and stock with storeId; the category listing ignores it, so store prices are fetched 20 items per call after the crawl. Only Walmart's own in-stock offer counts (with storeId Walmart answers with the buy box, a marketplace seller's price when the store does not carry the item: a 15 oz soup at $10, 2026-10-13); anything else is recorded as not carried. Scope and cadence are the tiers: departments outside every tier are never store-priced (the app's live check fetches the store price on demand when online). A row with a store price checked within its tier's max_age_days shows it (labelled with the store); otherwise Walmart.com's price. Measured 2026-10-13 on the first 4,237 priced rows: the store price differs from Walmart.com's for about half of Food, Personal Care, Health and Household rows, so those go first.",
  "store_id": "2266",
  "name": "Strongsville Supercenter",
  "address": "8585 Pearl Rd, Strongsville, OH 44136",
- "refresh_every_days": 7,
- "max_age_days": 21
+ "refresh_every_days": 28,
+ "max_age_days": 42,
+ "tiers": [
+  {
+   "departments": [
+    "Food",
+    "Household Essentials",
+    "Personal Care",
+    "Health and Medicine"
+   ],
+   "refresh_every_days": 28,
+   "max_age_days": 42
+  },
+  {
+   "departments": [
+    "Baby",
+    "Pets",
+    "Beauty",
+    "Premium Beauty",
+    "Pharmacy"
+   ],
+   "refresh_every_days": 56,
+   "max_age_days": 70
+  }
+ ]
 }

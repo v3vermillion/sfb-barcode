@@ -75,7 +75,7 @@ jobs:
             fi
           }
           for p in state/run.json build/published/manifest.json sizing.json audit/latest.json \
-                   build/candidate/gates.json identify/latest.json store_prices/latest.json; do
+                   build/candidate/gates.json identify/latest.json store_prices/latest.json state/cadence.json; do
             fetch "$p"
           done
           SFB_STORE=store-peek python -m crawler.ci --plan peek
