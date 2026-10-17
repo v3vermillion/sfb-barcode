@@ -55,7 +55,7 @@ test("stalenessText says it in plain words and is empty when fresh", () => {
   assert.equal(stalenessText("amber", 14), "Price list is 14 days old");
   assert.equal(stalenessText("amber", 30), "Price list is 30 days old");
   assert.equal(stalenessText("amber", 1), "Price list is 1 day old");          // grammar holds for any count
-  assert.equal(stalenessText("red", 45), "Prices may be out of date");         // red says what it means; the date line says how old
+  assert.equal(stalenessText("red", 45), "Price list may be out of date");     // red says what it means; the date line says how old
   assert.equal(stalenessText("amber", "16"), "Price list is 16 days old");     // tolerant of a string count
   assert.equal(stalenessText("amber", undefined), "Price list is 0 days old"); // never throws, never NaN
 });

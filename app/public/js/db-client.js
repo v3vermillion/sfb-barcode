@@ -94,7 +94,12 @@ export class DbClient extends EventTarget {
     super();
     this.worker = new Worker("./js/db-worker.js", { type: "module" });
     this.worker.onmessage = (e) => this.#onMessage(e.data);
-    this.worker.onerror = (e) => this.#emit("state", { state: "error", message: e.message });
+    // the search worker failed (a crash, out of memory): every pending answer fails at once, and the state says so
+    this.worker.onerror = (e) => {
+      for (const p of this.pending.values()) p.reject(new Error(e.message || "the price search stopped"));
+      this.pending.clear();
+      this.#setState("error", { message: e.message || "the price search stopped", worker: true });
+    };
     this.pending = new Map();
     this.seq = 0;
     this.state = "idle";

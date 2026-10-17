@@ -34,7 +34,7 @@ export function stalenessLevel(priceDateISO, now = Date.now()) {
 export function stalenessText(level, days) {
   if (level !== "amber" && level !== "red") return "";
   const n = Math.max(0, Math.floor(Number(days) || 0));
-  return level === "red" ? "Prices may be out of date" : `Price list is ${n} ${n === 1 ? "day" : "days"} old`;
+  return level === "red" ? "Price list may be out of date" : `Price list is ${n} ${n === 1 ? "day" : "days"} old`;
 }
 /** "51 days ago", "1 day ago", "today" for the banner's second line. */
 export function ageText(days) {

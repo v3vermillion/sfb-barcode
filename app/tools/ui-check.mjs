@@ -449,6 +449,139 @@ await scenario(["F17"], "walkthrough while prices download", async (set) => {
   release();
 });
 
+// ---------------------------------------------------------------- independent review findings (R = code, A = accessibility, D = design)
+await scenario(["R1"], "header between 441 and 520px with the tally pill", async (set) => {
+  for (const w of [441, 460, 500]) {
+    const env = set(await open({ w, h: 900, init: TALLY3 }));
+    const { page } = env;
+    await page.fill("#q", "peanut"); await settle(page, 500);
+    const st = await page.evaluate(() => { const r = (e) => e && e.getClientRects().length ? e.getBoundingClientRect() : null; const wm = r(document.querySelector(".wordmark")), s = r(document.getElementById("status")); return { wm: wm && [wm.left, wm.right], s: s && [s.left, s.right] }; });
+    check("R1", `${w}: the wordmark never runs under the status pill`, !st.wm || st.wm[1] <= st.s[0], JSON.stringify(st));
+    await env.ctx.close();
+  }
+});
+
+await scenario(["R2"], "Recent after a refresh changes an entry's kind", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  const it = await page.evaluate(async () => window.__sfb.db.item(2));
+  await page.evaluate((it) => localStorage.setItem("sfb.recent", JSON.stringify([{ key: `v:${it.upc}`, kind: "live", title: it.name, priceCents: 1, unit: "each", code: it.upc, id: null, rank: null, version: "old", at: Date.now() }])), it);
+  await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForSelector("html[data-ready='1']"); await settle(page, 800);
+  await page.evaluate((c) => window.__sfb.openCode(c, { source: "recent" }), it.upc); await page.waitForSelector("#sheet[open]"); await settle(page, 400);
+  await page.keyboard.press("Escape"); await settle(page, 600);
+  const n = await page.evaluate(() => document.querySelectorAll("#recentList .row").length);
+  check("R2", "reopening a refreshed Recent item leaves one row, not two", n === 1, `${n} rows`);
+});
+
+await scenario(["R4"], "walkthrough: a tap on the spotlit search box", async (set) => {
+  const env = set(await open({ query: "tour=1" }));
+  const { page } = env;
+  await page.waitForSelector("#tour:not([hidden])"); await settle(page, 400);
+  const f = await rect(page, "#searchForm");
+  await page.mouse.click(f.l + 40, f.t + f.h / 2); await settle(page, 600);
+  const st = await page.evaluate(() => ({ focus: document.activeElement?.id, tour: !document.getElementById("tour").hidden, modal: history.state?.modal || null }));
+  check("R4", "the search box has the focus in the same tap and the walkthrough is gone", st.focus === "q" && !st.tour && st.modal !== "tour", JSON.stringify(st));
+});
+
+await scenario(["R5"], "search worker failure before the prices open", async (set) => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const env = set(await open({ wait: false, routes: [["**/db/files/**", async (route) => { await gate; route.continue().catch(() => {}); }]] }));
+  const { page } = env;
+  await settle(page, 1200);
+  await page.evaluate(() => window.__sfb.db.worker.onerror({ message: "worker crashed" }));
+  await settle(page, 300);
+  const st = await page.evaluate(() => ({ pill: document.getElementById("status").dataset.state, card: document.getElementById("readyCard").dataset.tone }));
+  check("R5", "the pill and card say the price list could not be opened", st.pill === "error" && st.card === "problem", JSON.stringify(st));
+  release();
+});
+
+await scenario(["R6", "R7"], "browser too old: Settings", async (set) => {
+  let dbRequests = 0;
+  const env = set(await open({ init: { fn: () => { delete window.DecompressionStream; } }, wait: false, routes: [["**/db/**", (route) => { dbRequests++; route.continue(); }]] }));
+  const { page } = env;
+  await settle(page, 800);
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 600);
+  const sub = await visibleText(page, "#settings .data-sub");
+  check("R7", "Settings explains it once", (sub.match(/update/gi) || []).length <= 2 && !/Details:/.test(sub), sub);
+  await page.click("#settings [data-act=update]"); await settle(page, 1500);
+  check("R6", "Check for new prices downloads nothing on a browser that cannot unpack it", dbRequests === 0, `${dbRequests} requests`);
+});
+
+await scenario(["R8"], "iPhone launch gap with a hardware keyboard", async (set) => {
+  const env = set(await open({ w: 390, h: 797, ios: true, screen: { w: 390, h: 844 }, init: { fn: () => Object.defineProperty(navigator, "standalone", { get: () => true }) } }));
+  const { page } = env;
+  await page.focus("#q"); await settle(page, 300);
+  const d = await rect(page, "#dock");
+  check("R8", "the dock stays at the screen's bottom while the search box has the focus (no software keyboard)", d && Math.abs(d.b - 844) <= 1, `dock bottom ${d?.b}`);
+});
+
+await scenario(["R9", "A2"], "keyboard-only flow: type a code and press Enter", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.click("#q"); await page.keyboard.type("201234928751"); await page.keyboard.press("Enter");
+  await page.waitForSelector("#sheet[open]"); await settle(page, 600);
+  const st = await page.evaluate(() => { const b = document.querySelector("#sheet [data-act=add]"); return { kbd: document.documentElement.hasAttribute("data-kbd"), focused: document.activeElement === b, outline: b && getComputedStyle(b).outlineStyle, label: b?.getAttribute("aria-label") }; });
+  check("R9", "Enter counts as keyboard use: the focused Add button shows its ring", st.kbd && st.focused && st.outline !== "none", JSON.stringify(st));
+  check("A2", "the Add button's name is its visible words", !st.label, JSON.stringify(st));
+});
+
+await scenario(["A3"], "Update now keeps the focus", async (set) => {
+  const env = set(await open({ clock: Date.now() + 60 * DAY }));
+  const { page } = env;
+  await page.waitForSelector("#stale:not([hidden])");
+  await page.focus("#stale [data-act=update]"); await page.keyboard.press("Enter"); await settle(page, 300);
+  const st = await page.evaluate(() => ({ act: document.activeElement?.dataset?.act || document.activeElement?.tagName }));
+  check("A3", "the focus stays on the banner's button while it checks", st.act === "update", JSON.stringify(st));
+});
+
+await scenario(["A6", "D4"], "results: announcements and the meta line", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.fill("#q", "zzqqxx"); await settle(page, 1100);
+  check("A6", "no results is announced", /No results/.test(await page.evaluate(() => document.getElementById("resultsLive").textContent)));
+  await page.fill("#q", "corn 99 oz"); await settle(page, 900);
+  const m = await rect(page, "#resultsMeta"), r = await rect(page, "#results");
+  check("D4", "the closest-match line is not clipped by the dock", m && r && m.b <= r.b + 0.5, `meta bottom ${m?.b} results bottom ${r?.b}`);
+});
+
+for (const [w, h] of [[320, 568], [390, 844]]) {
+  await scenario(["D1", "D2"], `settings ${w}x${h}`, async (set) => {
+    const env = set(await open({ w, h }));
+    const { page } = env;
+    await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 700);
+    const o = await page.evaluate(() => { const i = document.querySelector("#settings .sheet-inner"); return i.scrollWidth - i.clientWidth; });
+    check("D1", `${w}: Settings never scrolls sideways`, o <= 0, `overflow ${o}px`);
+    await page.evaluate(() => { document.querySelector("#settings .sheet-inner").scrollTop = 400; }); await settle(page, 200);
+    const x = await rect(page, "#settings .x-btn"), sh = await rect(page, "#settings");
+    check("D2", `${w}: the close button stays in view while Settings scrolls`, x && sh && x.t >= sh.t - 0.5 && x.b <= sh.b, `x ${fmt(x)} sheet ${fmt(sh)}`);
+  });
+}
+
+await scenario(["D3", "D16"], "result sheet in phone landscape", async (set) => {
+  const env = set(await open({ w: 844, h: 390 }));
+  const { page } = env;
+  const idx = await page.evaluate(async () => { for (let i = 0; i < 200; i++) { const it = await window.__sfb.db.item(i); if (it && it.priceCents < 100) return i; } return 0; });
+  await page.evaluate((i) => window.__sfb.openRank(i), idx); await page.waitForSelector("#sheet[open]"); await settle(page, 800);
+  const add = await rect(page, "#sheet [data-act=add]"), v = await vp(page);
+  check("D3", "Add to tally is on screen without scrolling the sheet", inside(add, v), `add ${fmt(add)}`);
+  check("D16", "a price under $1 is one size (no small cents)", await page.evaluate(() => !document.querySelector("#sheet .price-big .cents")));
+});
+
+await scenario(["D7", "A1", "D6"], "tally sheet", async (set) => {
+  const env = set(await open({ init: TALLY3 }));
+  const { page } = env;
+  await page.click("#tallyCard"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);
+  check("D7", "the tally counts items, as the home card does", /3 items/.test(await visibleText(page, "#tallySheet .tally-total-row")));
+  await page.locator("#tallySheet [data-remove]").first().click(); await settle(page, 400);
+  const toastIn = await page.evaluate(() => { const t = document.querySelector("#tallySheet .toasts-dlg .toast"); if (!t) return null; let inert = false; for (let n = t; n; n = n.parentElement) if (n.inert) inert = true; return { text: t.textContent, inert }; });
+  check("A1", "a toast while the tally is open shows inside it, reachable", toastIn && !toastIn.inert, JSON.stringify(toastIn));
+  await page.click("#tallySheet .toasts-dlg .toast button"); await settle(page, 400);
+  check("D6", "Undo puts the removed line back", (await page.evaluate(() => JSON.parse(localStorage.getItem("sfb.tally")).length)) === 3);
+  await page.click("#tallySheet [data-act=clear]"); await settle(page, 200);
+  check("D6", "Clear asks inside the sheet before clearing", await page.evaluate(() => !!document.querySelector("#tallySheet .confirm-row") && JSON.parse(localStorage.getItem("sfb.tally")).length === 3));
+});
+
 // ---------------------------------------------------------------- summary
 const failed = results.filter((r) => !r.ok);
 const ids = [...new Set(results.map((r) => r.id))].sort();

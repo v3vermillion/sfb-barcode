@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>SFB Value</title>
-  <meta name="description" content="Strongsville Emergency Food Bank. Scan or type a donated item to see its Walmart price, offline.">
+  <meta name="description" content="Strongsville Emergency Food Bank. Scan or type a donated item to see its Walmart price. Prices are saved on the phone.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f5f0">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0d0b">
@@ -56,21 +56,22 @@
       <img class="mark" src="./icons/icon-192.png" alt="" width="28" height="28" decoding="async">
       <span class="wordmark">SFB <b>Value</b></span>
     </a>
-    <button class="status" id="status" type="button" aria-label="Price list: opening">
+    <button class="status" id="status" type="button" aria-label="Price list: Loading. Opens Settings.">
       <span class="dot" aria-hidden="true"></span>
-      <span class="status-text" id="statusText" aria-hidden="true"><span class="st-long">Opening</span><span class="st-short">Opening</span></span>
+      <span class="status-text" id="statusText" aria-hidden="true"><span class="st-long">Loading</span><span class="st-short">Loading</span></span>
     </button>
     <button class="tally-pill" id="tallyBtn" type="button" hidden>
       <svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg>
-      <span id="tallyCount">0</span>
+      <span class="sr-only">Donation tally, </span><span class="sr-only" id="tallyCount">0 items</span>
       <b id="tallyTotal">$0.00</b>
     </button>
     <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg></button>
   </header>
   <span class="sr-only" id="statusLive" aria-live="polite"></span>
+  <span class="sr-only" id="resultsLive" aria-live="polite"></span>
 
   <div class="progress" id="progress" hidden aria-hidden="true"><div class="bar" id="progressBar"></div></div>
-  <div class="stale" id="stale" role="status" hidden></div>
+  <div class="stale" id="stale" hidden></div>
 
   <div class="dock" id="dock">
     <form class="search" id="searchForm" role="search" autocomplete="off">
@@ -86,7 +87,7 @@
 
   <main id="main" class="main">
     <h1 class="sr-only" id="pageTitle" tabindex="-1">SFB Value, Strongsville Emergency Food Bank</h1>
-    <section id="home" class="home" aria-labelledby="pageTitle">
+    <section id="home" class="home">
       <p class="org" id="heroEyebrow"><span class="org-name">Strongsville Emergency Food Bank</span><span class="org-ref">1 John 4:19</span></p>
       <button class="status-card" id="readyCard" type="button" hidden></button>
       <button class="tally-card" id="tallyCard" type="button" data-empty="true">
@@ -108,7 +109,7 @@
 
     <section id="results" class="results" hidden>
       <ol class="list" id="list" aria-label="Search results"></ol>
-      <div class="results-meta" id="resultsMeta" role="status" aria-live="polite"></div>
+      <div class="results-meta" id="resultsMeta"></div>
     </section>
   </main>
 
@@ -122,7 +123,7 @@
     <section class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourStep tourText" tabindex="-1"></section>
   </div>
   <div id="scanner" class="scanner" hidden role="dialog" aria-modal="true" aria-label="Barcode scanner">
-    <video id="video" class="video" playsinline muted autoplay></video>
+    <video id="video" class="video" playsinline muted autoplay aria-hidden="true"></video>
     <canvas id="overlay" class="overlay" aria-hidden="true"></canvas>
     <div class="scan-top">
       <button class="scan-ctl" id="scanClose" type="button" aria-label="Close scanner"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
@@ -130,7 +131,7 @@
     </div>
     <div class="reticle" id="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="laser"></span></div>
     <div class="scan-bottom">
-      <p class="scan-hint" id="scanHint">Center the barcode in the frame</p>
+      <p class="scan-hint" id="scanHint" role="status">Center the barcode in the frame</p>
       <form class="scan-type" id="scanTypeForm" hidden>
         <input id="scanTypeInput" class="q" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="off" placeholder="Barcode number" aria-label="Barcode number">
         <button type="submit" class="btn btn--accent">Look up</button>

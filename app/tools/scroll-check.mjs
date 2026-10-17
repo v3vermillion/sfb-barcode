@@ -60,6 +60,7 @@ try {
     check("the same search re-run keeps the place", (await scrollTop(page)) < -200);
     await search(page, "peanut butter creamy");
     check("a refined search reopens at its best match", (await scrollTop(page)) === 0 && (await bestVisible(page)));
+    await search(page, "peanut butter");   // enough rows to scroll on any fixture size (the refined search may fit one screen)
     for (const [where, y] of [["header", 20], ["dock", 815]]) {
       await page.evaluate(() => { document.getElementById("results").scrollTop = 0; });
       await page.mouse.move(195, y); await page.mouse.wheel(0, -200); await settle(page);
