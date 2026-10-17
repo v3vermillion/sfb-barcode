@@ -445,11 +445,17 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .live-row .btn--sm { margin-left: 6px; min-height: 44px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
-/* on a short screen (a phone held sideways) the result and tally sheets keep their actions in reach while the details
-   scroll; on a tall one they sit in the flow, where they are already on screen */
+/* a phone held sideways: the result sheet puts the item (price, title, notes) beside the quantity and the actions, so
+   what was matched and the button that adds it are both on screen; the tally keeps Share and Clear in reach while its
+   lines scroll */
+@media (max-height: 500px) and (min-width: 560px) {
+  .sheet-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  .sheet-side > :first-child { margin-top: 14px; }
+  .sheet-side .actions { margin-top: 12px; }
+}
 @media (max-height: 600px) {
-  .sheet .sheet-inner > .actions { position: sticky; bottom: calc(-20px - var(--safe-b)); z-index: 2; margin: 18px -20px 0; padding: 12px 20px calc(12px + var(--safe-b)); background: var(--surface); }
-  .sheet .sheet-inner > .actions::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 12px; background: linear-gradient(transparent, var(--surface)); pointer-events: none; }
+  #tallySheet .sheet-inner > .actions { position: sticky; bottom: calc(-20px - var(--safe-b)); z-index: 2; margin: 18px -20px 0; padding: 12px 20px calc(12px + var(--safe-b)); background: var(--surface); }
+  #tallySheet .sheet-inner > .actions::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 12px; background: linear-gradient(transparent, var(--surface)); pointer-events: none; }
 }
 .actions .btn--block { grid-column: 1 / -1; }
 .pack-seg { display: grid; grid-template-columns: 1fr 1fr; margin-top: 14px; }
@@ -511,7 +517,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .about[open] summary .chev { transform: rotate(270deg); }
 .about summary:focus-visible { outline-offset: 0; }
 .about .fine { margin-top: 14px; }
-.about .fine.mono { font-size: 12.5px; margin-top: 10px; overflow-wrap: anywhere; }
+.about .fine.mono { font-size: 13px; margin-top: 10px; overflow-wrap: anywhere; }
 /* the label legend: one column of badges, one of descriptions, so every description starts on the same edge */
 .legend-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: max-content 1fr; gap: 10px 12px; align-items: center; }
 .legend-list li { display: contents; font-size: 14px; line-height: 1.35; color: var(--ink-2); }
@@ -562,9 +568,14 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .toast button { min-height: 44px; padding: 8px 10px; margin: -8px -4px -8px auto; color: var(--toast-accent); font-weight: 700; }
 .toast.is-out { animation: toast-out .2s ease-in forwards; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-10px) scale(.98); } }
-/* inside an open sheet (the page behind is inert while it is up): pinned to the sheet's top edge */
-.toasts-dlg { position: absolute; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%); width: min(calc(100% - 24px), 420px); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+/* inside an open sheet (the page behind is inert while it is up): at the sheet's foot, by the thumb, clear of its head
+   and of the rows at the top */
+.toasts-dlg { position: absolute; z-index: 5; bottom: calc(16px + var(--safe-b)); left: 50%; transform: translateX(-50%); width: min(calc(100% - 24px), 420px); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 @keyframes toast-out { to { opacity: 0; transform: translateY(-8px); } }
+.toasts-dlg .toast { animation-name: toast-up; }   /* rises from the sheet's foot */
+.toasts-dlg .toast.is-out { animation: toast-down .2s ease-in forwards; }
+@keyframes toast-up { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+@keyframes toast-down { to { opacity: 0; transform: translateY(8px); } }
 
 /* ---------- walkthrough: a spotlight on the real element and a card beside it; the rest of the screen is dimmed ----------
    app.js places the card on the free side of its subject, or centres it on a dimmed screen when neither side has room;

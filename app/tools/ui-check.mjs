@@ -516,14 +516,71 @@ await scenario(["R8"], "iPhone launch gap with a hardware keyboard", async (set)
   check("R8", "the dock stays at the screen's bottom while the search box has the focus (no software keyboard)", d && Math.abs(d.b - 844) <= 1, `dock bottom ${d?.b}`);
 });
 
-await scenario(["R9", "A2"], "keyboard-only flow: type a code and press Enter", async (set) => {
+await scenario(["R9", "A2"], "keyboard flow: type a code, Enter, then Tab", async (set) => {
   const env = set(await open({}));
   const { page } = env;
   await page.click("#q"); await page.keyboard.type("201234928751"); await page.keyboard.press("Enter");
   await page.waitForSelector("#sheet[open]"); await settle(page, 600);
   const st = await page.evaluate(() => { const b = document.querySelector("#sheet [data-act=add]"); return { kbd: document.documentElement.hasAttribute("data-kbd"), focused: document.activeElement === b, outline: b && getComputedStyle(b).outlineStyle, label: b?.getAttribute("aria-label") }; });
-  check("R9", "Enter counts as keyboard use: the focused Add button shows its ring", st.kbd && st.focused && st.outline !== "none", JSON.stringify(st));
+  check("R9", "typing and the keyboard's Go key do not turn the focus rings on (a phone)", !st.kbd && st.focused && st.outline === "none", JSON.stringify(st));
   check("A2", "the Add button's name is its visible words", !st.label, JSON.stringify(st));
+  await page.keyboard.press("Tab"); await settle(page, 200);
+  const t = await page.evaluate(() => ({ kbd: document.documentElement.hasAttribute("data-kbd"), outline: getComputedStyle(document.activeElement).outlineStyle }));
+  check("R9", "Tab turns them on: the focused control is ringed", t.kbd && t.outline !== "none", JSON.stringify(t));
+});
+
+await scenario(["V1"], "Add to tally: the confirmation outlives the sheet", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.evaluate(() => window.__sfb.openRank(0)); await page.waitForSelector("#sheet[open]"); await settle(page, 500);
+  await page.click("#sheet [data-act=add]"); await settle(page, 700);
+  const t = await rect(page, "#toasts .toast"), txt = await visibleText(page, "#toasts .toast");
+  check("V1", "the Added toast with Undo is on screen after the sheet closed", !!t && /Added/.test(txt) && /Undo/.test(txt), `${fmt(t)} "${txt}"`);
+  await page.click("#toasts .toast button"); await settle(page, 300);
+  check("V1", "Undo takes the line back out", (await page.evaluate(() => JSON.parse(localStorage.getItem("sfb.tally") || "[]").length)) === 0);
+});
+
+await scenario(["V2", "V4"], "tally: toasts in the sheet", async (set) => {
+  const env = set(await open({ init: TALLY3 }));
+  const { page } = env;
+  await page.click("#tallyCard"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);
+  await page.locator("#tallySheet [data-remove]").first().click(); await settle(page, 300);
+  await page.locator("#tallySheet [data-remove]").first().click(); await settle(page, 300);
+  const x = await rect(page, "#tallySheet .x-btn"), toasts = await page.evaluate(() => [...document.querySelectorAll("#tallySheet .toasts-dlg .toast")].map((t) => { const r = t.getBoundingClientRect(); return { t: r.top, b: r.bottom, l: r.left, r: r.right }; }));
+  check("V4", "toasts in a sheet leave its close button clear", toasts.length > 0 && toasts.every((r) => !overlap(r, x)), `${toasts.length} toasts, close ${fmt(x)}`);
+  check("V4", "both removals keep their Undo", toasts.length === 2, `${toasts.length} toasts`);
+  for (const b of await page.$$("#tallySheet .toasts-dlg .toast button")) await b.click();
+  await settle(page, 300);
+  check("V4", "both lines come back", (await page.evaluate(() => JSON.parse(localStorage.getItem("sfb.tally")).length)) === 3);
+  await page.click("#tallySheet [data-act=clear]"); await settle(page, 200);
+  await page.click("#tallySheet [data-act=clear-yes]"); await settle(page, 800);
+  const txt = await visibleText(page, "#toasts");
+  check("V2", "Tally cleared is shown after the sheet closed", /Tally cleared/.test(txt), `"${txt}"`);
+});
+
+await scenario(["V3"], "Settings: Check for new prices", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 600);
+  await page.focus("#settings [data-act=update]"); await page.keyboard.press("Enter"); await settle(page, 1500);
+  const st = await page.evaluate(() => ({ toast: [...document.querySelectorAll("#settings .toasts-dlg .toast")].map((t) => t.textContent).join(" | "), focus: document.activeElement?.dataset?.act || document.activeElement?.tagName }));
+  check("V3", "the result toast stays and the focus stays on the button", /up to date|price list/i.test(st.toast) && st.focus === "update", JSON.stringify(st));
+});
+
+await scenario(["V6"], "result sheet in phone landscape shows the item and the button together", async (set) => {
+  const env = set(await open({ w: 844, h: 390 }));
+  const { page } = env;
+  await page.evaluate(() => window.__sfb.openRank(0)); await page.waitForSelector("#sheet[open]"); await settle(page, 800);
+  const t = await rect(page, "#sheetTitle"), add = await rect(page, "#sheet [data-act=add]"), v = await vp(page);
+  check("V6", "the item's title and Add to tally are both on screen and apart", inside(t, v) && inside(add, v) && !overlap(t, add), `title ${fmt(t)} add ${fmt(add)}`);
+});
+
+await scenario(["V8"], "no results shown once", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.fill("#q", "zzqqxx"); await settle(page, 600);
+  const n = await page.evaluate(() => (document.getElementById("results").innerText.match(/No results/g) || []).length);
+  check("V8", "the message appears once on screen", n === 1, `${n} times`);
 });
 
 await scenario(["A3"], "Update now keeps the focus", async (set) => {

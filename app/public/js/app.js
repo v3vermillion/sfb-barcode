@@ -71,22 +71,33 @@ function highlight(text, toks) {
   return out + esc(t.slice(last));
 }
 
-/** Where a toast goes: over the page, or inside the open sheet (a modal dialog makes everything outside it inert and
- * draws above it, so a toast outside would be hidden from sight, touch and screen readers). */
-function toastHost() {
-  const dlg = [el.sheet, el.tallySheet, el.settings].find((d) => d.open && !d._closeTimer);
-  if (!dlg) return el.toasts;
+/** Each sheet carries its own toast region, created when it opens and kept across re-renders: a modal dialog makes
+ * everything outside it inert and draws above it, so a toast outside would be hidden from sight, touch and screen
+ * readers, and a live region that is replaced with every re-render is never announced. */
+function dialogToasts(dlg) {
   let h = dlg.querySelector(":scope > .toasts-dlg");
   if (!h) { h = document.createElement("div"); h.className = "toasts-dlg"; h.setAttribute("aria-live", "polite"); dlg.prepend(h); }
   return h;
 }
-function toast(text, { action, onAction, ms = 4200, iconName = "check" } = {}) {
+/** Replace a sheet's content, keeping its toast region (and the toasts in it). */
+function setDialogHtml(dlg, html) {
+  const h = dlg.querySelector(":scope > .toasts-dlg");
+  dlg.innerHTML = html;
+  if (h) dlg.prepend(h);
+}
+/** Where a toast goes: inside the open sheet, or over the page. `page` is for an action that is about to close the sheet
+ * (Add to tally, Clear): its toast must outlive it. */
+function toastHost(page = false) {
+  const dlg = page ? null : [el.sheet, el.tallySheet, el.settings].find((d) => d.open && !d._closeTimer);
+  return dlg ? dialogToasts(dlg) : el.toasts;
+}
+function toast(text, { action, onAction, ms = 4200, iconName = "check", page = false } = {}) {
   const t = document.createElement("div");
   t.className = "toast";   // the container is the live region; the toast itself is not one more
   t.innerHTML = `${icon(iconName)}<span>${esc(text)}</span>${action ? `<button type="button">${esc(action)}</button>` : ""}`;
   t.querySelector("button")?.addEventListener("click", () => { onAction?.(); dismiss(); });
   const dismiss = () => { if (!t.isConnected) return; t.classList.add("is-out"); setTimeout(() => t.remove(), 220); };
-  const host = toastHost();
+  const host = toastHost(page);
   host.appendChild(t);
   while (host.children.length > 3) host.firstChild.remove();
   if (ms) setTimeout(dismiss, ms);
@@ -103,11 +114,12 @@ function applyTheme() {
 applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 // keyboard or touch: focus rings show only for a keyboard (app.css)
-// any key but a character typed into a field means a keyboard is in use (Tab, the arrows, Enter, Space, Escape, "/")
+// Navigation keys mean a keyboard is in use: Tab and Escape anywhere; the arrows, Enter, Space and "/" outside a text
+// field. Typing into a field (the phone's own keyboard, its Go key, Backspace) never turns the focus rings on.
 document.addEventListener("keydown", (e) => {
   const k = typeof e.key === "string" ? e.key : "";
-  if (!k || ((k.length === 1 && k !== "/") && typing())) return;
-  document.documentElement.dataset.kbd = "";
+  if (!k) return;
+  if (k === "Tab" || k === "Escape" || (!typing() && (k.startsWith("Arrow") || k === "Enter" || k === " " || k === "/"))) document.documentElement.dataset.kbd = "";
 }, true);
 document.addEventListener("pointerdown", () => { delete document.documentElement.dataset.kbd; }, true);
 
@@ -198,7 +210,8 @@ screen.orientation?.addEventListener?.("change", resetZoomAfterRotation);
 const modals = {
   open(dlg, html) {
     if (dlg._closeTimer) { clearTimeout(dlg._closeTimer); dlg._closeTimer = 0; dlg.classList.remove("is-closing"); if (dlg.open) dlg.close(); }
-    dlg.innerHTML = html;
+    setDialogHtml(dlg, html);
+    dialogToasts(dlg);   // the live region exists before its first toast, so screen readers announce it
     if (state.scanOpen) state.scan?.pause();
     if (!dlg.open) dlg.showModal();
     history.pushState({ modal: dlg.id, n: (history.state?.n || 0) + 1 }, "");
@@ -209,7 +222,12 @@ const modals = {
   close(dlg, { fromPop = false } = {}) {
     if (!dlg.open || dlg._closeTimer) return;
     if (!fromPop && history.state?.modal === dlg.id) { history.back(); return; }   // popstate finishes the close
-    const finish = () => { dlg._closeTimer = 0; dlg.classList.remove("is-closing"); if (dlg.open) dlg.close(); dlg.dispatchEvent(new CustomEvent("closed")); };
+    const finish = () => {
+      dlg._closeTimer = 0; dlg.classList.remove("is-closing");
+      // toasts still showing in the sheet move over the page instead of closing with it
+      for (const t of [...(dlg.querySelector(":scope > .toasts-dlg")?.children || [])]) el.toasts.appendChild(t);
+      if (dlg.open) dlg.close(); dlg.dispatchEvent(new CustomEvent("closed"));
+    };
     if (matchMedia("(prefers-reduced-motion: no-preference)").matches) { dlg.classList.add("is-closing"); dlg._closeTimer = setTimeout(finish, 220); } else finish();
   },
 };
@@ -365,7 +383,7 @@ db.addEventListener("more", () => {
   renderStatus();
   refreshRecent();
   if (state.query.trim()) runSearch(state.query);
-  if (el.settings.open) refreshSettings();
+  if (el.settings.open && !el.settings.querySelector(".confirm-row")) refreshSettings();
 });
 db.addEventListener("more-paused", () => {
   setProgress(null);
@@ -436,12 +454,14 @@ function renderStale() {
     el.stale.innerHTML = `${icon("clock")}<div class="stale-text" role="status"><b></b><span></span></div><button class="btn btn--sm" type="button" data-act="update"></button>`;
   }
   const days = daysSince(date);
-  el.stale.querySelector(".stale-text b").textContent = stalenessText(level, days);
-  el.stale.querySelector(".stale-text span").innerHTML = `Updated <span class="nw">${esc(fmtDate(date, "mid"))}</span>${level === "red" ? ` · <span class="nw">${esc(ageText(days))}</span>` : ""}${navigator.onLine ? "" : ". Connect to the internet to update."}`;
+  // only what changed is written (the text is a live region: a rewrite would be announced again)
+  const set = (node, prop, v) => { if (node[prop] !== v) node[prop] = v; };
+  set(el.stale.querySelector(".stale-text b"), "textContent", stalenessText(level, days));
+  set(el.stale.querySelector(".stale-text span"), "innerHTML", `Updated <span class="nw">${esc(fmtDate(date, "mid"))}</span>${level === "red" ? ` · <span class="nw">${esc(ageText(days))}</span>` : ""}${navigator.onLine ? "" : ". Connect to the internet to update."}`);
   const btn = el.stale.querySelector("[data-act=update]");
   // aria-disabled, not disabled: a disabled button drops the keyboard focus (checkNow ignores a second tap itself)
-  btn.setAttribute("aria-disabled", String(!!state.staleBusy));
-  btn.textContent = state.staleBusy ? "Checking…" : "Update now";
+  if (btn.getAttribute("aria-disabled") !== String(!!state.staleBusy)) btn.setAttribute("aria-disabled", String(!!state.staleBusy));
+  set(btn, "textContent", state.staleBusy ? "Checking…" : "Update now");
   el.stale.dataset.level = level;
   el.stale.hidden = false;
   syncBannerInset();
@@ -466,7 +486,7 @@ async function checkNow(btn = null) {
     d();
     toast(r.upToDate ? (wasStale ? "No newer price list is available yet" : "The price list is up to date") : r.applied || r.installed ? `Price list updated to ${fmtDate(priceDate(), true)}` : r.busy ? "A check is already in progress" : "No newer price list is available yet");
     renderStatus();
-    if (el.settings.open) refreshSettings();
+    if (el.settings.open) { const had = document.activeElement === btn; refreshSettings(); if (had) el.settings.querySelector("[data-act=update]")?.focus({ preventScroll: true }); }
   } catch (err) { d(); console.warn("check for update", err); toast("Could not check for a new price list. Try again later.", { iconName: "info" }); }
   finally { state.staleBusy = false; btn?.removeAttribute("aria-disabled"); renderStale(); }
 }
@@ -581,9 +601,10 @@ function renderResults(res, code, q) {
     meta = `<b>${fmtInt(res.total)}</b> ${res.total === 1 ? "match" : "matches"}`;
     if (res.fuzzy) meta += " · spelling corrected";
     if (res.relaxed) meta = `<span class="warn">Closest matches</span>${res.dropped?.length ? ` · “${esc(res.dropped.join(" "))}” not found` : " · no item has every word"}`;
-  } else if (!res.notReady) meta = `No results for “${esc(q)}”`;
+  }
   el.resultsMeta.innerHTML = meta;
-  announceResults(el.resultsMeta.textContent);
+  // the list says "No results" on screen; the announcement says it too
+  announceResults(res.items.length || showCode ? el.resultsMeta.textContent : `No results for “${q}”`);
   // a new or refined query starts at its best match; the same query re-run (the database finished opening, more
   // departments arrived) keeps the volunteer where they had scrolled to
   if (entering || state.shownQuery !== q) resultsToBest();
@@ -592,8 +613,11 @@ function renderResults(res, code, q) {
 }
 
 /** The result count is announced once typing pauses, not on every keystroke. */
-let resultsLiveTimer = 0;
-function announceResults(text) { clearTimeout(resultsLiveTimer); resultsLiveTimer = setTimeout(() => { $("resultsLive").textContent = text; }, 700); }
+let resultsLiveTimer = 0, resultsLiveText = "";
+function announceResults(text) {
+  clearTimeout(resultsLiveTimer);
+  resultsLiveTimer = setTimeout(() => { if (text !== resultsLiveText) { resultsLiveText = text; $("resultsLive").textContent = text; } }, 700);
+}
 el.list.addEventListener("click", (e) => {
   if (e.target.closest("[data-act=scan]")) { openScanner(); return; }
   const b = e.target.closest("button[data-rank], button[data-code]"); if (!b) return;
@@ -697,15 +721,18 @@ function sheetHtml(res) {
   return `<div class="sheet-inner">
     <div class="sheet-top"><div class="grab" aria-hidden="true"></div>
     <div class="sheet-head"><span class="kind" id="sheetKind" data-kind="${esc(res.kind)}">${esc(label)}</span><button class="x-btn" type="button" aria-label="Close">${icon("x")}</button></div></div>
+    <div class="sheet-body"><div class="sheet-main">
     <div class="price-block">${priceBlockHtml(res)}</div>
     <p class="price-note" id="sheetPriceNote">${checkedHtml}</p>
     <h2 class="item-title" id="sheetTitle">${title}</h2>
     ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="t">${c}</span>`).join("")}</div>` : ""}
     ${notes.length ? `<div id="sheetNotes">${notes.map((n) => `<p class="note${n.tone ? ` note--${n.tone}` : ""}">${esc(n.text)}</p>`).join("")}</div>` : ""}
     ${liveRow}
+    </div><div class="sheet-side">
     ${packSeg}
     ${stepper}
     <div class="actions">${primary}${secondary}</div>
+    </div></div>
     ${basisCard}${also}
     ${facts.length ? `<ul class="facts">${facts.map(([k, v]) => `<li><span>${k}</span><span>${v}</span></li>`).join("")}</ul>` : ""}
   </div>`;
@@ -732,7 +759,7 @@ function openResolution(res, { source = "search" } = {}) {
 }
 function rerenderSheet(res) {
   state.sheetRes = res;
-  el.sheet.innerHTML = sheetHtml(res);
+  setDialogHtml(el.sheet, sheetHtml(res));
   el.sheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.sheet));
   grabToDismiss(el.sheet); wireSheet(el.sheet, res);
   el.sheet.querySelector(".sheet-inner").scrollTop = 0;
@@ -777,7 +804,8 @@ el.sheet.addEventListener("closed", () => {
   if (state.closeScannerAfterSheet) { state.closeScannerAfterSheet = false; closeScanner(); }
   else if (state.openScannerAfterSheet) { state.openScannerAfterSheet = false; openScanner(); return; }
   else if (state.scanOpen) { if (el.scanTypeForm.hidden) resumeScan(); return; }
-  if (state.focusSearchAfterSheet) { state.focusSearchAfterSheet = false; el.q.focus({ preventScroll: true }); }
+  if (state.focusSearchAfterSheet && state.scanOpen) { state.focusSearchAfterSheet = false; state.focusSearchAfterScanner = true; }   // the page is inert until the scanner closes
+  else if (state.focusSearchAfterSheet) { state.focusSearchAfterSheet = false; el.q.focus({ preventScroll: true }); }
   else if (!state.scanOpen) restoreFocus(state.sheetOpener);
   state.sheetOpener = null;
   maybeApplyPending();
@@ -785,7 +813,9 @@ el.sheet.addEventListener("closed", () => {
 /** Focus goes back to what opened a layer when it is still on screen; otherwise to the page heading (never the search
  * box, which would raise the keyboard uninvited). */
 function restoreFocus(node) {
-  const ok = node && node !== document.body && node.isConnected && node.getClientRects().length && !node.closest("[inert], [hidden]");
+  // a Recent row is re-rendered when its item moves to the top: the newest row is where it went
+  if (node && !node.isConnected && node.matches?.("[data-recent]")) node = el.recentList.querySelector("[data-recent='0']");
+  const ok = node && node !== document.body && node !== el.q && node.isConnected && node.getClientRects().length && !node.closest("[inert], [hidden]");
   (ok ? node : el.pageTitle).focus({ preventScroll: true });
 }
 // the tally or settings opened over the scanner (a toast's View, the header): the camera rests until it closes
@@ -881,7 +911,7 @@ function addToTally(res) {
   saveTally();
   haptic(15);
   // an accidental add is undone in one tap
-  toast(`Added ${money(cents)} · Tally total ${money(tallyTotal())}`, { action: "Undo", onAction: () => { tally = tally.filter((t) => t.id !== line.id); saveTally(); }, ms: 4000 });
+  toast(`Added ${money(cents)} · Tally total ${money(tallyTotal())}`, { action: "Undo", onAction: () => { tally = tally.filter((t) => t.id !== line.id); saveTally(); }, ms: 4000, page: true });
 }
 function tallyHtml({ confirmClear = false } = {}) {
   const total = tallyTotal();
@@ -903,7 +933,7 @@ function openTally() { modals.open(el.tallySheet, tallyHtml()); }
 function refreshTally(opts) {
   if (!el.tallySheet.open) return;
   const y = el.tallySheet.querySelector(".sheet-inner")?.scrollTop || 0;
-  el.tallySheet.innerHTML = tallyHtml(opts); el.tallySheet.querySelector(".sheet-inner").scrollTop = y;
+  setDialogHtml(el.tallySheet, tallyHtml(opts)); el.tallySheet.querySelector(".sheet-inner").scrollTop = y;
   el.tallySheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.tallySheet)); grabToDismiss(el.tallySheet);
 }
 el.tallySheet.addEventListener("click", (e) => {
@@ -919,7 +949,7 @@ el.tallySheet.addEventListener("click", (e) => {
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "clear") { refreshTally({ confirmClear: true }); el.tallySheet.querySelector("[data-act=keep]")?.focus({ preventScroll: true }); }
   else if (act === "keep") { refreshTally(); el.tallySheet.querySelector("[data-act=clear]")?.focus({ preventScroll: true }); }
-  else if (act === "clear-yes") { tally = []; saveTally(); modals.close(el.tallySheet); toast("Tally cleared"); }
+  else if (act === "clear-yes") { tally = []; saveTally(); modals.close(el.tallySheet); toast("Tally cleared", { page: true }); }
   else if (act === "share") shareTally();
 });
 async function shareTally() {
@@ -1023,7 +1053,7 @@ function settingsHtml() {
   const st = priceStatus();
   const problem = state.dbErrorPlain ? state.dbError
     : [st.card?.sub === "Open Settings for details." ? "" : st.card?.sub, state.dbError && !state.dbErr?.storage ? `Details: ${state.dbError}` : ""].filter(Boolean).join(" ");
-  const card = m
+  const card = m && !state.workerError
     ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Updated ${esc(fmtDate(priceDate(), "mid"))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} saved on this phone</p></div></div>`
     : `<div class="data-head data-head--warn">${icon("info", "ico data-ico")}<div><h3 class="data-title">${esc(st.card?.title || "Loading the price list")}</h3><p class="data-sub">${esc(problem)}</p></div></div>`;
   const legend = [["exact", "Exact item", "Found in the Walmart price list by barcode or name"], ["store-label", "Store price label", "A store scale label (meat, deli, bakery) that carries its own price"],
@@ -1065,7 +1095,7 @@ function fillStorage() {
   }).catch(() => {});
 }
 function openSettings() { modals.open(el.settings, settingsHtml()); fillStorage(); }
-function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")?.scrollTop || 0; el.settings.innerHTML = settingsHtml(); el.settings.querySelector(".sheet-inner").scrollTop = y; el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); grabToDismiss(el.settings); fillStorage(); }
+function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")?.scrollTop || 0; setDialogHtml(el.settings, settingsHtml()); el.settings.querySelector(".sheet-inner").scrollTop = y; el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); grabToDismiss(el.settings); fillStorage(); }
 el.settings.addEventListener("click", async (e) => {
   const th = e.target.closest("[data-theme]");
   if (th) { prefs.theme = th.dataset.theme; writeJson(PREFS_KEY, prefs); applyTheme(); el.settings.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b === th))); return; }
@@ -1331,7 +1361,8 @@ function closeScanner({ fromPop = false } = {}) {
   el.scanner.querySelector(".scan-denied")?.remove();
   el.torchBtn.setAttribute("aria-pressed", "false");
   syncInert();
-  if (!el.sheet.open) el.scanBtn.focus({ preventScroll: true });
+  if (state.focusSearchAfterScanner) { state.focusSearchAfterScanner = false; el.q.focus({ preventScroll: true }); }
+  else if (!el.sheet.open) el.scanBtn.focus({ preventScroll: true });
 }
 function resumeScan() {
   if (!state.scanOpen || !state.scan) return;
