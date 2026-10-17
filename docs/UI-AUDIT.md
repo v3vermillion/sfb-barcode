@@ -112,6 +112,14 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | P2, P4, P6–P14 | Sheet titles, toasts, highlights, repeated facts, tally pill, stepper corners, walkthrough on black, no-results action, camera copy, Prices card, iPad sheet width | Fixed |
 | P3 | Row prices not on the title's baseline | Fixed: the price shares the title's first line |
 | P1 | 21 text sizes | Partly: one label style; the full type scale moves into the Dynamic Type change (F40), which rewrites every size |
+| V1, V2 | The Added and Tally cleared toasts closed with their sheet | Fixed (V1, V2) |
+| V3 | The Settings check result toast was wiped by the card refresh; focus lost | Fixed (V3) |
+| V4 | In-sheet toasts covered the close button and the first row; a second removal lost the first Undo | Fixed: toasts at the sheet's foot, one region per sheet kept across re-renders (V4) |
+| V5 | In-sheet live region recreated with every re-render (not announced) | Fixed: created when the sheet opens and kept |
+| V6 | Landscape sticky actions covered the item's title and warnings | Fixed: two-column landscape sheet (V6) |
+| V7 | The phone keyboard's Go key turned focus rings on | Fixed: only navigation keys outside fields, Tab and Escape anywhere (R9) |
+| V8 | "No results" twice on screen | Fixed (V8) |
+| V9, V10 | Banner text rewritten on every re-render; focus return after Recent and typed codes | Fixed |
 | P5 | Badge colours close (produce/exact, equivalent/closest) | Kept: every badge carries its words, so colour is never the only cue; glyphs considered for the Dynamic Type pass |
 
 ## Check on a real iPhone before merging
