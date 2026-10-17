@@ -56,9 +56,9 @@
       <img class="mark" src="./icons/icon-192.png" alt="" width="28" height="28" decoding="async">
       <span class="wordmark">SFB <b>Value</b></span>
     </a>
-    <button class="status" id="status" type="button">
+    <button class="status" id="status" type="button" aria-label="Price list: opening">
       <span class="dot" aria-hidden="true"></span>
-      <span class="sr-only">Price database: </span><span class="status-text" id="statusText">Starting…</span>
+      <span class="status-text" id="statusText" aria-hidden="true"><span class="st-long">Opening</span><span class="st-short">Opening</span></span>
     </button>
     <button class="tally-pill" id="tallyBtn" type="button" hidden>
       <svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg>
@@ -72,38 +72,38 @@
   <div class="progress" id="progress" hidden aria-hidden="true"><div class="bar" id="progressBar"></div></div>
   <div class="stale" id="stale" role="status" hidden></div>
 
-  <footer class="dock" id="dock">
+  <div class="dock" id="dock">
     <form class="search" id="searchForm" role="search" autocomplete="off">
       <svg class="ico search-ico" aria-hidden="true"><use href="#i-search"/></svg>
-      <input id="q" class="q" type="search" name="q" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Item name or barcode" aria-label="Search by item name, brand or barcode number">
+      <input id="q" class="q" type="search" name="q" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Name or barcode" aria-label="Search by item name, brand or barcode number">
       <button class="clear-btn" id="clearBtn" type="button" aria-label="Clear search" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
     </form>
     <button class="scan-btn" id="scanBtn" type="button" aria-label="Scan a barcode with the camera">
       <svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg>
       <span>Scan</span>
     </button>
-  </footer>
+  </div>
 
   <main id="main" class="main">
-    <section id="home" class="home">
-      <button class="ready-card" id="readyCard" type="button" aria-label="Price status; opens Settings" data-tone="busy"></button>
-      <button class="tally-strip" id="tallyStrip" type="button" data-empty="true" aria-label="Open the tally"><svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg><span class="ts-text" id="tallyStripText">Tally is empty</span><span class="ts-total" id="tallyStripTotal">$0.00</span><svg class="ico chev" aria-hidden="true"><use href="#i-back"/></svg></button>
-      <div class="hero">
-        <p class="eyebrow" id="heroEyebrow"><span>Strongsville Emergency Food Bank</span><span class="ref">1 John 4:19</span></p>
-        <h1 class="h1">Scan or type the item.<br><span class="muted">Its price is here, even offline.</span></h1>
-        <h2 class="h2 quick-h" id="quickH">Common items</h2>
-        <div class="quick" id="quick" aria-labelledby="quickH">
-          <button class="chip" type="button" data-q="peanut butter">peanut butter</button>
-          <button class="chip" type="button" data-q="diapers size 4">diapers size 4</button>
-          <button class="chip" type="button" data-q="canned corn">canned corn</button>
-          <button class="chip" type="button" data-q="toothpaste">toothpaste</button>
-        </div>
-        <div class="note install" id="installHint" hidden></div>
-      </div>
+    <h1 class="sr-only" id="pageTitle" tabindex="-1">SFB Value, Strongsville Emergency Food Bank</h1>
+    <section id="home" class="home" aria-labelledby="pageTitle">
+      <p class="org" id="heroEyebrow"><span class="org-name">Strongsville Emergency Food Bank</span><span class="org-ref">1 John 4:19</span></p>
+      <button class="status-card" id="readyCard" type="button" hidden></button>
+      <button class="tally-card" id="tallyCard" type="button" data-empty="true">
+        <span class="tc-ico" aria-hidden="true"><svg class="ico"><use href="#i-receipt"/></svg></span>
+        <span class="tc-text"><span class="tc-label">Donation tally</span><span class="tc-total counting" id="tallyCardTotal">$0.00</span><span class="tc-sub" id="tallyCardSub">No items added</span></span>
+        <svg class="ico chev" aria-hidden="true"><use href="#i-back"/></svg>
+      </button>
+      <div class="install" id="installHint" hidden></div>
       <section class="recent" id="recent" hidden aria-labelledby="recentH">
         <h2 class="h2" id="recentH">Recent</h2>
-        <ol class="list list--compact" id="recentList"></ol>
+        <ol class="list list--compact recent-list" id="recentList"></ol>
       </section>
+      <div class="home-empty" id="homeEmpty">
+        <span class="he-ico" aria-hidden="true"><svg class="ico"><use href="#i-scan"/></svg></span>
+        <h2 class="he-title">Scan a barcode to begin</h2>
+        <p class="he-sub">Or search by product name and size.</p>
+      </div>
     </section>
 
     <section id="results" class="results" hidden>
@@ -119,7 +119,7 @@
 
   <div id="tour" class="tour" hidden>
     <div class="tour-spot" id="tourSpot" hidden></div>
-    <section class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourText"></section>
+    <section class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourStep tourText" tabindex="-1"></section>
   </div>
   <div id="scanner" class="scanner" hidden role="dialog" aria-modal="true" aria-label="Barcode scanner">
     <video id="video" class="video" playsinline muted autoplay></video>

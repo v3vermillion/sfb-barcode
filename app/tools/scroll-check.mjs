@@ -99,7 +99,7 @@ try {
     }
     const home = await page.evaluate(() => ({ y: scrollY, max: document.documentElement.scrollHeight - innerHeight }));
     check("Home comes back at the top", home.y === 0, JSON.stringify(home));
-    await page.click("#tallyBtn"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);
+    await page.click("#tallyCard"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);   // home shows the tally card (the header pill is for results)
     await page.mouse.move(180, 500); await page.mouse.wheel(0, 300); await settle(page, 300);
     const before = await page.evaluate(() => document.querySelector("#tallySheet .sheet-inner").scrollTop);
     await page.locator("#tallySheet [data-remove]").nth(6).click(); await settle(page, 300);

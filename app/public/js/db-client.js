@@ -74,10 +74,11 @@ export function pickShards(manifest, budgetBytes = memoryBudget()) {
   return { open, skipped };
 }
 
-/** A download that failed: `network` when the phone lost its connection (worth retrying), `storage` when the phone
- * refused to save it (full), else the server's answer. */
+/** A download that failed: `network` when it is worth retrying (the phone lost its connection, or the server answered
+ * 5xx), `server` when the server answered 5xx (the phone's connection is fine), `storage` when the phone refused to save
+ * it (full), else the server's answer. */
 class DownloadError extends Error {
-  constructor(message, { network = false, storage = false, needMB = 0 } = {}) { super(message); this.network = network; this.storage = storage; this.needMB = needMB; }
+  constructor(message, { network = false, server = false, storage = false, needMB = 0 } = {}) { super(message); this.network = network; this.server = server; this.storage = storage; this.needMB = needMB; }
 }
 /** Save a response in Cache Storage; a full phone is a storage error, a body cut off mid-way a network one. */
 async function save(cache, url, res) {
@@ -205,7 +206,7 @@ export class DbClient extends EventTarget {
           await this.#load(cur.version);
           this.#writeKey(KEY, { version: cur.version, installedAt: Date.now() });
         } catch (err) {
-          this.#setState("error", { message: this.#explain(err), network: !!err.network, storage: !!err.storage });
+          this.#setState("error", { message: this.#explain(err), network: !!err.network, server: !!err.server, storage: !!err.storage, needMB: err.needMB || 0 });
         }
       }
     })();
@@ -219,6 +220,7 @@ export class DbClient extends EventTarget {
 
   #explain(err) {
     if (err?.storage) return `This phone is out of storage space for the prices (about ${err.needMB || "?"} MB more is needed). Free some space (old photos, videos or apps), then open the app again.`;
+    if (err?.server) return "The price server is not responding. The download retries automatically.";
     if (err?.network || !navigator.onLine) return "The download was interrupted. It resumes automatically when the phone is back online.";
     return String(err?.message || err);
   }
@@ -227,7 +229,7 @@ export class DbClient extends EventTarget {
     let res;
     try { res = await fetch(DB_ROOT + "current.json", { cache: "no-store" }); }
     catch (e) { throw new DownloadError(`could not reach the price server (${e.message})`, { network: true }); }
-    if (!res.ok) throw new DownloadError("could not read db/current.json");
+    if (!res.ok) throw new DownloadError(`could not read db/current.json (${res.status})`, { network: res.status >= 500, server: res.status >= 500 });
     const cur = await res.json();
     if (!cur?.version || !/^[\w.-]+$/.test(cur.version)) throw new DownloadError("db/current.json is not a snapshot pointer");
     return cur;
@@ -240,7 +242,7 @@ export class DbClient extends EventTarget {
     if (!res) {
       try { res = await fetch(url, { cache: "no-store" }); }
       catch (e) { throw new DownloadError(`could not reach the price server (${e.message})`, { network: true }); }
-      if (!res.ok || /text\/html/i.test(res.headers.get("content-type") || "")) throw new DownloadError("manifest missing");
+      if (!res.ok || /text\/html/i.test(res.headers.get("content-type") || "")) throw new DownloadError(`manifest missing (${res.status})`, { network: res.status >= 500, server: res.status >= 500 });
       await save(cache, url, res.clone());
     }
     return res.json();
@@ -274,7 +276,7 @@ export class DbClient extends EventTarget {
           let res;
           try { res = await fetch(f.url, { cache: "no-store" }); }
           catch (e) { throw new DownloadError(`${f.url}: ${e.message}`, { network: true }); }
-          if (!res.ok) throw new DownloadError(`download failed: ${f.url} (${res.status})`, { network: res.status >= 500 });
+          if (!res.ok) throw new DownloadError(`download failed: ${f.url} (${res.status})`, { network: res.status >= 500, server: res.status >= 500 });
           if (/text\/html/i.test(res.headers.get("content-type") || "")) throw new DownloadError(`download failed: ${f.url} (not a pack file)`);
           // the response goes straight into Cache Storage: reading it into an ArrayBuffer first copied every pack file
           // through the page's JS heap twice on a phone

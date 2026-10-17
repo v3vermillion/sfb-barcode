@@ -228,8 +228,9 @@ for (const [w, h] of [[768, 1024], [1280, 800], [844, 390]]) {
     const env = set(await open({ w, h }));
     const { page } = env;
     await page.evaluate(() => dispatchEvent(new Event("offline"))); await settle(page, 500);
-    const t = await rect(page, ".toast"), v = await vp(page);
-    check("F42", `${w}x${h}: toast centred and on screen`, t && t.l >= 0 && Math.abs((t.l + t.r) / 2 - v.w / 2) <= 1, `toast ${fmt(t)} vp ${v.w}`);
+    // centred on the app's column (the dock's centre; a desktop scrollbar gutter is not page)
+    const t = await rect(page, ".toast"), d = await rect(page, "#dock");
+    check("F42", `${w}x${h}: toast centred and on screen`, t && d && t.l >= 0 && Math.abs((t.l + t.r) / 2 - (d.l + d.r) / 2) <= 1, `toast ${fmt(t)} column ${fmt(d)}`);
   });
 }
 
@@ -237,7 +238,13 @@ await scenario(["F43", "F44"], "scanner in phone landscape", async (set) => {
   const env = set(await open({ w: 844, h: 390 }));
   const { page } = env;
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  // a phone with a camera shows the reticle and the "Enter the barcode manually" button (headless has no camera, so the
+  // denied state is put back to the camera layout before measuring)
+  await page.evaluate(() => { document.querySelector(".scan-denied")?.remove(); document.getElementById("reticle").hidden = false; document.getElementById("scanTypeForm").hidden = true; document.getElementById("scanTypeBtn").hidden = false; document.getElementById("scanHint").textContent = "Center the barcode in the frame"; });
+  await settle(page, 200);
   const v = await vp(page);
+  const ret = await rect(page, "#reticle"), bottom = await rect(page, ".scan-bottom"), topBar = await rect(page, ".scan-top");
+  check("F43", "the reticle fits between the controls in landscape", ret && bottom && topBar && ret.t >= topBar.b - 0.5 && ret.b <= bottom.t + 0.5 && bottom.b <= v.h + 0.5, `reticle ${fmt(ret)} top bar ${fmt(topBar)} bottom ${fmt(bottom)}`);
   const ctl = await page.evaluate(() => [...document.querySelectorAll("#scanner button, #scanner input")].filter((e) => e.getClientRects().length && !e.closest("[hidden]")).map((e) => { const r = e.getBoundingClientRect(); return { id: e.id || e.className, l: r.left, t: r.top, r: r.right, b: r.bottom }; }));
   const off = ctl.filter((r) => !inside(r, v));
   check("F43", "every scanner control is on screen in landscape", ctl.length > 0 && off.length === 0, off.map((r) => `${r.id} ${fmt(r)}`).join("; ") || `${ctl.length} controls`);

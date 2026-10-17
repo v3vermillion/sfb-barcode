@@ -51,12 +51,14 @@
   --spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001);
   --dur: 240ms;
 
-  /* geometry: safe areas from the system; the rest is measured in app.js (viewport section) */
+  /* geometry: safe areas from the system; the bars are measured in app.js (viewport section), these are first-paint values */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
-  --dock-h: 72px;      /* the dock above the safe area */
+  --top-h: calc(var(--safe-t) + 61px);    /* the header, status-bar inset included */
+  --dock-h: calc(73px + var(--safe-b));   /* the dock, home-indicator padding included */
   --kb: 0px;           /* keyboard inset, from visualViewport while a text field is focused */
   --vv-top: 0px;       /* iOS pans the page up for the keyboard: fixed parts follow the visible area */
+  --vp-gap: 0px;       /* iPhone Home Screen launch with a viewport one status bar short: added under everything bottom-fixed */
   --banner-h: 0px;     /* the prices-as-of banner under the header, 0 when hidden */
 }
 @media (prefers-color-scheme: dark) {
@@ -103,7 +105,7 @@
 html { height: 100%; background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scrollbar-gutter: stable; }
 html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
 body {
-  margin: 0; min-height: 100%; background: var(--bg); color: var(--ink);
+  margin: 0; min-height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--ink);
   font: 500 17px/1.35 var(--font); font-feature-settings: "ss01", "cv05"; font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   overscroll-behavior-y: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
@@ -111,7 +113,10 @@ body {
 button, input { font: inherit; color: inherit; }
 button { background: none; border: 0; padding: 0; cursor: pointer; }
 input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+/* the focus ring is for keyboards: app.js sets html[data-kbd] on Tab or an arrow key and clears it on a touch or click,
+   so a sheet's primary button, focused when it opens, is not ringed on a phone */
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+:root:not([data-kbd]) :focus-visible { outline: none; }
 ::selection { background: var(--accent-soft); }
 [hidden] { display: none !important; }
 .ico { width: 22px; height: 22px; flex: none; }
@@ -121,10 +126,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .muted { color: var(--ink-3); }
 .mono { font-family: var(--mono); font-weight: 500; letter-spacing: .04em; }
 .counting { font-variant-numeric: tabular-nums; }
-.h1 { font-size: clamp(24px, 6.4vw, 30px); line-height: 1.12; letter-spacing: -0.025em; font-weight: 600; margin: 0; }
 .h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 0 0 8px; }
-.eyebrow { display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 2px; margin: 0 0 14px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
-.eyebrow .ref { white-space: nowrap; }
 /* a note: one quiet paragraph on a tinted panel (sheets, settings, the Home Screen card) */
 .note { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.45; }
 .note--warn { background: color-mix(in oklab, var(--closest) 12%, transparent); color: var(--ink); }
@@ -133,7 +135,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 /* ---------- header ---------- */
 .top {
   position: fixed; inset: var(--vv-top) 0 auto 0; z-index: 20; display: flex; align-items: center; gap: 8px;
-  padding: calc(var(--safe-t) + 8px) 12px 8px 16px; min-height: calc(var(--safe-t) + 56px);
+  padding: calc(var(--safe-t) + 8px) 12px 8px 16px; min-height: calc(var(--safe-t) + 61px);
   background: color-mix(in oklab, var(--bg) 86%, transparent); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2);
   border-bottom: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
 }
@@ -142,17 +144,21 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .wordmark { font-size: 17px; letter-spacing: -0.01em; font-weight: 500; white-space: nowrap; }
 .wordmark b { font-weight: 700; }
 .status {
-  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px 0 10px; border-radius: 999px; flex: 0 1 auto; min-width: 0;
-  background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; max-width: 46vw; white-space: nowrap; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px 0 10px; border-radius: 999px; flex: none;
+  background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden;
 }
-.status .status-text { overflow: hidden; text-overflow: ellipsis; }
+/* the smallest phones keep the logo and drop the wordmark, so the status words always fit whole */
+@media (max-width: 359px) { .wordmark { display: none; } }
+.status .status-text { white-space: nowrap; }
+.status .st-short { display: none; }
 .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; transition: background var(--dur); }
 .status[data-state="loading"] .dot, .status[data-state="downloading"] .dot { background: var(--equiv); animation: pulse 1.2s ease-in-out infinite; }
 .status[data-state="error"] .dot { background: var(--danger); }
 .status[data-state="offline"] .dot { background: var(--ink-3); }
+.status[data-state="ready"] .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent), var(--glow-dot); }
+/* old prices colour the dot whatever the state (same specificity as the ready rule, so these come after it) */
 .status[data-stale="amber"] .dot { background: var(--equiv); box-shadow: 0 0 0 3px color-mix(in oklab, var(--equiv) 25%, transparent); }
 .status[data-stale="red"] .dot { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 25%, transparent); }
-.status[data-state="ready"] .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent), var(--glow-dot); }
 @keyframes pulse { 50% { opacity: .35; } }
 .tally-pill {
   display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 12px 0 10px; border-radius: 999px; flex: none;
@@ -162,20 +168,27 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .tally-pill b { font-weight: 700; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; color: var(--ink-2); flex: none; }
 .icon-btn:active { background: var(--surface-2); }
-/* narrow phones: the tally pill takes the wordmark's room and the pill keeps only the date */
+/* narrow phones with the tally pill up (results screen): the pill takes the wordmark's room and the status keeps one
+   word or the date; on the narrowest it is the dot alone, its full words in its accessible name. The text never
+   truncates mid-word. */
 @media (max-width: 440px) {
   .top:has(.tally-pill:not([hidden])) .wordmark { display: none; }
-  .top:has(.tally-pill:not([hidden])) .status { max-width: none; flex: 0 1 auto; }
-  .top:has(.tally-pill:not([hidden])) .status .n { display: none; }
+  .top:has(.tally-pill:not([hidden])) .status { max-width: none; flex: none; }
+  .top:has(.tally-pill:not([hidden])) .status .st-long { display: none; }
+  .top:has(.tally-pill:not([hidden])) .status .st-short { display: inline; }
 }
-.progress { position: fixed; z-index: 21; top: calc(var(--vv-top) + var(--safe-t) + 56px); left: 0; right: 0; height: 3px; background: color-mix(in oklab, var(--line) 60%, transparent); }
+@media (max-width: 374px) {
+  .top:has(.tally-pill:not([hidden])) .status { width: 44px; padding: 0; justify-content: center; }
+  .top:has(.tally-pill:not([hidden])) .status .status-text { display: none; }
+}
+.progress { position: fixed; z-index: 21; top: calc(var(--vv-top) + var(--top-h)); left: 0; right: 0; height: 3px; background: color-mix(in oklab, var(--line) 60%, transparent); }
 .progress .bar { height: 100%; width: 0; background: var(--accent); transition: width .3s var(--ease-out); }
 
 /* ---------- prices-as-of banner: amber from 14 days, red from 45 ----------
    Fixed under the header; the content below is pushed down by --banner-h (measured in app.js, 0 when hidden) so nothing
    is covered and the dock never moves. Hues come from the theme tokens, so dark mode and high contrast follow. */
 .stale {
-  position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--safe-t) + 56px); z-index: 19; display: flex; align-items: center; gap: 10px;
+  position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--top-h)); z-index: 19; display: flex; align-items: center; gap: 10px;
   padding: 8px 12px 8px 14px; min-height: 60px; background: var(--stale-bg); color: var(--ink); border-bottom: 1px solid var(--stale-line);
   font-size: 14px; line-height: 1.3;
 }
@@ -197,83 +210,85 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 @keyframes stale-in { from { opacity: 0; transform: translateY(-6px); } }
 
 /* ---------- main + home ----------
-   Home reads top-down (status card, tally strip, headline, common items, Home Screen card, Recent) and always comes back
-   at the top. Cards share --r-l, sheets --r-xl. */
+   Home reads top-down: the food bank, a status card only when there is something to know or do, the donation tally,
+   the Home Screen card (browser only), then Recent, or a short prompt when nothing has been looked up yet. It fills
+   exactly the screen between the header and the dock (body is a column; main takes the rest), so it never scrolls
+   unless its content needs to. Cards share --r-l, sheets --r-xl. */
 .main {
-  padding: calc(var(--safe-t) + 72px + var(--banner-h)) 16px calc(var(--dock-h) + var(--safe-b) + var(--kb) + 20px);
-  min-height: 100dvh; display: flex; flex-direction: column;
+  flex: 1; width: 100%; display: flex; flex-direction: column;
+  padding: calc(var(--top-h) + 16px + var(--banner-h)) 16px calc(var(--dock-h) + var(--kb) - var(--vp-gap) + 20px);
 }
-.home { display: flex; flex-direction: column; justify-content: flex-start; flex: 1; gap: 16px; }
-.hero { padding: 10px 2px 4px; }
-.hero .muted { color: var(--ink-3); }
-.hero .h1 { margin-top: 0; }
-.quick-h { margin: 20px 0 10px; }
-.quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 0; }
-.chip {
-  height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--line) 60%, transparent);
-  font-weight: 500; font-size: 15px; transition: transform .15s var(--ease-out), background .15s;
-}
-.chip:active { transform: scale(.96); background: var(--accent-soft); border-color: var(--accent-line); }
-.recent { padding-bottom: 6px; }
-/* once the app has been used, the hero gives way to Recent */
-.home:has(.recent:not([hidden])) .h1 { font-size: clamp(24px, 6.4vw, 32px); }
-.home:has(.recent:not([hidden])) .hero { padding-top: 8px; }
+.home { display: flex; flex-direction: column; flex: 1; gap: 14px; }
+.org { display: flex; flex-direction: column; gap: 3px; margin: 0 2px 4px; text-transform: uppercase; font-weight: 650; }
+.org-name { font-size: 13px; letter-spacing: .06em; color: var(--ink-2); line-height: 1.35; }
+.org-ref { font-size: 12px; letter-spacing: .1em; color: var(--ink-3); font-weight: 600; }
+@media (max-width: 359px) { .org-name { font-size: 12px; letter-spacing: .04em; } }
 
-/* the readiness card: tone-coloured icon tile, bold line, one quiet line, chevron. It is a button that opens Settings. */
-.ready-card {
+/* the status card: tone tile, bold line, one quiet line, chevron; a button that opens Settings */
+.status-card {
   display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; width: 100%; text-align: left;
   padding: 14px 12px 14px 14px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface);
-  box-shadow: var(--shadow); color: var(--ink); transition: transform .15s var(--ease-out), background .15s;
+  box-shadow: var(--shadow); color: var(--ink); transition: transform .15s var(--ease-out);
 }
-.ready-card:active { transform: scale(.985); }
-.rc-ico { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
-.rc-ico .ico { width: 24px; height: 24px; }
-.ready-card .rc-text { min-width: 0; }
-.ready-card b, .install > div > b { display: block; font-size: 16.5px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; }
-.ready-card .sub, .install .sub { display: block; font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.38; }
-.ready-card .chev, .about summary .chev { width: 20px; height: 20px; color: var(--ink-3); transform: rotate(180deg); }
-.ready-card[data-tone="sample"] { background: linear-gradient(135deg, color-mix(in oklab, var(--equiv) 14%, var(--surface)), var(--surface) 70%); }
-.ready-card[data-tone="sample"] .rc-ico { background: color-mix(in oklab, var(--equiv) 18%, transparent); color: var(--equiv); }
-.ready-card[data-tone="busy"] { background: var(--surface); }
-.ready-card[data-tone="busy"] .rc-ico { background: var(--surface-2); color: var(--ink-2); }
-.ready-card[data-tone="busy"] .rc-ico .ico { animation: spin 1.2s linear infinite; }
-.ready-card[data-tone="problem"] { background: var(--surface); }
-.ready-card[data-tone="problem"] .rc-ico { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
-@media (prefers-reduced-motion: reduce) { .ready-card[data-tone="busy"] .rc-ico .ico { animation: none; } }
+.status-card:active { transform: scale(.985); }
+.sc-ico { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none; background: var(--surface-2); color: var(--ink-2); }
+.sc-ico .ico { width: 22px; height: 22px; }
+.sc-text { min-width: 0; }
+.status-card b { display: block; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; }
+.status-card .sub { display: block; font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.38; font-variant-numeric: tabular-nums; }
+.status-card .chev, .tally-card .chev, .about summary .chev { width: 20px; height: 20px; color: var(--ink-3); transform: rotate(180deg); }
+.status-card[data-tone="busy"] .sc-ico .ico { animation: spin 1.2s linear infinite; }
+.status-card[data-tone="info"] .sc-ico { background: var(--accent-soft); color: var(--accent); }
+.status-card[data-tone="problem"] .sc-ico { background: color-mix(in oklab, var(--danger) 14%, transparent); color: var(--danger); }
+.status-card[data-tone="problem"] { border-color: color-mix(in oklab, var(--danger) 30%, var(--line)); }
+@media (prefers-reduced-motion: reduce) { .status-card[data-tone="busy"] .sc-ico .ico { animation: none; } }
 
-/* the tally strip under the status card */
-.tally-strip {
-  display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; width: 100%; text-align: left;
-  min-height: 56px; padding: 8px 12px 8px 14px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface);
-  box-shadow: var(--shadow); color: var(--ink); font-size: 15px; font-weight: 500; transition: transform .15s var(--ease-out);
+/* the donation tally: what this donation is worth so far, at a glance; a button that opens the tally */
+.tally-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; width: 100%; text-align: left;
+  padding: 16px 12px 16px 16px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface);
+  box-shadow: var(--shadow); color: var(--ink); transition: transform .15s var(--ease-out);
 }
-.tally-strip:active { transform: scale(.985); }
-.tally-strip .ico { color: var(--accent); }
-.tally-strip .ts-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tally-strip .ts-total { font-weight: 650; font-size: 17px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-.tally-strip[data-empty="true"] { color: var(--ink-2); }
-.tally-strip[data-empty="true"] .ts-total { color: var(--ink-3); font-weight: 500; }
-.tally-strip .chev { width: 20px; height: 20px; color: var(--ink-3); transform: rotate(180deg); }
+.tally-card:active { transform: scale(.985); }
+.tc-ico { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; align-self: start; margin-top: 2px; background: var(--accent-soft); color: var(--accent); }
+.tc-text { display: flex; flex-direction: column; min-width: 0; }
+.tc-label { font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 650; }
+.tc-total { margin-top: 2px; font-size: 32px; line-height: 1.1; font-weight: 650; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.tc-sub { margin-top: 3px; font-size: 14px; color: var(--ink-2); }
+.tally-card[data-empty="true"] .tc-total { color: var(--ink-3); }
 
-/* the Home Screen card: the same shape as the readiness card, quieter */
-.install { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin-top: 18px; padding: 12px 8px 12px 12px; border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--ink-2); font-size: 14px; }
-.install > div { flex: none; min-width: 0; }
-.install b { color: var(--ink); font-size: 15.5px; }
+/* the Home Screen card (browser only): the same shape as the status card, quieter */
+.install { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px 8px 12px 12px; border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.install > div { min-width: 0; }
+.install > div > b { display: block; color: var(--ink); font-size: 16px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; }
+.install .sub { display: block; font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.38; }
 .install .sub b { color: var(--ink); font-weight: 600; }
-.install .ico { width: 18px; height: 18px; vertical-align: -3px; }
-.install .rc-ico { width: 40px; height: 40px; border-radius: 13px; }
-.install .rc-ico .ico { width: 20px; height: 20px; }
 .install .sub .ico { width: 16px; height: 16px; vertical-align: -3px; }
+.install .sc-ico { width: 40px; height: 40px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); }
+.install .sc-ico .ico { width: 20px; height: 20px; }
 .install .btn--sm { grid-column: 2; justify-self: start; margin-top: 6px; }
 .install .x-btn { grid-column: 3; grid-row: 1; background: transparent; }
-.rc-ico, .data-ico, .tally-strip .ico, .live-row .ico { filter: drop-shadow(0 0 0 transparent); }
+.sc-ico, .tc-ico, .data-ico, .live-row .ico { filter: drop-shadow(0 0 0 transparent); }
+
+/* Recent: newest first, top-down */
+.recent .h2 { margin: 8px 2px 8px; }
+.recent .list { flex-direction: column; }
+
+/* nothing looked up yet: one quiet prompt, centred in the room above the dock */
+.home-empty { margin-block: auto; padding: 28px 24px 12px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.he-ico { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.he-ico .ico { width: 30px; height: 30px; }
+.he-title { margin: 16px 0 0; font-size: 19px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; color: var(--ink); }
+.he-sub { margin: 6px 0 0; font-size: 15px; line-height: 1.4; color: var(--ink-3); }
+/* a phone held sideways has no room for it: the dock's Scan button is the prompt */
+@media (max-height: 520px) { .home-empty { display: none; } }
+@media (max-height: 620px) { .home-empty { padding-top: 12px; } .he-ico { width: 52px; height: 52px; border-radius: 16px; } .he-ico .ico { width: 26px; height: 26px; } .he-title { margin-top: 12px; } }
 
 /* ---------- results: a bottom-anchored scroller (chat-style: the best match sits by the thumb) ----------
    The results list is the one scroller while a search is up; it is bottom-anchored (column-reverse), so scrollTop 0 is
    the best match by the search box and scrolling up goes negative. */
 .results {
-  position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--safe-t) + 56px + var(--banner-h)); bottom: calc(var(--dock-h) + var(--safe-b) + var(--kb));
+  position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--top-h) + var(--banner-h)); bottom: calc(var(--dock-h) + var(--kb) - var(--vp-gap));
   overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   display: flex; flex-direction: column-reverse; justify-content: flex-start; flex: 1; padding: 12px 16px 10px; margin: 0;
 }
@@ -312,8 +327,9 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 
 /* ---------- dock (thumb zone) ---------- */
 .dock {
-  position: fixed; left: 0; right: 0; bottom: var(--kb); z-index: 20; display: flex; gap: 10px; align-items: stretch;
-  padding: 10px 12px calc(10px + var(--safe-b)); background: color-mix(in oklab, var(--bg) 88%, transparent);
+  position: fixed; left: 0; right: 0; bottom: calc(var(--kb) - var(--vp-gap)); z-index: 20; display: flex; gap: 10px; align-items: stretch;
+  /* the keyboard covers the home indicator: --dock-safe-b is 0 while the dock sits on the keyboard (app.js) */
+  padding: 10px 12px calc(10px + var(--dock-safe-b, var(--safe-b))); background: color-mix(in oklab, var(--bg) 88%, transparent);
   backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); border-top: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
   transition: bottom .12s var(--ease-out);
 }
@@ -350,7 +366,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .btn .ico { width: 20px; height: 20px; }
 .btn:disabled, .switch:disabled { opacity: .4; pointer-events: none; }
 /* gloss on the primary controls: a lit top edge, a deeper foot, a halo in the dark */
-.scan-btn, .btn--accent, .tally-pill {
+.scan-btn, .btn--accent, .tally-pill, .td-btn {
   background-color: var(--accent); background-image: linear-gradient(180deg, var(--gloss-hi) 0%, var(--accent) 46%, var(--gloss-lo) 100%);
   color: var(--accent-ink); border: 0;
   box-shadow: inset 0 1px 0 color-mix(in oklab, white 40%, transparent), inset 0 -1px 0 color-mix(in oklab, black 22%, transparent),
@@ -359,12 +375,12 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 
 /* ---------- bottom sheet (result, tally, settings) ---------- */
 .sheet, .panel {
-  position: fixed; inset: auto 0 0 0; margin: 0; width: 100%; max-width: 100%; max-height: 92dvh; border: 0; padding: 0;
+  position: fixed; inset: auto 0 calc(-1 * var(--vp-gap, 0px)) 0; margin: 0; width: 100%; max-width: 100%; max-height: 92dvh; border: 0; padding: 0;
   background: var(--surface); color: var(--ink); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--shadow-lg);
   overflow: hidden; display: block;
 }
 .sheet:not([open]), .panel:not([open]) { display: none; }
-.sheet::backdrop, .panel::backdrop { background: oklch(10% 0.01 70 / .45); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+.sheet::backdrop, .panel::backdrop { bottom: calc(-1 * var(--vp-gap, 0px)); background: oklch(10% 0.01 70 / .45); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 @media (prefers-reduced-motion: no-preference) {
   .sheet[open], .panel[open] { animation: sheet-in .5s var(--spring); }
   .sheet[open]::backdrop, .panel[open]::backdrop { animation: fade .3s ease-out; }
@@ -394,6 +410,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .price-big.is-none { color: var(--ink-3); font-size: 26px; line-height: 1.4; }
 .price-basis { font-size: 16px; color: var(--ink-3); font-weight: 500; }
 .price-note { font-size: 14px; color: var(--ink-3); margin: 4px 0 0; }
+.nw { white-space: nowrap; }
 .item-title { font-size: 20px; line-height: 1.25; font-weight: 500; letter-spacing: -0.012em; margin: 14px 0 0; }
 .item-title b { font-weight: 700; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
@@ -437,7 +454,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .verse { margin: 18px 0 0; text-align: center; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
 
 /* ---------- settings: a short page, the prices card, an About fold ---------- */
-.panel .sheet-inner h2.h2 { margin-top: 20px; }
+.panel .sheet-inner > h2.h2 { margin-top: 20px; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .setting .lab { font-size: 16px; }
 .setting .lab small { display: block; color: var(--ink-3); font-size: 13.5px; margin-top: 2px; line-height: 1.35; }
@@ -477,13 +494,15 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .verse-full { font-style: italic; color: var(--ink-2); font-size: 14.5px; }
 
 /* ---------- scanner (always dark) ---------- */
-.scanner { position: fixed; inset: 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto 1fr auto; }
+.scanner { position: fixed; inset: 0 0 calc(-1 * var(--vp-gap)) 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.scan-top { position: relative; z-index: 2; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-t) + 12px) 14px 0; }
+.scan-top { position: relative; z-index: 2; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-t) + 12px) max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px)); }
 .scan-ctl { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; backdrop-filter: blur(10px); }
 .scan-ctl[aria-pressed="true"] { background: #fff; color: #000; }
-.reticle { position: relative; z-index: 1; align-self: center; justify-self: center; width: min(78vw, 420px); aspect-ratio: 1.55; }
+/* the reticle keeps its barcode shape and shrinks to the room between the controls (a phone held sideways):
+   198px is the close button row and the hint + button block with their padding, safe areas aside */
+.reticle { position: relative; z-index: 1; align-self: center; justify-self: center; width: min(78vw, 420px, calc((100dvh - 198px - var(--safe-t) - var(--safe-b)) * 1.55)); aspect-ratio: 1.55; }
 .reticle i { position: absolute; width: 32px; height: 32px; border: 3px solid #fff; border-radius: 6px; opacity: .95; filter: drop-shadow(0 1px 4px rgba(0,0,0,.6)); }
 .reticle i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
 .reticle i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
@@ -499,7 +518,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 @keyframes sweep { 0%, 100% { top: 14%; } 50% { top: 86%; } }
 @keyframes breathe { 50% { opacity: .6; } }
 .scanner.is-hit .laser { opacity: 0; }
-.scan-bottom { position: relative; z-index: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 20px calc(24px + var(--safe-b)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+.scan-bottom { position: relative; z-index: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px max(20px, env(safe-area-inset-right, 0px)) calc(24px + var(--safe-b)) max(20px, env(safe-area-inset-left, 0px)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
 .scan-hint { margin: 0; font-size: 16px; font-weight: 500; color: rgba(255,255,255,.92); text-align: center; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 .scanner .btn--ghost { color: #fff; border-color: rgba(255,255,255,.35); background: rgba(0,0,0,.35); backdrop-filter: blur(10px); }
 .scan-type { display: flex; gap: 8px; width: 100%; max-width: 440px; }
@@ -509,7 +528,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .scan-denied p { margin: 0 0 12px; color: rgba(255,255,255,.8); line-height: 1.45; }
 
 /* ---------- toasts: under the header, so they never cover the best result or the dock ---------- */
-.toasts { position: fixed; left: 50%; top: calc(var(--vv-top) + var(--safe-t) + 66px + var(--banner-h)); bottom: auto; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 420px); pointer-events: none; }
+.toasts { position: fixed; left: 50%; top: calc(var(--vv-top) + var(--top-h) + var(--banner-h) + 10px); bottom: auto; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 420px); pointer-events: none; }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--ink); color: var(--bg); font-size: 14.5px; font-weight: 500; box-shadow: var(--shadow); animation: toast-in .35s var(--spring); }
 .toast .ico { width: 18px; height: 18px; color: var(--toast-accent); }
 .toast button { min-height: 44px; padding: 8px 10px; margin: -8px -4px -8px auto; color: var(--toast-accent); font-weight: 700; }
@@ -517,39 +536,63 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 @keyframes toast-in { from { opacity: 0; transform: translateY(-10px) scale(.98); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(-8px); } }
 
-/* ---------- walkthrough: a spotlight on the real element and a card beside it; the rest of the screen is dimmed ---------- */
-.tour { position: fixed; inset: 0; z-index: 30; --tour-dim: oklch(10% 0.01 70 / .55); }
+/* ---------- walkthrough: a spotlight on the real element and a card beside it; the rest of the screen is dimmed ----------
+   app.js places the card on the free side of its subject, or centres it on a dimmed screen when neither side has room;
+   the card scrolls inside itself only on the smallest screens with the largest text. */
+.tour { position: fixed; inset: 0 0 calc(-1 * var(--vp-gap)) 0; z-index: 30; --tour-dim: oklch(10% 0.01 70 / .55); }
 .tour.is-free { background: var(--tour-dim); }
-.tour-spot { position: fixed; border-radius: 22px; box-shadow: 0 0 0 200vmax var(--tour-dim), 0 0 0 3px var(--accent), 0 0 22px color-mix(in oklab, var(--accent) 55%, transparent); pointer-events: none; transition: top .25s, left .25s, width .25s, height .25s; }
+.tour-spot { position: fixed; border-radius: 22px; box-shadow: 0 0 0 200vmax var(--tour-dim), 0 0 0 3px var(--accent), 0 0 22px color-mix(in oklab, var(--accent) 55%, transparent); pointer-events: none; transition: top .25s var(--ease-out), left .25s var(--ease-out), width .25s var(--ease-out), height .25s var(--ease-out); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tour { --tour-dim: oklch(0% 0 0 / .66); } }
 :root[data-theme="dark"] .tour { --tour-dim: oklch(0% 0 0 / .66); }
 .tour-card { position: fixed; left: 16px; right: 16px; top: 50%; translate: 0 -50%; max-width: 440px; margin-inline: auto; padding: 16px 18px 14px; border-radius: var(--r-l);
+  overflow-y: auto; overscroll-behavior: contain;
   background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg), 0 12px 40px -12px oklch(0% 0 0 / .5); animation: rise .22s ease-out; }
+.tour-card:focus { outline: none; }   /* the card takes the focus so a screen reader reads the step; its buttons show the ring */
 .tour-card.is-placed { translate: none; top: auto; }
 .tour-step { margin: 0 0 4px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
 .tour-title { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; }
 .tour-text { margin: 6px 0 0; font-size: 15.5px; line-height: 1.45; color: var(--ink-2); }
 .tour-text b { color: var(--ink); font-weight: 600; }
-.tour-demo { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-m); border: 1px solid var(--line); background: var(--bg); display: grid; gap: 10px; }
-.td-row { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
-.td-name { font-weight: 600; } .td-price { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.td-btn { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 36px; padding: 0 14px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 600; }
-.td-btn .ico { width: 16px; height: 16px; }
-.tour-nav { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-.tour-nav .btn { min-height: 44px; padding: 0 16px; }
-.tour-nav .btn--ghost { border-color: transparent; padding-left: 10px; }
-.tour-nav [data-tour="back"] { width: 44px; padding: 0; } .tour-nav [data-tour="back"] .ico { width: 20px; height: 20px; }
-.tour-nav [data-tour="next"] { margin-left: auto; min-width: 88px; }
-.tour-nav [data-tour="back"] + [data-tour="next"] { margin-left: 0; }
-.tour-dots { display: flex; gap: 6px; margin-left: auto; margin-right: 4px; }
-.tour-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
+/* step 2: the result sheet's own parts in miniature (label, price, title lines, the real Add to tally button) */
+.tour-demo { margin-top: 12px; padding: 12px; border-radius: var(--r-m); border: 1px solid var(--line); background: var(--bg); display: grid; gap: 8px; }
+.td-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+.tour-demo .kind { height: 26px; font-size: 12px; }
+.td-bar { display: block; height: 10px; border-radius: 5px; background: color-mix(in oklab, var(--ink) 10%, transparent); }
+.td-bar--price { width: 68px; height: 22px; border-radius: 7px; background: color-mix(in oklab, var(--ink) 16%, transparent); }
+.td-bar--title { width: 84%; }
+.td-bar--sub { width: 48%; background: color-mix(in oklab, var(--ink) 7%, transparent); }
+.td-btn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; margin-top: 4px; padding: 0 14px; border-radius: 12px; font-size: 15px; font-weight: 650; }
+.td-btn .ico { width: 18px; height: 18px; }
+/* the step count and its dots share the top line; Skip sits on the left of the button row (its label on the card's text
+   edge) and Back and Next on the right, so Next and the dots never move between steps */
+.tour-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.tour-head .tour-step { margin: 0; }
+.tour-dots { display: flex; gap: 6px; }
+.tour-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); transition: width .2s var(--ease-out), background .2s; }
 .tour-dots i.is-on { background: var(--accent); width: 18px; border-radius: 4px; }
+.tour-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.tour-nav .btn { min-height: 44px; padding: 0 16px; }
+.tour-nav .tour-skip { justify-content: flex-start; min-width: 44px; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
+.tour-go { display: flex; align-items: center; gap: 6px; }
+.tour-go [data-tour="back"] { width: 44px; padding: 0; border-color: transparent; color: var(--ink-2); }
+.tour-go [data-tour="back"] .ico { width: 20px; height: 20px; }
+.tour-go [data-tour="next"] { min-width: 88px; }
+/* a phone held sideways: the card widens and its buttons move beside the words, so it fits above or below its subject */
+@media (max-height: 500px) and (min-width: 560px) {
+  .tour-card { max-width: 640px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 22px; align-items: end; padding: 14px 18px; }
+  .tour-card > :not(.tour-nav) { grid-column: 1; }
+  .tour-nav { grid-column: 2; grid-row: 1 / span 4; margin-top: 0; }
+  .tour-text { font-size: 15px; }
+  .tour-demo { grid-template-columns: 1fr auto; align-items: center; column-gap: 14px; }
+  .tour-demo > :not(.td-btn) { grid-column: 1; }
+  .tour-demo > .td-btn { grid-column: 2; grid-row: 1 / span 3; margin-top: 0; }
+}
 @media (prefers-reduced-motion: reduce) { .tour-card { animation: none; } .tour-spot { transition: none; } }
 
 /* ---------- motion, wide screens, print ---------- */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (min-width: 720px) {
-  .main, .dock, .top, .toasts, .stale { max-width: 720px; margin-inline: auto; left: 0; right: 0; }
+  .main, .dock, .top, .stale { max-width: 720px; margin-inline: auto; left: 0; right: 0; }
   .top { padding-left: 20px; }
   /* the results scroller spans the whole width (a wheel anywhere beside the column scrolls it); the column stays 720px */
   .results { max-width: none; margin-inline: 0; padding-inline: max(16px, calc((100% - 720px) / 2 + 16px)); }

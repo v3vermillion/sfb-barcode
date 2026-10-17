@@ -29,10 +29,15 @@ export function stalenessLevel(priceDateISO, now = Date.now()) {
   return days >= RED_DAYS ? "red" : "amber";
 }
 
-/** The banner's headline for a level; empty when fresh. Plain words, no jargon. */
+/** The banner's headline for a level; empty when fresh. Plain words, no jargon: amber says how old the price list is,
+ * red says what that means (the banner's second line carries the date and the age). */
 export function stalenessText(level, days) {
   if (level !== "amber" && level !== "red") return "";
   const n = Math.max(0, Math.floor(Number(days) || 0));
-  const age = `${n} ${n === 1 ? "day" : "days"} old`;
-  return level === "red" ? `Prices are ${age} — values may be out of date` : `Prices are ${age}`;
+  return level === "red" ? "Prices may be out of date" : `Price list is ${n} ${n === 1 ? "day" : "days"} old`;
+}
+/** "51 days ago", "1 day ago", "today" for the banner's second line. */
+export function ageText(days) {
+  const n = Math.max(0, Math.floor(Number(days) || 0));
+  return n === 0 ? "today" : `${n} ${n === 1 ? "day" : "days"} ago`;
 }
