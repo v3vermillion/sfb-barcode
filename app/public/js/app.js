@@ -564,7 +564,7 @@ async function runSearch(q) {
 function rowHtml(it, toks) {
   const { pre, brand, rest } = splitTitle(it);
   const title = brand ? `${highlight(pre, toks)}<b>${highlight(brand, toks)}</b>${highlight(rest, toks)}` : highlight(rest, toks);
-  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : "", it.unavailable ? "Out of stock when checked" : ""].filter(Boolean);
+  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : "", it.unavailable ? "Out of stock at last update" : ""].filter(Boolean);
   const sub = it.basis === "lb" ? "<small>per lb</small>" : it.pack > 1 ? `<small>${money(Math.round(it.priceCents / it.pack))} each</small>` : "";
   const value = it.priceWithheld ? `<small>Equivalent value</small>` : sub;
   return `<li><button class="row${it.retired ? " is-retired" : ""}" type="button" data-rank="${it.rank}"><span class="name">${title}</span><span class="price">${money(it.priceCents)}${value}</span><span class="meta">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span></button></li>`;

@@ -449,7 +449,8 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
    what was matched and the button that adds it are both on screen; the tally keeps Share and Clear in reach while its
    lines scroll */
 @media (max-height: 500px) and (min-width: 560px) {
-  .sheet-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  dialog.sheet { max-width: min(760px, calc(100% - 2 * max(16px, env(safe-area-inset-left, 0px)))); }   /* wider than the tablet sheet: two columns side by side */
+  .sheet-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
   .sheet-side > :first-child { margin-top: 14px; }
   .sheet-side .actions { margin-top: 12px; }
 }

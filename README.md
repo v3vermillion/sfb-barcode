@@ -6,7 +6,7 @@ receive. Prices come from the Walmart I/O Affiliate API and, where the Strongsvi
 own shelf price.
 
 <p>
-  <img src="docs/screens/light-390x844-1-home.png" width="180" alt="Home screen: the food bank, the donation tally and Recent">
+  <img src="docs/screens/light-390x844-10-home-recent.png" width="180" alt="Home screen: the food bank, the donation tally and Recent">
   <img src="docs/screens/light-390x844-2-results.png" width="180" alt="Search results: brand, size, pack and price for each match">
   <img src="docs/screens/light-390x844-3-sheet.png" width="180" alt="Item sheet: the price, the exact item, the price date and Add to tally">
   <img src="docs/screens/light-390x844-8-tally.png" width="180" alt="Tally: every item added, the total, and Share">
