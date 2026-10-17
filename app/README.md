@@ -29,6 +29,7 @@ app/
     measure.mjs      the performance numbers below (Playwright, 4× CPU throttle, fake camera); --browser webkit for iPhone's engine
     shots.mjs        phone-size screenshots (light/dark) + accessibility audit; --browser webkit too
     scroll-check.mjs the scrolling rules (best match by the search box, wheel, keyboard pan, sheets); --browser webkit too
+    ui-check.mjs     layout, price-status, walkthrough, accessibility and design rules, one id per defect (docs/UI-AUDIT.md)
     make-barcode-clip.mjs  a UPC-A .y4m clip for Chromium's fake camera (measure.mjs --video)
     perf-table.mjs   markdown tables of measure/shots results: one browser, or Chromium vs WebKit (app-browsers.yml)
   tests/             node --test: barcode maths, tokenizer, resolution engine, staleness thresholds, storage persistence policy,
@@ -57,17 +58,24 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
 | Not in database | unknown barcode, nothing online | "Find it by name" (search focused) — never a silent blank |
 
-Also: the home screen reads top-down and never leaves empty space above the content: a **status card** (prices ready /
-downloading / offline / a problem, one line each; tapping it opens Settings), a **tally strip** (count and total, always
-visible, opens the tally), the headline, common items, the Home Screen card and Recent. On the first launch a four-step
-**walkthrough** runs over the real screen (find the item, add it to the tally, review and share, prices stay on the phone),
-one sentence or two per step with Next, Back and Skip; it is shown once per phone and can be replayed from Settings
-(`?tour=1` forces it, `?tour=0` skips it, as the measuring tools do). The tally (lines, total,
-share/copy, clear), settings (appearance, vibration, live price check; a Prices card with the date, the source and the
-size on the phone, Check for new prices; a three-step How to use; an About fold with the result-label legend, the small
-print and the build; Reset app data), scanner with torch, manual barcode entry for denied cameras and keyboard-wedge
-scanners. The eyebrow line names the Strongsville Emergency Food Bank and 1 John 4:19 (reference only; the verse is
-printed once under About and closes the tally). Nothing in the interface refers to sample data.
+Also: the home screen reads top-down and fills exactly the screen between the header and the dock: the food bank's
+name with 1 John 4:19, a **status card** only when there is something to know or do (downloading with progress, more
+departments on the way, no prices yet, storage full, server unavailable, a browser too old; tapping it opens Settings),
+the **donation tally** card (total and item count; opens the tally), the Home Screen card in the browser, then Recent
+(newest first, re-priced when a new price list opens) or a "Scan a barcode to begin" prompt. The header pill carries the
+date of the price list ("Updated Oct 13"); on the results screen the header also shows the tally total. One function,
+`priceStatus()`, feeds the pill, the card, the dot and the screen-reader announcement, so they always agree. On the first
+launch a four-step **walkthrough** runs over the real screen (find the item, add it to the tally, review and share, saved
+on this phone): the card sits beside its subject, flips or centres when there is no room, and the spotlit Scan button and
+search box work. It is shown once per phone and can be replayed from Settings (`?tour=1` forces it, `?tour=0` skips it,
+as the measuring tools do; a launch from the Scan shortcut skips it for that launch). The tally (items, total,
+share/copy, remove with Undo, clear with an in-app confirmation), settings (appearance, vibration where the phone can
+vibrate, live price check; a Prices card with the date, the source and the size on the phone, Check for new prices; a
+three-step How to use; an About fold with the result-label legend, the small print and the build; Reset app data with an
+in-app confirmation), scanner with torch, manual barcode entry for denied cameras and keyboard-wedge scanners. Nothing in
+the interface refers to sample data. The layout is measured (`--top-h`, `--dock-h`, `--vp-gap` for the iPhone launch
+with a short viewport; app.js viewport section), and `tools/ui-check.mjs` checks the layout, status, walkthrough,
+accessibility and design rules (docs/UI-AUDIT.md).
 
 ## Visual direction
 
@@ -183,8 +191,8 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 - Sample → real: tally lines and recents made on the synthetic fixture carry `sample: true`; the first load of a real
   snapshot drops them and says so once, so sample prices never mix into a real tally.
 - Online: `current.json` is checked; a new snapshot is fetched in the background and applied when idle.
-- Prices as of: the header pill and every sheet carry the snapshot's price date. From 14 days a banner under the
-  header says "Prices are N days old" (amber), from 45 days "values may be out of date" (red), with an **Update now**
+- Price list date: the header pill ("Updated Oct 13") and every sheet carry the snapshot's date. From 14 days a banner
+  under the header says "Price list is N days old" (amber), from 45 days "Price list may be out of date" (red), with an **Update now**
   button that checks, downloads and applies the newest snapshot (`js/staleness.js`; thresholds pinned by
   `tests/staleness.test.mjs`). It is re-evaluated on every database state change, when the app returns to the
   foreground, when the network comes back and hourly; the dock never moves. No Web Push.

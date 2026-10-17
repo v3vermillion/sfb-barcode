@@ -8,7 +8,7 @@ through `pipeline-alert` issues.
 
 ### Verified
 - The first real snapshot is published (2.6 million listings, 2.4 million barcodes) and the app serves it.
-- Offline pack, scanner, tally, walkthrough and updates work in Chromium and WebKit automation; 367 pipeline and 72 app
+- Offline pack, scanner, tally, walkthrough and updates work in Chromium and WebKit automation; 367 pipeline and 73 app
   tests pass on every change.
 - The first weekly audit found 93.9% of sampled prices within 5% of Walmart's and 90.9% exact or close against the 90% bar.
 - Every failure mode found so far is handled without a person: dropped GitHub schedules (Cloudflare watchdog, `[schedule-gap]`),

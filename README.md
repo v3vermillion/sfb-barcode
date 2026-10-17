@@ -6,7 +6,7 @@ receive. Prices come from the Walmart I/O Affiliate API and, where the Strongsvi
 own shelf price.
 
 <p>
-  <img src="docs/screens/light-390x844-1-home.png" width="180" alt="Home screen: readiness card, tally strip, common items">
+  <img src="docs/screens/light-390x844-1-home.png" width="180" alt="Home screen: the food bank, the donation tally and Recent">
   <img src="docs/screens/light-390x844-2-results.png" width="180" alt="Search results: brand, size, pack and price for each match">
   <img src="docs/screens/light-390x844-3-sheet.png" width="180" alt="Item sheet: the price, the exact item, the price date and Add to tally">
   <img src="docs/screens/light-390x844-8-tally.png" width="180" alt="Tally: every item added, the total, and Share">
@@ -17,7 +17,7 @@ own shelf price.
 1. **Find the item.** Tap *Scan* and point the camera at the barcode, or type the name and size.
 2. **Add it to the tally.** Check the item and its price, set the quantity, tap *Add to tally*.
 3. **Review and share.** The tally keeps every line and the total; *Share* sends it on.
-4. **Prices stay on the phone.** The app works without a signal; prices refresh on their own when it is online.
+4. **Prices stay on the phone.** The app works without a signal; the price list updates itself when the phone is online.
 
 The app never answers with a blank. A barcode finds the exact item (retired barcodes included, since donors give old
 stock); a store-printed price label is decoded on the spot; a produce sticker gives the price per pound; a barcode Walmart

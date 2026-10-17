@@ -312,7 +312,8 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .row .name mark, .item-title mark { background: none; color: var(--accent); font-weight: 650; }
 .row .meta { grid-column: 1; margin-top: 4px; font-size: 13.5px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 .row .meta .tag { color: var(--ink-2); }
-.row .price { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; text-align: right; white-space: nowrap; }
+/* the price shares the title's first line (its baseline), the way a list row reads left to right */
+.row .price { grid-column: 2; grid-row: 1 / span 2; align-self: start; font-size: 20px; line-height: 20.48px; margin-top: -1px; font-weight: 650; letter-spacing: -0.02em; text-align: right; white-space: nowrap; }
 .row .price small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-3); letter-spacing: .02em; }
 .row.is-retired .name { color: var(--ink-2); }
 .list--compact .row { min-height: 56px; padding: 9px 12px; }

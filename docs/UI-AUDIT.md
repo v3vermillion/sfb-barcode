@@ -1,0 +1,130 @@
+# UI audit and fixes, 2026-10-17
+
+The volunteer app (app/public), audited from the owner's iPhone screenshots of 2026-10-16. The findings were fixed by root
+cause and checked in a real browser. Every finding has an id, and `app/tools/ui-check.mjs` names each check after the
+id it guards. tests.yml runs it on every pull request on a 3,000-item fixture.
+
+## How it was audited
+
+- **Code reading.** Four independent first-pass reviews covered the walkthrough, the home screen, the dock and viewport
+  handling, and a live run of the app. They produced F1–F48.
+- **Failing checks first.** Each finding got a Playwright check before any fix; 46 ids failed at the start.
+- **Screenshots.** Every screen and state was captured at 320×568, 360×780, 375×667, 390×844, 430×932, 768×1024 and
+  844×390, in light and dark. iPhone safe areas were emulated (`Emulation.setSafeAreaInsetsOverride`; 47/34 portrait,
+  47/47/21 landscape) at 2–3× density. The screenshots were then cropped and measured.
+- **Price states.** Downloading, more departments, offline, server 5xx, an unsupported browser and stale prices were
+  driven by routing, the page clock and synthetic events.
+- **Independent reviews of the fixes.** Three fresh reviewers looked at the fixes: an adversarial code review, a design
+  review against shipped scanning and POS apps, and an accessibility (WCAG 2.2 AA, VoiceOver) and wording review. A
+  fourth verified the fixes from those reviews. Their findings are the R, A, D and P ids below.
+- **Stylesheet refactor.** The stylesheet was consolidated first with zero computed-style change. Every element's
+  computed style was compared across 72 app states.
+
+## Owner decisions applied
+
+| Decision | What a leading app does | What the app does now |
+|---|---|---|
+| Label for the price date | Scan and price apps label a catalogue date as an update date. They never present it as the moment an item was checked. | "Updated Oct 13" in the pill; "Walmart.com price · Updated Oct 13, 2026" under a price; "Price list is N days old" / "Price list may be out of date" on the banner |
+| Narrow screens | The header never truncates. Secondary chrome gives way first. | On home the tally is a card, so there is no header pill. On results the wordmark gives way to the tally total. Under 380px the pill keeps the date alone. |
+| Samples and casual wording | The empty state is a single clear prompt, with no canned shortcuts. | The "Common items" chips and the casual headline are removed. A "Scan a barcode to begin" prompt sits under the tally card. "Price list" is the one term for the data throughout. |
+| Dynamic Type (F40) | — | Deferred to its own pull request (owner) |
+
+## Findings and status
+
+The status is **Fixed** (the check passes in Chromium) or **Fixed; confirm on iPhone** (the logic passes in emulation,
+but the iOS behaviour itself can only be seen on a device). The check column gives the ui-check id; "unit" means
+`app/tests`.
+
+| Id | Finding | Fix | Check | Status |
+|---|---|---|---|---|
+| F1 | iPhone launch: layout viewport 47px short; dock floats | Exact signature detected (standalone iPhone, shortfall = top inset); `--vp-gap` under everything bottom-fixed, removed when iOS corrects | F1, R8 | Fixed; confirm on iPhone |
+| F2 | Walkthrough dim and centred card short by 47px | Dim and card use the whole screen | F2 | Fixed; confirm on iPhone |
+| F3 | Spotlight past the screen edges | Clamped inside the screen; step 1 spotlights the controls, not the bar | F3 | Fixed |
+| F4 | Focus ring on Next after an automatic open | The step takes the focus; rings only for keyboard use | F4 | Fixed |
+| F5 | Dots and Next shift; Skip misaligned | Dots in the step line; Skip on the text edge | F5 | Fixed |
+| F6 | Demo button unlike the real one | The real receipt "Add to tally" button and sheet parts | F6 | Fixed |
+| F7 | "there when there" | Rewritten | F7 | Fixed |
+| F8 | Tapping the spotlit Scan just advanced | Spotlit Scan and search box are live | F8, R4 | Fixed |
+| F9 | aria-labels hid card text; dock height 1px short | Visible words are the names; dock measured | F9, F9b | Fixed |
+| F10 | Spotlight did not follow its subject | Follows frame by frame while open | F10 | Fixed |
+| F11 | Toasts above layers but inert | Toasts stay usable; inside an open sheet they show in the sheet | F11, A1 | Fixed |
+| F12 | Scan shortcut opened the scanner over the walkthrough | The shortcut skips the walkthrough for that launch; one layer function | F12 | Fixed |
+| F13 | Page scrolled by the gap | Body is a column; main fills exactly the layout viewport | F13 | Fixed |
+| F14 | Date shown twice; awkward break; Close = Start | Card only when needed; date kept whole; last step has Back and Done | F14 | Fixed |
+| F15 | Walkthrough card off-screen in landscape | Flip or centre; wide landscape card | F15 (11 sizes) | Fixed |
+| F16 | Replay over results pointed at hidden things | Returns home first | F16 | Fixed |
+| F17 | Step 4 contradicted the card | Points at the pill; wording fits every state | F17 | Fixed |
+| F18 | Escape lost after tapping the card | Handled on the document while open | F18 | Fixed |
+| F19 | Skip link and banner reachable during the walkthrough | Everything but the layer, toasts and announcements is inert | F19 | Fixed |
+| F20 | VoiceOver heard only "Next" | Card focused, labelled by title, described by step and text | F20 | Fixed |
+| F21 | Focus on body after first launch | Page heading | F21 | Fixed |
+| F22 | Pinch zoom misplaced the card | Layout-viewport coordinates throughout | traced | Fixed |
+| F23 | Dead history entry after Back then Forward | Closed-layer entries are stepped back over | F23 | Fixed |
+| F24 | Header 61px, everything assumed 56 | `--top-h` measured | F24 | Fixed |
+| F25 | Stale dot cancelled by a later rule | Rule order fixed in the consolidated stylesheet | F25 | Fixed |
+| F26 | "Prices ready" under the red banner | Card hidden when ready; old prices are the banner's job | F26 | Fixed |
+| F27 | Pill truncated or leaked percentages | Date or one word, never a percentage, never cut | F27, R1 | Fixed |
+| F28 | "More departments loading" when nothing loads | Offline and stopped states, retried after a minute | F28 | Fixed |
+| F29 | Progress bar stuck after a background update | Background updates are silent | F29 | Fixed |
+| F30 | 5xx shown as a lost connection | Server flag from db-client; "Price server unavailable" | F30 | Fixed |
+| F31 | Pill and card disagreed | One `priceStatus()` for every surface | F31, R5 | Fixed |
+| F32 | "Update required" undone by reconnecting | Unsupported is sticky; nothing downloads | F32, R6 | Fixed |
+| F33 | Recent upside down | Newest first | F33 | Fixed |
+| F34 | Recent prices stale after an update | Re-priced by barcode when a list opens or departments join | F34, R2 | Fixed |
+| F35 | Logo reloaded the app | Returns home | F35 | Fixed |
+| F36 | Announcement repeated, stuck, missed offline | One sentence per change of meaning | F36 | Fixed |
+| F37 | Headline grew with Recent | Headline removed | — | Fixed |
+| F38 | Verse reference wrapped by accident | Deliberate second line; name on one line at 320 | F38 | Fixed |
+| F39 | Label on a generic div | Removed with the chips | F39 | Fixed |
+| F40 | iOS Larger Text not followed | — | — | Deferred (owner) |
+| F41 | Date labelled "checked" | "Updated", everywhere including sheet notes | F41 | Fixed |
+| F42 | Toasts off-centre at ≥720px | Centring fixed | F42 | Fixed |
+| F43 | Scanner overflowed landscape | Reticle sized to the room between the controls | F43 | Fixed |
+| F44 | Scanner controls under the notch | Side safe areas | F44 | Fixed |
+| F45 | Home-indicator padding over the keyboard | `--dock-safe-b` 0 while the keyboard is up | F45 | Fixed; confirm on iPhone |
+| F46 | Landscape plus keyboard left room for no result | Follows from F24 and F45 | F45 | Fixed |
+| F47 | Scanner let focus reach the page | Same layer function | F47 | Fixed |
+| F48 | Dock announced as the page footer | Plain container; the form keeps role=search | F48 | Fixed |
+
+### Findings from the reviews of the fixes
+
+| Id | Finding | Status |
+|---|---|---|
+| R1 | Wordmark under the pill at 441–520px | Fixed (R1) |
+| R2 | Duplicate Recent row after a refresh changed the kind | Fixed (R2) |
+| R3 | A scan could stack a result on the tally | Fixed: the camera rests under other sheets (traced) |
+| R4 | Spotlit search box did not raise the iOS keyboard | Fixed: focus inside the tap (R4); confirm on iPhone |
+| R5 | Worker failure before opening went unreported | Fixed (R5) |
+| R6, R7 | Unsupported browser downloaded from Settings; doubled wording | Fixed (R6, R7) |
+| R8 | Launch gap dropped while a hardware keyboard typed | Fixed (R8) |
+| R9, A5 | No focus ring in Enter-only keyboard flows | Fixed (R9) |
+| A1 | Toasts hidden while a sheet is open | Fixed (A1) |
+| A2 | Confirm button named "Add" | Fixed (A2) |
+| A3 | Update now lost focus | Fixed (A3) |
+| A4 | Focused rows hidden under the dock | Fixed: scroll-padding |
+| A6–A8 | No-results, scanner hints not announced; hint unreadable on bright frames | Fixed (A6) |
+| A9, A10 | Warnings not read from the Add button; price read in pieces | Fixed: describedby; one phrase per price |
+| A11, A12 | Pressed segment under 3:1; Settings overflow at 320 | Fixed (D1) |
+| A13–A18 | Tally pill name, nested live regions, banner noise, per-keystroke count, landmarks, focus return | Fixed |
+| D1–D4 | Settings overflow, sheet header scrolling away, landscape actions, clipped meta line | Fixed (D1–D4) |
+| D6, D7 | Remove without undo, native confirm(), lines vs items | Fixed (D6, D7) |
+| D8–D16 | Pill words on results, search glow after a sheet, field sizes, wraps, legend, gutters, store-label repetition, second button, cents under $1 | Fixed (D16 and screenshots) |
+| P2, P4, P6–P14 | Sheet titles, toasts, highlights, repeated facts, tally pill, stepper corners, walkthrough on black, no-results action, camera copy, Prices card, iPad sheet width | Fixed |
+| P3 | Row prices not on the title's baseline | Fixed: the price shares the title's first line |
+| P1 | 21 text sizes | Partly: one label style; the full type scale moves into the Dynamic Type change (F40), which rewrites every size |
+| P5 | Badge colours close (produce/exact, equivalent/closest) | Kept: every badge carries its words, so colour is never the only cue; glyphs considered for the Dynamic Type pass |
+
+## Check on a real iPhone before merging
+
+These behaviours depend on iOS itself and cannot be produced in Chromium:
+
+1. Open the app from the Home Screen. The search bar sits on the bottom edge with no band below it, including in the
+   first seconds after launch (F1).
+2. Run the walkthrough. Every step is fully visible, the whole screen dims, and on step 1 tapping the search box opens
+   the keyboard (F2, R4).
+3. Tap the search box. The bar sits directly on the keyboard with no empty band (F45).
+4. Add an item, open the tally and remove a line. The "Removed … Undo" toast shows inside the tally (A1).
+
+## Screens
+
+`docs/screens/` holds the current screenshots (`node tools/shots.mjs`). They also back the README images.
