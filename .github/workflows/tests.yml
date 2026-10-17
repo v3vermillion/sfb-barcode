@@ -57,25 +57,66 @@ jobs:
       - name: App tests
         run: node --test tests/*.test.mjs
 
+  app-ui:
+    # the layout, price-status and walkthrough rules of the real app in Chromium (app/tools/ui-check.mjs), on a small
+    # fixture: every check is named by the defect it guards (docs/UI-AUDIT.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json, then Chromium with its libraries
+      - name: Install Playwright and Chromium
+        run: |
+          set -eu
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Build a small fixture, its pack and the site
+        run: |
+          set -eu
+          pip install -q -r ../requirements.txt
+          python3 tools/make_fixture.py --store build/fixture-store --items 3000 --equivalents 300
+          node tools/build-db.mjs --store build/fixture-store --out dist/db
+          node tools/build-site.mjs
+      - name: Serve dist
+        run: |
+          set -u
+          nohup node tools/serve.mjs dist 8787 > build/serve.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8787/ && { echo "serving (check $i)"; exit 0; }
+            sleep 1
+          done
+          echo "::error::the local server did not answer"; cat build/serve.log; exit 1
+      - name: Layout, status and walkthrough checks
+        run: node tools/ui-check.mjs --json build/ui-check.json
+
   report:
     # only on main: open or close the tests-failed alert
-    needs: [python, app]
+    needs: [python, app, app-ui]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - name: Alert tests-failed
-        if: needs.python.result != 'success' || needs.app.result != 'success'
+        if: needs.python.result != 'success' || needs.app.result != 'success' || needs.app-ui.result != 'success'
         uses: ./.github/actions/alert
         with:
           key: tests-failed
           title: tests failing on main
           body: |
-            The test suite failed on main (python: ${{ needs.python.result }}, app: ${{ needs.app.result }}).
+            The test suite failed on main (python: ${{ needs.python.result }}, app: ${{ needs.app.result }}, app-ui: ${{ needs.app-ui.result }}).
             Commit `${{ github.sha }}`. The next green run on main closes this issue.
       - name: Resolve tests-failed
-        if: needs.python.result == 'success' && needs.app.result == 'success'
+        if: needs.python.result == 'success' && needs.app.result == 'success' && needs.app-ui.result == 'success'
         uses: ./.github/actions/alert
         with:
           mode: resolve
