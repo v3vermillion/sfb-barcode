@@ -12,12 +12,11 @@ export const KIND_LABEL = {
   plu: "Produce code",
   equivalent: "Equivalent value",
   live: "Live Walmart price",
-  unknown: "Not in database",
-  "not-ready": "Prices still loading",
+  unknown: "Not in price list",
+  "not-ready": "Price list loading",
 };
 
 export function kindLabel(res) {
-  if (res.kind === "exact" && res.item?.retired) return "Exact item · older barcode";
   return KIND_LABEL[res.kind] || res.kind;
 }
 
@@ -91,7 +90,7 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
 
   if (cls.kind === "plu") {
     const e = await db.lookupPlu(cls.plu);
-    if (e?.notReady) return { kind: "not-ready", code: cls.digits, title: "Prices are still loading", priceCents: null, unit: "each", key: `n:${cls.digits}` };
+    if (e?.notReady) return { kind: "not-ready", code: cls.digits, title: "The price list is still loading", priceCents: null, unit: "each", key: `n:${cls.digits}` };
     if (e) {
       return {
         kind: "plu", code: cls.digits, plu: cls, entry: e, item: e.item || null,
@@ -116,14 +115,14 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
     // a 2-prefix code with no price encoded is a manufacturer's variable-measure code: try the catalog, never show $0.00
     const g = toGtin14(cls.digits, undefined, { scanned: true });
     const r = g ? await db.lookupUpc(g.key) : null;
-    if (r?.notReady) return { kind: "not-ready", code: cls.digits, title: "Prices are still loading", priceCents: null, unit: "each", key: `n:${cls.digits}` };
+    if (r?.notReady) return { kind: "not-ready", code: cls.digits, title: "The price list is still loading", priceCents: null, unit: "each", key: `n:${cls.digits}` };
     if (r?.items?.length) { const [item, ...others] = pickListing(r.items, preferId); return { ...fromItem(item), others, gtin: g.gtin14, code: cls.digits, scanned: g }; }
     return { kind: "unknown", code: cls.digits, gtin: g?.gtin14 || null, codeType: "store-label", noPrice: true, title: `Label ${formatGtin(cls.digits)}`, priceCents: null, unit: "each", key: `u:${cls.digits}` };
   }
 
   // GTIN (try the alternate 8-digit interpretation too, so UPC-E and EAN-8 keyed rows are both found)
   let r = await db.lookupUpc(cls.key);
-  if (r?.notReady) return { kind: "not-ready", code: cls.digits, gtin: cls.gtin14, title: "Prices are still loading", priceCents: null, unit: "each", key: `n:${cls.gtin14}` };
+  if (r?.notReady) return { kind: "not-ready", code: cls.digits, gtin: cls.gtin14, title: "The price list is still loading", priceCents: null, unit: "each", key: `n:${cls.gtin14}` };
   let gtin = cls.gtin14;
   if (!r?.items?.length && !r?.equivalent && cls.altKey) {
     const r2 = await db.lookupUpc(cls.altKey);
@@ -149,7 +148,7 @@ export function notesFor(res, ctx = {}) {
   const notes = [];
   const it = res.item;
   if (res.kind === "closest") {
-    notes.push({ tone: "warn", text: `Closest match. Nothing matched all of “${res.query}”${res.dropped?.length ? ` — “${res.dropped.join(" ")}” was ignored` : ""}. Check the type and size against the item in your hand.` });
+    notes.push({ tone: "warn", text: `No item matched every word of “${res.query}”${res.dropped?.length ? `; “${res.dropped.join(" ")}” was ignored` : ""}. Check the type and size against the donated item.` });
   }
   if (res.kind === "equivalent" && res.equiv.withheld) {
     const e = res.equiv;
@@ -157,42 +156,42 @@ export function notesFor(res, ctx = {}) {
     notes.push({ tone: "equiv", text: `Walmart's listed price${e.rawCents != null ? ` (${moneyText(e.rawCents)})` : ""} is outside the normal range for this kind of item, so it is valued at ${how} instead.` });
   } else if (res.kind === "equivalent") {
     const e = res.equiv;
-    notes.push({ tone: "equiv", text: `Not sold at Walmart. Valued at the price of the closest Walmart equivalent by type and size (${e.confidence === "high" ? "close match" : e.confidence === "medium" ? "fair match" : "rough match"}).` });
-    if (!e.basis) notes.push({ tone: "warn", text: "The Walmart item this estimate was based on is no longer listed, so treat the value as approximate." });
+    notes.push({ tone: "equiv", text: `Not sold at Walmart. Valued at the price of the closest Walmart equivalent by type and size (${e.confidence === "high" ? "close match" : e.confidence === "medium" ? "fair match" : e.confidence === "rough" ? "rough estimate" : "rough match"}).` });
+    if (!e.basis) notes.push({ tone: "warn", text: "The Walmart item this estimate was based on is no longer listed, so the value is approximate." });
   }
   if (res.kind === "store-label") {
-    notes.push({ tone: "", text: "This barcode was printed by a store scale and carries the price itself. It isn't a catalog item, so the price is read straight from the label." });
+    // the price line already says the scale printed it; a note appears only when the label needs a second look
     if (res.label.needsConfirm) notes.push({ tone: "warn", text: "This label's price has no check digit of its own. Compare it with the price printed on the label before adding." });
-    else if (res.label.checkOk === false) notes.push({ tone: "warn", text: "The barcode's check digit doesn't match, but the price digits check out. Compare with the printed price on the label." });
+    else if (res.label.checkOk === false) notes.push({ tone: "warn", text: "The barcode's check digit does not match, but the price digits are valid. Compare it with the price printed on the label." });
   }
   if (res.kind === "plu") {
-    if (res.entry.source === "typical") notes.push({ tone: "warn", text: "No produce listing matched this code in the latest snapshot, so this is the typical Walmart price kept with the app." });
+    if (res.entry.source === "typical") notes.push({ tone: "warn", text: "This produce code is not in the current price list. The price shown is the typical Walmart price." });
     if (res.plu.organic) notes.push({ tone: "", text: "Organic (9-prefix). Priced as the conventional item." });
   }
   if (res.kind === "not-ready") {
-    notes.push({ tone: "warn", text: "The price database is still opening on this phone. Try the code again in a moment." });
+    notes.push({ tone: "warn", text: "The price list is still loading on this phone. Try again when it is ready." });
   }
   if (res.kind === "unknown") {
-    if (res.codeType === "PLU") notes.push({ tone: "warn", text: "This produce code isn't in the app's list. Type the produce name to value it." });
-    else if (res.badDigits) notes.push({ tone: "warn", text: "A digit of this label doesn't check out, so no price is read from it. Re-enter the number under the barcode, or type the name to find the closest item." });
-    else if (res.noPrice) notes.push({ tone: "warn", text: "This label carries no price and isn't in the catalog. Read the printed price from the label, or type the name to find the closest item." });
+    if (res.codeType === "PLU") notes.push({ tone: "warn", text: "This produce code is not in the price list. Search by the produce name instead." });
+    else if (res.badDigits) notes.push({ tone: "warn", text: "This label failed its check-digit test, so no price can be read from it. Re-enter the number under the barcode, or search by name." });
+    else if (res.noPrice) notes.push({ tone: "warn", text: "This label has no encoded price and is not in the price list. Use the price printed on the label, or search by name." });
     else {
-      notes.push({ tone: "warn", text: "This barcode isn't in the saved database and has no equivalent on file. Type the name and size from the label to find the closest item." });
-      if (res.checkOk === false) notes.push({ tone: "warn", text: "The check digit doesn't match, so a digit may have been mistyped." });
+      notes.push({ tone: "warn", text: "This barcode is not in the price list and has no equivalent on file. Search by the name and size on the label." });
+      if (res.checkOk === false) notes.push({ tone: "warn", text: "The check digit does not match, so a digit may have been mistyped." });
     }
   }
   if (res.scanned?.checkOk === null && (res.kind === "exact" || res.kind === "equivalent" || res.kind === "unknown")) {
-    notes.push({ tone: "warn", text: "Typed without its last digit, so the barcode can't be checked. Make sure the name matches the package." });
+    notes.push({ tone: "warn", text: "Entered without its check digit, so the barcode cannot be verified. Confirm that the name matches the package." });
   }
   if (it) {
-    if (it.retired) notes.push({ tone: "", text: "This is an older barcode for the item. Walmart has since reissued it; the price shown is the current one." });
-    if (it.carried) notes.push({ tone: "", text: `Walmart didn't list a price when checked on ${ctx.priceDateLong || "the last check"}, so the previous price was carried over.` });
-    if (it.promo) notes.push({ tone: "", text: "This was a Rollback or sale price when checked." });
-    if (it.unavailable) notes.push({ tone: "", text: it.storePrice ? "Not on the store's shelf when checked. The price is the store's last one." : "Out of stock online when checked. The price is the last one listed." });
+    if (it.retired) notes.push({ tone: "", text: "This is an older barcode for this item. The price shown is the current price." });
+    if (it.carried) notes.push({ tone: "", text: `Walmart did not list a price in the ${ctx.priceDateLong || "latest"} update, so the previous price is shown.` });
+    if (it.promo) notes.push({ tone: "", text: "This was a Rollback or sale price at the last update." });
+    if (it.unavailable) notes.push({ tone: "", text: it.storePrice ? "Not on the store's shelf at the last update. The price is the store's last one." : "Out of stock online at the last update. The price is the last one listed." });
     if (it.unitSuspect) notes.push({ tone: "warn", text: "This price is far from similar items of the same size, so the listing may be a case or multipack. Compare the size and count with the item in your hand." });
     if (it.sizeConflict) notes.push({ tone: "", text: "Walmart's listing shows two sizes. The one in the title is used." });
     if (it.discontinued) notes.push({ tone: "", text: "Walmart marks this item as discontinued. The price is the last one listed." });
-    if (!it.primary && (res.kind === "exact" || res.kind === "closest")) notes.push({ tone: "", text: "Walmart lists this barcode more than once; this is one of the other listings." });
+    if (!it.primary && (res.kind === "exact" || res.kind === "closest")) notes.push({ tone: "", text: "Walmart lists this barcode under more than one item. This is an alternate item." });
   }
   return notes;
 }

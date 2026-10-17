@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AMBER_DAYS, RED_DAYS, daysSince, stalenessLevel, stalenessText } from "../public/js/staleness.js";
+import { AMBER_DAYS, RED_DAYS, daysSince, stalenessLevel, stalenessText, ageText } from "../public/js/staleness.js";
 
 const NOW = Date.UTC(2026, 9, 7, 15, 30);   // 2026-10-07 15:30 UTC, a weekday afternoon at the food bank
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString().slice(0, 10);
@@ -52,11 +52,17 @@ test("stalenessLevel defaults `now` to the clock", () => {
 
 test("stalenessText says it in plain words and is empty when fresh", () => {
   assert.equal(stalenessText("fresh", 3), "");
-  assert.equal(stalenessText("amber", 14), "Prices are 14 days old");
-  assert.equal(stalenessText("amber", 30), "Prices are 30 days old");
-  assert.equal(stalenessText("red", 45), "Prices are 45 days old — values may be out of date");
-  assert.equal(stalenessText("red", 1), "Prices are 1 day old — values may be out of date");   // grammar holds for any count
-  assert.equal(stalenessText("amber", "16"), "Prices are 16 days old");                         // tolerant of a string count
-  assert.equal(stalenessText("amber", undefined), "Prices are 0 days old");                     // never throws, never NaN
-  assert.equal(stalenessText("bogus", 99), "");
+  assert.equal(stalenessText("amber", 14), "Price list is 14 days old");
+  assert.equal(stalenessText("amber", 30), "Price list is 30 days old");
+  assert.equal(stalenessText("amber", 1), "Price list is 1 day old");          // grammar holds for any count
+  assert.equal(stalenessText("red", 45), "Price list may be out of date");     // red says what it means; the date line says how old
+  assert.equal(stalenessText("amber", "16"), "Price list is 16 days old");     // tolerant of a string count
+  assert.equal(stalenessText("amber", undefined), "Price list is 0 days old"); // never throws, never NaN
+});
+
+test("ageText: the age on the banner's date line", () => {
+  assert.equal(ageText(0), "today");
+  assert.equal(ageText(1), "1 day ago");
+  assert.equal(ageText(51), "51 days ago");
+  assert.equal(ageText(undefined), "today");
 });

@@ -48,10 +48,10 @@ test("store-printed price labels decode without any database lookup; a zero pric
   assert.equal(zero.kind, "exact"); assert.equal(zero.item.id, 7);
   const zeroUnknown = await resolveCode(db, "212346000006");
   assert.equal(zeroUnknown.kind, "unknown"); assert.equal(zeroUnknown.priceCents, null); assert.equal(zeroUnknown.noPrice, true);
-  assert.match(notesFor(zeroUnknown)[0].text, /carries no price/);
+  assert.match(notesFor(zeroUnknown)[0].text, /has no encoded price/);
   const typo = await resolveCode(db, "201234928759");          // bad check digit
   assert.equal(typo.kind, "store-label"); assert.equal(typo.label.verified, false);
-  assert.match(notesFor(typo).map((n) => n.text).join(" "), /check digit doesn't match/);
+  assert.match(notesFor(typo).map((n) => n.text).join(" "), /check digit does not match/);
 });
 
 test("PLU codes price produce by the pound, organic 9-prefix included", async () => {
@@ -82,7 +82,8 @@ test("unknown barcodes are flagged, never silently priced; text is not a code; a
   const cold = mkDb({ ready: false });
   assert.equal((await resolveCode(cold, "078742054261")).kind, "not-ready");
   assert.equal((await resolveCode(cold, "4011")).kind, "not-ready");
-  assert.equal(kindLabel({ kind: "not-ready" }), "Prices still loading");
+  assert.equal(kindLabel({ kind: "not-ready" }), "Price list loading");
+  assert.equal(kindLabel({ kind: "exact", item: retired }), "Exact item");   // an older barcode is a chip on the sheet, not a longer label
 });
 
 test("titles never repeat the brand", () => {

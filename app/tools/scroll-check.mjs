@@ -60,6 +60,7 @@ try {
     check("the same search re-run keeps the place", (await scrollTop(page)) < -200);
     await search(page, "peanut butter creamy");
     check("a refined search reopens at its best match", (await scrollTop(page)) === 0 && (await bestVisible(page)));
+    await search(page, "peanut butter");   // enough rows to scroll on any fixture size (the refined search may fit one screen)
     for (const [where, y] of [["header", 20], ["dock", 815]]) {
       await page.evaluate(() => { document.getElementById("results").scrollTop = 0; });
       await page.mouse.move(195, y); await page.mouse.wheel(0, -200); await settle(page);
@@ -99,7 +100,7 @@ try {
     }
     const home = await page.evaluate(() => ({ y: scrollY, max: document.documentElement.scrollHeight - innerHeight }));
     check("Home comes back at the top", home.y === 0, JSON.stringify(home));
-    await page.click("#tallyBtn"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);
+    await page.click("#tallyCard"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);   // home shows the tally card (the header pill is for results)
     await page.mouse.move(180, 500); await page.mouse.wheel(0, 300); await settle(page, 300);
     const before = await page.evaluate(() => document.querySelector("#tallySheet .sheet-inner").scrollTop);
     await page.locator("#tallySheet [data-remove]").nth(6).click(); await settle(page, 300);
