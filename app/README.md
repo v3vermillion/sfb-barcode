@@ -73,8 +73,8 @@ share/copy, remove with Undo, clear with an in-app confirmation), settings (appe
 vibrate, live price check; a Prices card with the date, the source and the size on the phone, Check for new prices; a
 three-step How to use; an About fold with the result-label legend, the small print and the build; Reset app data with an
 in-app confirmation), scanner with torch, manual barcode entry for denied cameras and keyboard-wedge scanners. Nothing in
-the interface refers to sample data. The layout is measured (`--top-h`, `--dock-h`, `--vp-gap` for the iPhone launch
-with a short viewport; app.js viewport section), and `tools/ui-check.mjs` checks the layout, status, walkthrough,
+the interface refers to sample data. The layout is measured (`--top-h`, `--dock-h`; app.js viewport section; the
+iOS 26 short Home Screen viewport is avoided by a standalone page height in app.css), and `tools/ui-check.mjs` checks the layout, status, walkthrough,
 accessibility and design rules (docs/UI-AUDIT.md).
 
 ## Visual direction

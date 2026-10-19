@@ -280,16 +280,77 @@ await scenario(["F45"], "keyboard open on an iPhone", async (set) => {
   check("F45", "the dock sits on the keyboard", Math.abs(d.bottom - (ih - 300)) <= 1, `dock bottom ${d.bottom} keyboard top ${ih - 300}`);
 });
 
-await scenario(["F1", "F2", "F13"], "iPhone Home Screen app launched with a short viewport", async (set) => {
-  const env = set(await open({ w: 390, h: 797, ios: true, screen: { w: 390, h: 844 }, init: { fn: () => Object.defineProperty(navigator, "standalone", { get: () => true }) }, query: "tour=1" }));
-  const { page } = env;
+// iOS 26 (WebKit 301108) gives a Home Screen app a viewport one status bar short while the page is shorter than the
+// screen, and paints nothing below that edge, so anything placed past it is cut off. Chromium cannot produce the short
+// viewport; what is checked here is the remedy's two halves: in standalone mode the page is made as tall as the screen
+// (the rule that makes iOS give the full viewport), and nothing fixed is ever laid out past the viewport's edge.
+const standaloneRule = (page) => page.evaluate(() => {
+  for (const sh of document.styleSheets) for (const r of sh.cssRules) {
+    if (r.media && /display-mode:\s*standalone/.test(r.media.mediaText) && /min-height:\s*min\(100lvh,\s*calc\(100% \+ env\(safe-area-inset-top/.test(r.cssText) && /\bhtml\b/.test(r.cssText)) return true;
+  }
+  return false;
+});
+await scenario(["F1", "F2", "F13"], "iPhone Home Screen app (standalone)", async (set) => {
+  const env = set(await open({ ios: true, init: { fn: () => Object.defineProperty(navigator, "standalone", { get: () => true }) }, query: "tour=1" }));
+  const { page, cdp } = env;
+  await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "display-mode", value: "standalone" }] });
   await page.waitForSelector("#tour:not([hidden])"); await settle(page, 400);
-  const dock = await rect(page, "#dock"), tour = await rect(page, "#tour");
-  check("F1", "the dock reaches the bottom of the screen (844) despite the 797px viewport", dock && Math.abs(dock.b - 844) <= 1, `dock bottom ${dock?.b}`);
-  check("F2", "the walkthrough dims the whole screen", tour && tour.b >= 843.5, `dim bottom ${tour?.b}`);
+  check("F1", "standalone: the page is made as tall as the screen, so iOS 26 gives it the full viewport", await standaloneRule(page));
+  const v = await vp(page), dock = await rect(page, "#dock"), tour = await rect(page, "#tour");
+  check("F1", "the dock ends at the viewport's edge, never past it (iOS draws nothing lower)", dock && Math.abs(dock.b - v.h) <= 0.5, `dock bottom ${dock?.b} viewport ${v.h}`);
+  check("F2", "the walkthrough dims exactly the viewport", tour && Math.abs(tour.b - v.h) <= 0.5 && tour.t <= 0.5, `dim ${fmt(tour)} viewport ${v.h}`);
   await page.keyboard.press("Escape"); await settle(page, 300);
   const sc = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
-  check("F13", "the home screen does not scroll when its content fits", sc <= 0, `overflow ${sc}px`);
+  check("F13", "standalone: the home screen does not scroll when its content fits", sc <= 0, `overflow ${sc}px`);
+  await page.focus("#q"); await settle(page, 300);
+  const d = await rect(page, "#dock");
+  check("R8", "standalone: the dock stays on the viewport's edge while the search box has the focus (hardware keyboard)", d && Math.abs(d.b - v.h) <= 0.5, `dock bottom ${d?.b}`);
+});
+
+// A page given parts of two builds (the previous page with this stylesheet, say) reloads once, and never loops
+await scenario(["U1"], "page and stylesheet from different builds", async (set) => {
+  const env = set(await open({ wait: false, init: { fn: () => { try { sessionStorage.setItem("loads", String(+(sessionStorage.getItem("loads") || 0) + 1)); } catch { /* none */ } } }, routes: [["**/app.css", async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: `${await r.text()}\n:root { --shell-build: "0000000000"; }\n` }); }]] }));
+  const { page } = env;
+  await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 800);
+  const { stamped, loads } = await page.evaluate(() => ({ stamped: sessionStorage.getItem("sfb.buildReload"), loads: +sessionStorage.getItem("loads") }));
+  check("U1", "the mismatch is noticed and the page reloads once", !!stamped && loads === 2, `page loads ${loads}, noted ${stamped}`);
+  check("U1", "a mismatch that persists after the reload does not loop; the app still starts", await page.evaluate(() => document.documentElement.dataset.ready === "1"));
+});
+
+// A camera with a light: the flashlight shows while it runs, and never outlives it. Leaving the app releases the camera;
+// iOS can refuse the restart on return, and the button then had no camera behind it (owner's iPhone, 2026-10-19).
+const FAKE_CAMERA = {
+  fn: () => {
+    window.__camAllow = true; window.__torch = [];
+    navigator.mediaDevices.getUserMedia = async () => {
+      if (!window.__camAllow) throw new DOMException("denied", "NotAllowedError");
+      const c = document.createElement("canvas"); c.width = 640; c.height = 480; c.getContext("2d").fillRect(0, 0, 640, 480);
+      const stream = c.captureStream(5), track = stream.getVideoTracks()[0];
+      track.getCapabilities = () => ({ torch: true });
+      const apply = track.applyConstraints.bind(track);
+      track.applyConstraints = async (k) => { const t = k?.advanced?.[0]?.torch; if (t !== undefined) { window.__torch.push(t); return; } return apply(k).catch(() => {}); };
+      return stream;
+    };
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+    window.__setHidden = (h) => { hidden = h; document.dispatchEvent(new Event("visibilitychange")); };
+  },
+};
+await scenario(["S1"], "scanner flashlight", async (set) => {
+  const env = set(await open({ init: FAKE_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
+  const shown = await page.evaluate(() => !document.getElementById("torchBtn").hidden);
+  check("S1", "the flashlight shows while a camera with a light runs", shown);
+  if (shown) {
+    await page.click("#torchBtn"); await settle(page, 200);
+    const st = await page.evaluate(() => ({ pressed: document.getElementById("torchBtn").getAttribute("aria-pressed"), calls: window.__torch }));
+    check("S1", "tapping it turns the light on", st.pressed === "true" && st.calls.at(-1) === true, JSON.stringify(st));
+  }
+  await page.evaluate(() => { window.__setHidden(true); }); await settle(page, 200);
+  await page.evaluate(() => { window.__camAllow = false; window.__setHidden(false); }); await settle(page, 800);
+  const after = await page.evaluate(() => ({ torch: !document.getElementById("torchBtn").hidden, denied: !!document.querySelector("#scanner .scan-denied") }));
+  check("S1", "back from the background with the camera refused: no flashlight without a camera", after.denied && !after.torch, JSON.stringify(after));
 });
 
 await scenario(["F13"], "home screen height", async (set) => {
@@ -506,14 +567,6 @@ await scenario(["R6", "R7"], "browser too old: Settings", async (set) => {
   check("R7", "Settings explains it once", (sub.match(/update/gi) || []).length <= 2 && !/Details:/.test(sub), sub);
   await page.click("#settings [data-act=update]"); await settle(page, 1500);
   check("R6", "Check for new prices downloads nothing on a browser that cannot unpack it", dbRequests === 0, `${dbRequests} requests`);
-});
-
-await scenario(["R8"], "iPhone launch gap with a hardware keyboard", async (set) => {
-  const env = set(await open({ w: 390, h: 797, ios: true, screen: { w: 390, h: 844 }, init: { fn: () => Object.defineProperty(navigator, "standalone", { get: () => true }) } }));
-  const { page } = env;
-  await page.focus("#q"); await settle(page, 300);
-  const d = await rect(page, "#dock");
-  check("R8", "the dock stays at the screen's bottom while the search box has the focus (no software keyboard)", d && Math.abs(d.b - 844) <= 1, `dock bottom ${d?.b}`);
 });
 
 await scenario(["R9", "A2"], "keyboard flow: type a code, Enter, then Tab", async (set) => {

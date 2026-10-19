@@ -58,7 +58,6 @@
   --dock-h: calc(73px + var(--safe-b));   /* the dock, home-indicator padding included */
   --kb: 0px;           /* keyboard inset, from visualViewport while a text field is focused */
   --vv-top: 0px;       /* iOS pans the page up for the keyboard: fixed parts follow the visible area */
-  --vp-gap: 0px;       /* iPhone Home Screen launch with a viewport one status bar short: added under everything bottom-fixed */
   --banner-h: 0px;     /* the prices-as-of banner under the header, 0 when hidden */
 }
 @media (prefers-color-scheme: dark) {
@@ -103,12 +102,24 @@
 *, *::before, *::after { box-sizing: border-box; }
 /* the overscroll area is never white; a sheet, the tally, settings or the scanner open: the page behind never scrolls */
 html { height: 100%; background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scrollbar-gutter: stable;
+  /* the page never bounces: on iOS a rubber-band of the page drags the fixed header and search bar with it. Only the
+     root element's value reaches the viewport (body's does not propagate); the lists keep their own scrolling */
+  overscroll-behavior: none;
   /* a control focused by keyboard is scrolled clear of the fixed header and dock */
   scroll-padding-top: calc(var(--top-h) + var(--banner-h) + 8px); scroll-padding-bottom: calc(var(--dock-h) + var(--kb) + 8px); }
 /* no orphaned last words in headings and short paragraphs */
-h1, h2, h3, .he-sub, .stale-text, .tour-text { text-wrap: balance; }
-p, li { text-wrap: pretty; }
+h1, h2, h3, .he-sub, .stale-text { text-wrap: balance; }
+/* body copy fills its measure; pretty only keeps a last word from standing alone (balance left the walkthrough text ragged) */
+p, li, .tour-text { text-wrap: pretty; }
 html:has(dialog[open]), html:has(.scanner:not([hidden])) { overflow: hidden; }
+/* iOS 26 Home Screen app (WebKit bug 301108): with viewport-fit=cover and the black-translucent status bar, the viewport
+   comes out one status bar short whenever the page is shorter than the screen, and WebKit paints nothing below that edge:
+   the dock stops above the screen bottom and a bare band shows under it. Content placed lower is cut off, not drawn.
+   A page at least as tall as the screen gets the full viewport, so the page is made exactly that tall. The cap keeps an
+   opaque status bar (top inset 0) or an unaffected iOS from scrolling: there 100lvh is the viewport already. */
+@media (display-mode: standalone) {
+  html, body { min-height: min(100lvh, calc(100% + env(safe-area-inset-top, 0px))); }
+}
 body {
   margin: 0; min-height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--ink);
   font: 500 17px/1.35 var(--font); font-feature-settings: "ss01", "cv05"; font-variant-numeric: tabular-nums;
@@ -217,7 +228,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
    unless its content needs to. Cards share --r-l, sheets --r-xl. */
 .main {
   flex: 1; width: 100%; display: flex; flex-direction: column;
-  padding: calc(var(--top-h) + 16px + var(--banner-h)) 16px calc(var(--dock-h) + var(--kb) - var(--vp-gap) + 20px);
+  padding: calc(var(--top-h) + 16px + var(--banner-h)) 16px calc(var(--dock-h) + var(--kb) + 20px);
 }
 .home { display: flex; flex-direction: column; flex: 1; gap: 14px; }
 .org { display: flex; flex-direction: column; gap: 3px; margin: 0 0 4px; text-transform: uppercase; font-weight: 650; }
@@ -288,7 +299,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
    The results list is the one scroller while a search is up; it is bottom-anchored (column-reverse), so scrollTop 0 is
    the best match by the search box and scrolling up goes negative. */
 .results {
-  position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--top-h) + var(--banner-h)); bottom: calc(var(--dock-h) + var(--kb) - var(--vp-gap));
+  position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--top-h) + var(--banner-h)); bottom: calc(var(--dock-h) + var(--kb));
   overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   display: flex; flex-direction: column-reverse; justify-content: flex-start; flex: 1; padding: 12px 16px 10px; margin: 0;
 }
@@ -332,7 +343,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 
 /* ---------- dock (thumb zone) ---------- */
 .dock {
-  position: fixed; left: 0; right: 0; bottom: calc(var(--kb) - var(--vp-gap)); z-index: 20; display: flex; gap: 10px; align-items: stretch;
+  position: fixed; left: 0; right: 0; bottom: var(--kb); z-index: 20; display: flex; gap: 10px; align-items: stretch;
   /* the keyboard covers the home indicator: --dock-safe-b is 0 while the dock sits on the keyboard (app.js) */
   padding: 10px 16px calc(10px + var(--dock-safe-b, var(--safe-b))); background: color-mix(in oklab, var(--bg) 88%, transparent);
   backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); border-top: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
@@ -388,12 +399,12 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 
 /* ---------- bottom sheet (result, tally, settings) ---------- */
 .sheet, .panel {
-  position: fixed; inset: auto 0 calc(-1 * var(--vp-gap, 0px)) 0; margin: 0; width: 100%; max-width: 100%; max-height: 92dvh; border: 0; padding: 0;
+  position: fixed; inset: auto 0 0 0; margin: 0; width: 100%; max-width: 100%; max-height: 92dvh; border: 0; padding: 0;
   background: var(--surface); color: var(--ink); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--shadow-lg);
   overflow: hidden; display: block;
 }
 .sheet:not([open]), .panel:not([open]) { display: none; }
-.sheet::backdrop, .panel::backdrop { bottom: calc(-1 * var(--vp-gap, 0px)); background: oklch(10% 0.01 70 / .45); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+.sheet::backdrop, .panel::backdrop { background: oklch(10% 0.01 70 / .45); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 @media (prefers-reduced-motion: no-preference) {
   .sheet[open], .panel[open] { animation: sheet-in .5s var(--spring); }
   .sheet[open]::backdrop, .panel[open]::backdrop { animation: fade .3s ease-out; }
@@ -527,7 +538,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .verse-full { font-style: italic; color: var(--ink-2); font-size: 14.5px; }
 
 /* ---------- scanner (always dark) ---------- */
-.scanner { position: fixed; inset: 0 0 calc(-1 * var(--vp-gap)) 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.scanner { position: fixed; inset: 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .scan-top { position: relative; z-index: 2; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-t) + 12px) max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px)); }
@@ -581,8 +592,10 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 /* ---------- walkthrough: a spotlight on the real element and a card beside it; the rest of the screen is dimmed ----------
    app.js places the card on the free side of its subject, or centres it on a dimmed screen when neither side has room;
    the card scrolls inside itself only on the smallest screens with the largest text. */
-.tour { position: fixed; inset: 0 0 calc(-1 * var(--vp-gap)) 0; z-index: 30; --tour-dim: oklch(10% 0.01 70 / .55); }
+.tour { position: fixed; inset: 0; z-index: 30; --tour-dim: oklch(10% 0.01 70 / .55); }
 .tour.is-free { background: var(--tour-dim); }
+/* the empty-state prompt would peek half-covered past the card; while the walkthrough runs it is the prompt */
+body:has(.tour:not([hidden])) .home-empty { visibility: hidden; }
 .tour-spot { position: fixed; border-radius: 22px; box-shadow: 0 0 0 200vmax var(--tour-dim), 0 0 0 3px var(--accent), 0 0 22px color-mix(in oklab, var(--accent) 55%, transparent); pointer-events: none; transition: top .25s var(--ease-out), left .25s var(--ease-out), width .25s var(--ease-out), height .25s var(--ease-out); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tour { --tour-dim: oklch(0% 0 0 / .66); } }
 :root[data-theme="dark"] .tour { --tour-dim: oklch(0% 0 0 / .66); }
