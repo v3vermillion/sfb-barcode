@@ -25,7 +25,7 @@ Walmart listing, written by `crawler/process.py` from `crawler/normalize.py`. Th
 | `size_src` | `name` or `size_field`: where the size came from |
 | `primary` | the listing a barcode lookup shows first among listings sharing a UPC |
 | `prev_price`, `promo` | previous snapshot's price; the deal price when a promo price was replaced by the normal one |
-| `price_withheld` | true when `price` is outside the department's plausible range (data/gates.json price_sanity) |
+| `price_withheld` | true when `price` is outside the department's plausible range (data/gates.json price_sanity), far below comparable items, or more than 2.5x the item's own in-stock siblings (crawler/valuation.py) |
 | `listed_name`, `name_src` | barcode-only rows: the feed's placeholder text, and where `name` came from (`walmart_listing`, `open_facts`, or `none` for "(name not provided)") |
 | `equiv` | for a withheld price: `{price, method, confidence, basis_id, basis_name}`, the value the app shows |
 | `listing_price`, `listing_pack` | rows flagged `pack_listing`: Walmart's listing was a "(N pack)" bundle; these are its own price and N, and `price` is one unit (`listing_price` / `listing_pack`) |

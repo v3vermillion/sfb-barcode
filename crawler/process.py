@@ -157,6 +157,23 @@ def build():
     for _, dept_name, why in dropped_placeholders:
         rejects[dept_name][why] += 1
 
+    # per-unit prices that are more than 10x off their category+unit median are almost always a parsing
+    # artefact (a packet size taken for the carton, a count read as a weight): keep the item price, drop the
+    # per-unit price and flag the row so the app shows nothing misleading and identify.py never uses it as a basis
+    before_share, _, before = unit_outlier_stats(rows.values(), group_min)
+    resolved = resolve_packs(rows.values(), group_min)
+    # a listing priced far above the item's own in-stock siblings (the other flavours of one product line) is a stale
+    # listing, withheld and valued from a sibling below; after pack resolution, so a case the name supports stays a case
+    valuation.withhold_sibling_outliers(rows.values())
+    raw_share, unit_priced, outliers = unit_outlier_stats(rows.values(), group_min)
+    for o in outliers:
+        r = rows[o["id"]]
+        r["unit_price"] = None
+        r["flags"].append("unit_price_suspect")
+    unit_outliers_raw = {"share": raw_share, "unit_priced_rows": unit_priced, "count": len(outliers),
+                         "examples": outliers[:25], "before_pack_resolution": {"share": before_share, "count": len(before)},
+                         "pack_resolved": resolved, "scope": "consumable departments (no per-unit price elsewhere)"}
+
     # one primary row per UPC (barcode lookups): prefer current, a believable price, in stock, normal price, then the
     # lowest price (a single unit, not a case listed under the same barcode: Similac Advance 12.4 oz at $21.97, not
     # its $120.72 listing), then the newest listing
@@ -174,20 +191,6 @@ def build():
         prices = [g["price"] for g in group]
         if len(group) > 1 and max(prices) > 1.5 * min(prices):
             conflicts.append({"upc": upc, "items": [(g["id"], g["name"], g["price"]) for g in group][:5]})
-
-    # per-unit prices that are more than 10x off their category+unit median are almost always a parsing
-    # artefact (a packet size taken for the carton, a count read as a weight): keep the item price, drop the
-    # per-unit price and flag the row so the app shows nothing misleading and identify.py never uses it as a basis
-    before_share, _, before = unit_outlier_stats(rows.values(), group_min)
-    resolved = resolve_packs(rows.values(), group_min)
-    raw_share, unit_priced, outliers = unit_outlier_stats(rows.values(), group_min)
-    for o in outliers:
-        r = rows[o["id"]]
-        r["unit_price"] = None
-        r["flags"].append("unit_price_suspect")
-    unit_outliers_raw = {"share": raw_share, "unit_priced_rows": unit_priced, "count": len(outliers),
-                         "examples": outliers[:25], "before_pack_resolution": {"share": before_share, "count": len(before)},
-                         "pack_resolved": resolved, "scope": "consumable departments (no per-unit price elsewhere)"}
 
     withheld = valuation.attach_values(rows, bounds, group_min)
     for r in rows.values():

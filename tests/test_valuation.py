@@ -89,6 +89,47 @@ class Apply(unittest.TestCase):
         self.assertEqual(withheld[0]["why"], "far below comparable items")
         self.assertFalse(rows[1008].get("price_withheld"), "a small size is cheap per item but not per ounce")
 
+    def test_a_price_far_above_the_item_s_in_stock_siblings_is_withheld(self):
+        # 2026-10-19: one product line, many flavours; Walmart's feed carries stale flavour listings at 3-4x the line's price
+        rows = snapshot([])
+        for r in rows.values():
+            r["_kind"] = "corn"
+        flavours = ["Orange", "Grape Rush", "Cherry Cola", "Retro Vibe", "Astro Vibe", "Galaxy Vibe"]
+        prices = [2.57, 2.28, 2.57, 2.57, 7.69, 4.40]          # 7.69 is inside the department's range: only the sibling rule sees it
+        stock = ["Not available", "Not available", "Available", "Available", "Not available", "Available"]
+        for i, (fl, p, st) in enumerate(zip(flavours, prices, stock)):
+            r = row(2000 + i, f"CELSIUS Sparkling {fl}, Functional Energy Drink 12 fl oz Single Can", p, cat="10", qty=12.0, unit="fl oz", brand="CELSIUS",
+                    path="Home Page/Food/Beverages/Energy Drinks")
+            r["_kind"] = "energy drink"; r["stock"] = st
+            rows[r["id"]] = r
+        withheld, _, _ = V.apply(rows, CFG)
+        self.assertTrue(rows[2004].get("price_withheld"), "$7.69 against in-stock siblings at $2.57")
+        w = next(x for x in withheld if x["id"] == 2004)
+        self.assertEqual(w["why"], "far above the same item's other variants")
+        self.assertAlmostEqual(w["value"], 2.57, places=1, msg="valued from a sibling")
+        self.assertEqual(w["method"], "comparable item")
+        for i in (2000, 2001, 2002, 2003, 2005):
+            self.assertFalse(rows[2000 + 0].get("price_withheld")); self.assertFalse(rows[i].get("price_withheld"), f"{i}: within 2.5x stays")
+        self.assertNotIn("_why", rows[2004])
+        # fewer than three in-stock siblings: no reference, nothing withheld
+        rows2 = snapshot([])
+        for r in rows2.values():
+            r["_kind"] = "corn"
+        for i, (p, st) in enumerate([(2.57, "Available"), (2.57, "Available"), (7.69, "Not available")]):
+            r = row(3000 + i, f"CELSIUS Sparkling Flavour {i}, Energy Drink 12 fl oz", p, cat="10", qty=12.0, unit="fl oz", brand="CELSIUS"); r["_kind"] = "energy drink"; r["stock"] = st
+            rows2[r["id"]] = r
+        V.apply(rows2, CFG)
+        self.assertFalse(rows2[3002].get("price_withheld"))
+        # a count is too coarse a family (an electric and a manual toothbrush are both "1 ct"): never judged
+        rows3 = snapshot([])
+        for r in rows3.values():
+            r["_kind"] = "corn"
+        for i, (p, st) in enumerate([(19.97, "Available"), (19.97, "Available"), (19.97, "Available"), (299.94, "Available")]):
+            r = row(4000 + i, f"Oral-B Toothbrush {i}", p, cat="15", qty=1.0, unit="ct", brand="Oral-B", dept="Personal Care"); r["_kind"] = "toothbrush"; r["stock"] = st
+            rows3[r["id"]] = r
+        V.apply(rows3, CFG)
+        self.assertFalse(rows3[4003].get("price_withheld"))
+
     def test_a_low_price_two_same_size_listings_agree_on_is_kept(self):
         rows = snapshot([])
         for r in rows.values():

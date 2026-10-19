@@ -38,7 +38,7 @@ OTHER_STORE_BRANDS = {
     "giant eagle", "market district", "marc's", "coburn farms",
     # Meijer / Kroger / Target / Dollar General / Costco / Sam's / Amazon
     "meijer", "true goodness", "frederik's", "kroger", "private selection", "simple truth", "heritage farm",
-    "good & gather", "market pantry", "up & up", "favorite day", "clover valley", "kirkland signature",
+    "good & gather", "market pantry", "up & up", "favorite day", "clover valley", "kirkland signature", "kirkland",
     "member's mark", "happy belly", "amazon basics", "food club", "best choice", "shurfine",
 }
 WALMART_STORE_BRANDS = {"great value", "equate", "mainstays", "parent's choice", "marketside", "freshness guaranteed",
@@ -104,6 +104,31 @@ def _read_source(url, seen):
     return got, keys
 
 
+# Open Facts quantities are typed by volunteers: a can of soda is "12 oz" as often as "12 fl oz" (2,990 vs 4,060
+# beverage-named US records, 2026-10-19), so weight and volume ounces match each other one to one
+LOOSE_UNITS = {"oz", "fl oz"}
+GROUP_MARGIN = 0.1      # candidates this close to the best score form the group whose median per-unit price is the value
+GROUP_MAX = 10
+
+
+def same_measure(a, b):
+    return a == b or (a in LOOSE_UNITS and b in LOOSE_UNITS)
+
+
+def group_value(scored, base, pack):
+    """The equivalent price from the best-scoring comparable items: the median per-unit price of the top group (every
+    candidate within GROUP_MARGIN of the best score, at most GROUP_MAX, same-pack listings first), times the item's
+    size. One listing never sets the value on its own: a "12 oz" energy drink was priced from a single 24-can case at
+    $80.94 (2026-10-19). Returns (price, basis row, group size)."""
+    scored.sort(key=lambda x: (-x[0], x[1].get("pack") != pack, str(x[1]["id"])))
+    best = scored[0][0]
+    group = [r for sc, r in scored if sc >= best - GROUP_MARGIN][:GROUP_MAX]
+    ups = sorted(r["unit_price"] for r in group)
+    med = ups[len(ups) // 2] if len(ups) % 2 else (ups[len(ups) // 2 - 1] + ups[len(ups) // 2]) / 2
+    basis = min(group, key=lambda r: (abs(r["unit_price"] - med), r.get("pack") != pack, str(r["id"])))
+    return round(med * base * pack, 2), basis, len(group)
+
+
 def match():
     pub = store.ROOT / "build" / "published" / "items.jsonl.gz"
     cand = store.ROOT / "build" / "candidate" / "items.jsonl.gz"
@@ -135,10 +160,10 @@ def match():
         for t in sorted(pt, key=lambda t: df.get(t, 0))[:3]:
             if df.get(t, 0) and df[t] < 20000:
                 cands.update(index[t])
-        best, best_score = None, 0.0
+        scored = []
         for i in cands:
             r = wm[i]
-            if r["base_unit"] != dim:
+            if not same_measure(r["base_unit"], dim):
                 continue
             j = len(pt & tok_of[i]) / len(pt | tok_of[i])
             rb = (r.get("brand") or "").lower()
@@ -148,16 +173,17 @@ def match():
                 j += 0.25
             ratio = min(base, r["base_qty"]) / max(base, r["base_qty"])
             j += 0.1 * ratio
-            if j > best_score:
-                best, best_score = r, j
-        if not best or best_score < 0.45:
+            if j >= 0.45:
+                scored.append((j, r))
+        if not scored:
             stats["no_equivalent"] += 1; continue
-        price = round(best["unit_price"] * base * (pack or 1), 2)
+        price, best, n_group = group_value(scored, base, pack or 1)
+        best_score = scored[0][0]
         conf = "high" if best_score >= 0.7 else "medium" if best_score >= 0.55 else "low"
         stats[f"matched_{conf}"] += 1
         out.append({"upc": p["upc"], "name": p["name"], "brand": p["brand"], "quantity": p["quantity"],
                     "base_qty": base, "base_unit": dim, "pack": pack or 1, "est_price": price,
-                    "basis_id": best["id"], "basis_name": best["name"], "basis_price": best["price"],
+                    "basis_id": best["id"], "basis_name": best["name"], "basis_price": best["price"], "basis_count": n_group,
                     "confidence": conf, "score": round(best_score, 3)})
     n = store.write_jsonl_gz(OUT / "equivalents.jsonl.gz", out)
     store.write_json(OUT / "equivalents_stats.json", dict(stats))
