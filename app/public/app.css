@@ -283,6 +283,10 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 
 /* Recent: newest first, top-down */
 .recent .h2 { margin: 8px 0; }
+.recent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* a text button at the section's edge, the way Recent sections clear in Safari, Maps and the App Store */
+.link-btn { border: 0; background: none; color: var(--accent); font: inherit; font-size: 15px; font-weight: 600; min-height: 44px; padding: 0 4px; cursor: pointer; border-radius: 8px; }
+.link-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .recent .list { flex-direction: column; }
 
 /* nothing looked up yet: one quiet prompt, centred in the room above the dock */

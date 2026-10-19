@@ -1134,6 +1134,12 @@ let swipeClickBlock = false;   // the click that follows a swipe is not a tap on
 const swipeOpenRows = () => [...el.recentList.querySelectorAll(".swipe[data-open]")];
 function swipeSet(li, dx, animate = true) { const face = li.querySelector(".swipe-face"); face.style.transition = animate ? "" : "none"; face.style.transform = dx ? `translateX(${dx}px)` : ""; }
 function swipeClose(li) { if (!li) return; delete li.dataset.open; swipeSet(li, 0); }
+// Clear takes every Recent row off the home screen at once; low stakes, so an Undo toast rather than a confirmation
+document.getElementById("recentClear").addEventListener("click", () => {
+  if (!recent.length) return;
+  const kept = recent; recent = []; writeJson(RECENT_KEY, recent); renderRecent(); haptic(5);
+  toast(`Cleared Recent (${itemsText(kept.length)})`, { action: "Undo", onAction: () => { recent = kept; writeJson(RECENT_KEY, recent); renderRecent(); }, ms: 5000, iconName: "trash", page: true });
+});
 el.recentList.addEventListener("pointerdown", (e) => {
   const row = e.target.closest(".row"); const li = row?.closest(".swipe");
   if (!li || e.button !== 0) return;

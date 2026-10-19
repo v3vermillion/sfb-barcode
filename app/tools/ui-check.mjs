@@ -503,7 +503,7 @@ await scenario(["F33", "F34"], "Recent", async (set) => {
   check("F34", "a Recent item shows the current price, not the one saved weeks ago", price.startsWith(wantPrice), `shown "${price}" current ${wantPrice}`);
 });
 
-await scenario(["F49", "F50"], "Recent: swipe left to remove", async (set) => {
+await scenario(["F49", "F50", "F51"], "Recent: swipe left to remove, Clear", async (set) => {
   const env = set(await open({}));
   const { page } = env;
   const items = await page.evaluate(async () => [await window.__sfb.db.item(0), await window.__sfb.db.item(1)]);
@@ -518,6 +518,11 @@ await scenario(["F49", "F50"], "Recent: swipe left to remove", async (set) => {
   const after = await page.evaluate(() => document.querySelectorAll("#recentList .row").length);
   const toastText = await visibleText(page, "#toasts .toast");
   check("F50", "Remove takes the row off the home screen, with an Undo toast", after === before - 1 && /Removed .* from Recent/.test(toastText) && /Undo/.test(toastText), `rows ${before} -> ${after}, toast "${toastText}"`);
+  await page.click("#recentClear"); await settle(page, 400);
+  const cleared = await page.evaluate(() => ({ rows: document.querySelectorAll("#recentList .row").length, hidden: document.getElementById("recent").hidden, empty: !document.getElementById("homeEmpty").hidden }));
+  check("F51", "Clear empties Recent and the home screen shows its empty state", cleared.rows === 0 && cleared.hidden && cleared.empty, JSON.stringify(cleared));
+  await page.click("#toasts .toast button"); await settle(page, 400);
+  check("F51", "Undo brings the cleared rows back", (await page.evaluate(() => document.querySelectorAll("#recentList .row").length)) === after);
 });
 
 await scenario(["F35"], "tapping the logo", async (set) => {
