@@ -195,6 +195,10 @@ test("a barcode this phone matched before resolves to that Walmart item, labelle
   assert.match(note, /matched to this Walmart item on this phone/); assert.doesNotMatch(note, /No item matched every word/);
   const asMap = await resolveCode(db, "096619261574", undefined, { learned });
   assert.equal(asMap.kind, "closest");
+  // the remembered item's own price is withheld now: still a remembered match, valued at its equivalent
+  const wdb = { async lookupUpc(key) { return key === 78742054261 ? { items: [withheld], equivalent: null } : { items: [], equivalent: null }; }, async lookupPlu() { return null; } };
+  const w = await resolveCode(wdb, "096619261574", undefined, { learned });
+  assert.equal(w.kind, "equivalent"); assert.ok(w.learned); assert.ok(notesFor(w).some((n) => /matched to this Walmart item on this phone/.test(n.text)));
   // the remembered item has left the list: back to the unknown sheet, never a blank
   const gone = await resolveCode(db, "096619261574", undefined, { prefixes: PREFIXES, learned: () => ({ key: 999, title: "x", at: 1 }) });
   assert.equal(gone.kind, "unknown"); assert.equal(gone.store.store, "Costco");

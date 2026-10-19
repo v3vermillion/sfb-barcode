@@ -30,6 +30,8 @@ const ROWS = [
   row("Campbell's Condensed Chicken Noodle Soup, 10.75 oz Can", "Campbell's", 1.48, { size: 10.75, unit: "oz", cat: "11" }),
   row("Great Value Chicken Noodle Condensed Soup, 10.5 oz Can", "Great Value", 0.98, { size: 10.5, unit: "oz", cat: "11", store_brand: true }),
   row("Progresso Chicken Noodle Soup, 19 oz Can", "Progresso", 2.48, { size: 19, unit: "oz", cat: "11" }),
+  // one unit of a "(200 pack)" bundle listing at a cent: the count must come from the pack, not from the rounded prices
+  row("Dixie Bath Cups, 3 oz", "Dixie", 0.01, { size: 3, unit: "oz", cat: "9", listing_price: 2.5, listing_pack: 200, flags: ["pack_listing"] }),
 ];
 
 let db;
@@ -99,4 +101,11 @@ test("the pack manifest carries the brands, the barcode prefixes and the price c
   assert.deepEqual(m.prefixes["0096619"], { store: "Costco", brand: "Kirkland Signature" });
   assert.equal(m.prefixes["0030034"].store, "Giant Eagle");
   assert.equal(m.priceCeiling, 15000);
+});
+
+test("a bundle listing's count is read from the pack, never derived from rounded prices", () => {
+  const it = db.search("dixie bath cups", 5).items[0];
+  assert.equal(it.packListing, true); assert.equal(it.listingCents, 250); assert.equal(it.listingPack, 200);   // 250 / 1 would say 250
+  const hunts = db.search("hunts tomato sauce", 10).items.find((x) => x.name.startsWith("(6 pack)"));
+  assert.equal(hunts.packListing, false, "a row without the flag is not a bundle unit");
 });

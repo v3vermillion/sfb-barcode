@@ -102,6 +102,7 @@ crawl of 2026-10-09 (2.1M items) is 114 MB over the wire, 63 MB of it in the *co
 | shard `upc` | sorted GTIN-14 keys → rank, primary listing first for each barcode |
 | shard `tokens` | sorted dictionary + varint-delta posting lists + each token's home category, then *head postings*: the items whose head noun (what the listing is: "Bananas", not "Banana Pudding") is exactly that word |
 | `<version>/equiv.bin.gz` | equivalents: GTIN → estimated price, confidence, basis item (`shard << 24 \| rank`), name/quantity |
+| (cols.bin, trailing) | `listingPack u16[N]`: the N of a "(N pack)" bundle listing, since 2026-10-19; an older pack derives it from the two prices |
 | `<version>/plu.json` | PLU → produce name, unit, price and the matching produce item (`{shard, rank}`) |
 
 An item's id in the app is `shard × 2^24 + rank`. Items inside a shard are in *rank order* (primary listing, store

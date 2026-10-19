@@ -99,7 +99,9 @@ async function openShard(sh, cache) {
     S.basis = r.arr(Uint8Array, N); S.flags = r.arr(Uint8Array, N); S.cat = r.arr(Uint8Array, N); S.id = r.arr(Float64Array, N); S.upcOf = r.arr(Float64Array, N);
     // format 2 appended flags2, the value basis and Walmart's own price of a withheld item; a format-1 pack has none
     if (pad8(r.o) + N * 9 <= cols.byteLength) { S.flags2 = r.arr(Uint8Array, N); S.valueBasis = r.arr(Uint32Array, N); S.rawPrice = r.arr(Uint32Array, N); }
-    else { S.flags2 = new Uint8Array(N); S.valueBasis = new Uint32Array(N).fill(NO_RANK); S.rawPrice = new Uint32Array(N); } }
+    else { S.flags2 = new Uint8Array(N); S.valueBasis = new Uint32Array(N).fill(NO_RANK); S.rawPrice = new Uint32Array(N); }
+    // 2026-10-19 appended the count of a "(N pack)" bundle listing; a pack without it derives N from the two prices
+    S.listingPack = pad8(r.o) + N * 2 <= cols.byteLength ? r.arr(Uint16Array, N) : null; }
   S.strings = strings.map((buf) => { const r = new Reader(buf); r.magic("SFBS"); const count = r.u32(), first = r.u32(); const offs = r.arr(Uint32Array, count + 1); const bytes = r.bytes(offs[count]); return { first, count, offs, bytes }; });
   { const r = new Reader(upc); r.magic("SFBU"); const M = r.u32(); S.upcKeys = r.arr(Float64Array, M); S.upcRanks = r.arr(Uint32Array, M); }
   { const r = new Reader(tokens); r.magic("SFBT"); const T = r.u32(), pbytes = r.u32(); const dictOff = r.arr(Uint32Array, T + 1); const dictBytes = r.bytes(dictOff[T]);
@@ -198,9 +200,11 @@ function itemOf(S, rank, withBasis = true) {
   const flags = S.flags[rank], flags2 = S.flags2[rank];
   const upc = S.upcOf[rank];
   const withheld = !!(flags2 & F2.PRICE_WITHHELD);
-  // one unit of a "(N pack)" bundle listing: the bundle's own price rides in rawPrice, N follows from the two prices
+  // one unit of a "(N pack)" bundle listing: the bundle's own price rides in rawPrice and its count in listingPack (an older
+  // pack derives N from the two prices, which drifts for a unit under about 20 cents)
   const packListing = !withheld && !!(flags2 & F2.PACK_LISTING) && S.rawPrice[rank] > 0 && S.price[rank] > 0;
   const listingCents = packListing ? S.rawPrice[rank] : null;
+  const listingPack = packListing ? (S.listingPack && S.listingPack[rank] > 1 ? S.listingPack[rank] : Math.max(2, Math.round(listingCents / S.price[rank]))) : null;
   const basisRank = S.valueBasis[rank];
   return {
     rank: gidOf(si, rank), id: S.id[rank], brand: txt.slice(0, sep), name: txt.slice(sep + 1), priceCents: S.price[rank],
@@ -208,7 +212,7 @@ function itemOf(S, rank, withBasis = true) {
     cat: S.cat[rank], catName: (db.catNames && db.catNames[S.cat[rank]]) || CAT_NAME[S.cat[rank]] || "Other", upc: upc ? String(upc).padStart(14, "0") : null,
     placeholder: !!(flags2 & F2.PLACEHOLDER), discontinued: !!(flags2 & F2.DISCONTINUED), storePrice: !!(flags2 & F2.STORE_PRICE), unitSuspect: !!(flags2 & F2.UNIT_SUSPECT),
     priceWithheld: withheld, rawPriceCents: withheld ? S.rawPrice[rank] : null, valueConfidence: withheld ? VALUE_CONF[(flags2 >> 3) & 3] : null,
-    packListing, listingCents, listingPack: packListing ? Math.max(2, Math.round(listingCents / S.price[rank])) : null,
+    packListing, listingCents, listingPack,
     valueBasis: withheld && withBasis && basisRank !== NO_RANK && basisRank !== rank ? itemOf(S, basisRank, false) : null,
     retired: !!(flags & F.RETIRED), noSize: !!(flags & F.NO_SIZE), promo: !!(flags & F.PROMO), carried: !!(flags & F.CARRIED),
     storeBrand: !!(flags & F.STORE_BRAND), primary: !!(flags & F.PRIMARY), sizeConflict: !!(flags & F.SIZE_CONFLICT), unavailable: !!(flags & F.UNAVAILABLE),

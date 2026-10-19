@@ -16,6 +16,7 @@
 // format 2 (all integers little-endian, arrays 8-byte aligned, every .bin gzipped as a whole):
 //   cols.bin     "SFBC" u32 N | price u32[N] cents | size f32[N] | pack u16[N] | unit u8[N] | basis u8[N] | flags u8[N] | cat u8[N] | id f64[N] | upc f64[N]
 //                | flags2 u8[N] | valueBasis u32[N] (local rank, 0xFFFFFFFF = none) | rawPrice u32[N] cents (0 = not withheld)
+//                | listingPack u16[N] (the N of a "(N pack)" bundle listing, 0 otherwise; trailing, a pack without it derives N)
 //                price is what the app shows: Walmart's price, or for a withheld price (flags2 PRICE_WITHHELD) its
 //                equivalent value, with Walmart's own price in rawPrice; flags2 bits: 1 placeholder (barcode lookup only,
 //                never in the token index), 2 price withheld, 4 discontinued, bits 3-4 value confidence (0 rough .. 3 high),
@@ -152,7 +153,8 @@ for await (const r of jsonlGz(path.join(pubDir, srcManifest.file || "items.jsonl
   if (/^\s*\(\d+\s*pack\)/i.test(name)) score -= 0.8;   // "(6 pack) ..." multipacks after the single item a volunteer holds
   items.push({
     id: Number(r.id), upc, name, brand, price: Math.round(Number(withheld ? r.equiv.price : r.price) * 100), size: r.size == null ? 0 : Number(r.size),
-    flags2: bits2, rawPrice: withheld ? Math.round(Number(r.price) * 100) : packListing ? Math.round(Number(r.listing_price) * 100) : 0, valueBasisId: withheld && r.equiv.basis_id != null ? Number(r.equiv.basis_id) : null,
+    flags2: bits2, rawPrice: withheld ? Math.round(Number(r.price) * 100) : packListing ? Math.round(Number(r.listing_price) * 100) : 0,
+    listingPack: packListing ? Math.min(0xFFFF, Math.round(Number(r.listing_pack))) : 0, valueBasisId: withheld && r.equiv.basis_id != null ? Number(r.equiv.basis_id) : null,
     unit: UNIT[r.unit] || 0, unitName: r.unit || null, pack: Math.min(65535, Number(r.pack) || 1), basis: r.basis === "lb" ? 1 : 0,
     cat: Number(r.cat) || 0, flags: bits, score, dept: r.dept || "Other",
   });
@@ -244,15 +246,15 @@ function writeShard(sh, si) {
   { // columns
     const price = new Uint32Array(n), size = new Float32Array(n), pack = new Uint16Array(n), unit = new Uint8Array(n),
       basis = new Uint8Array(n), flags = new Uint8Array(n), cat = new Uint8Array(n), id = new Float64Array(n), upc = new Float64Array(n);
-    const flags2 = new Uint8Array(n), valueBasis = new Uint32Array(n).fill(NO_RANK), rawPrice = new Uint32Array(n);
+    const flags2 = new Uint8Array(n), valueBasis = new Uint32Array(n).fill(NO_RANK), rawPrice = new Uint32Array(n), listingPack = new Uint16Array(n);
     for (let i = 0; i < n; i++) {
       const it = its[i];
       price[i] = it.price; size[i] = it.size; pack[i] = it.pack; unit[i] = it.unit; basis[i] = it.basis; flags[i] = it.flags; cat[i] = it.cat; id[i] = it.id; upc[i] = it.upc;
-      flags2[i] = it.flags2; rawPrice[i] = Math.min(0xFFFFFFFF, it.rawPrice);
+      flags2[i] = it.flags2; rawPrice[i] = Math.min(0xFFFFFFFF, it.rawPrice); listingPack[i] = it.listingPack || 0;
       const w = it.valueBasisId != null ? where.get(it.valueBasisId) : null;
       if (w && w[0] === si) valueBasis[i] = w[1];               // a basis in another shard is shown without its card
     }
-    files.cols = writeFile("cols.bin", concatAligned([header("SFBC", n), ...[price, size, pack, unit, basis, flags, cat, id, upc, flags2, valueBasis, rawPrice].map((a) => Buffer.from(a.buffer))]));
+    files.cols = writeFile("cols.bin", concatAligned([header("SFBC", n), ...[price, size, pack, unit, basis, flags, cat, id, upc, flags2, valueBasis, rawPrice, listingPack].map((a) => Buffer.from(a.buffer))]));
   }
   { // names, in parts of at most ~40 MB raw
     const SHARD_BYTES = 40 * 1048576;

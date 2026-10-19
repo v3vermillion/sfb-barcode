@@ -69,6 +69,7 @@ export function fromItem(item, { closest = false, query = "", dropped = [], othe
       equiv: { withheld: true, rawCents: item.rawPriceCents, confidence: item.valueConfidence, basis: item.valueBasis },
       priceCents: item.priceCents, unit: item.basis === "lb" ? "lb" : "each", title: titleOf(item),
       key: item.upc ? `g:${item.upc}` : `r:${item.rank}`, query, dropped,
+      ...(otherBrand ? { otherBrand } : {}), ...(learned ? { learned } : {}),
     };
   }
   return {

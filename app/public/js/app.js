@@ -22,7 +22,7 @@ const prefs = Object.assign({ theme: "auto", haptics: true, live: true }, readJs
 let tally = readJson(TALLY_KEY, []);
 let recent = readJson(RECENT_KEY, []);
 // barcodes nothing knew, matched on this phone by a search by name and added to the tally: gtin14 -> {key, title, at}
-const LEARNED_KEY = "sfb.learned.v1", LEARNED_MAX = 500;
+const LEARNED_KEY = "sfb.learned.v1", LEARNED_MAX = 500, LEARN_WINDOW_MS = 10 * 60 * 1000;
 let learned = readJson(LEARNED_KEY, {});
 if (!learned || typeof learned !== "object" || Array.isArray(learned)) learned = {};
 const learnedFor = (gtin) => learned[gtin] || null;
@@ -545,6 +545,7 @@ function setView(view) {
 }
 function showHome() {
   state.seq++;
+  state.learnFor = null;          // a search by name for an unknown barcode ends with the home screen, either way
   setView("home");
   el.list.innerHTML = ""; el.resultsMeta.textContent = "";
   state.last = null; state.codeHit = null; state.pending = null; state.shownQuery = null;
@@ -646,7 +647,7 @@ function announceResults(text) {
 el.list.addEventListener("click", (e) => {
   if (e.target.closest("[data-act=scan]")) { openScanner(); return; }
   const b = e.target.closest("button[data-rank], button[data-code]"); if (!b) return;
-  if (b.dataset.code != null) { if (state.codeHit) openResolution(state.codeHit, { source: "typed" }); return; }
+  if (b.dataset.code != null) { state.learnFor = null; if (state.codeHit) openResolution(state.codeHit, { source: "typed" }); return; }
   openRank(Number(b.dataset.rank), { closest: !!state.last?.relaxed });
 });
 
@@ -817,9 +818,10 @@ function wireSheet(dlg, res) {
     haptic(5);
   }));
   dlg.querySelectorAll("[data-pack]").forEach((b) => b.addEventListener("click", () => {
-    res.unitCents = Number(b.dataset.cents);
+    // from the price the sheet holds now (a live price the volunteer adopted included), never the price it was drawn with
     res.packOne = b.dataset.pack === "one";
     res.packListing = b.dataset.pack === "listing";
+    res.unitCents = res.packOne ? Math.round(res.priceCents / Math.max(1, res.item?.pack || 1)) : res.packListing && res.listing ? res.listing.cents : res.priceCents;
     dlg.querySelectorAll("[data-pack]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     refreshPrice(dlg, res);
     haptic(5);
@@ -833,9 +835,10 @@ function wireSheet(dlg, res) {
       state.focusSearchAfterSheet = true;
       // an unknown or remembered barcode: the item added from this search is remembered for it; a barcode under a listed
       // store's prefix starts the search with that brand, so Walmart's own brand ranks first for whatever is typed next
-      state.learnFor = (res.kind === "unknown" || res.learned) && res.gtin && !res.badDigits && !res.noPrice ? res.gtin : null;
       el.q.value = res.kind === "unknown" && res.store ? `${res.store.brand} ` : ""; state.query = el.q.value; el.clearBtn.hidden = !el.q.value;
       showHome(); el.q.placeholder = "Name and size"; modals.close(dlg);
+      // after showHome (which forgets it): the item added from this search, within a few minutes, is remembered for the barcode
+      state.learnFor = (res.kind === "unknown" || res.learned) && res.gtin && !res.badDigits && !res.noPrice ? { gtin: res.gtin, at: Date.now() } : null;
     }
     else if (act === "close") { if (state.scanOpen && state.source === "scan") state.closeScannerAfterSheet = true; modals.close(dlg); }
   }));
@@ -958,8 +961,12 @@ function addToTally(res) {
   const line = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, unitCents: unitCents(res), qty: state.qty, unit: res.unit, kind: res.kind, cents, at: Date.now(), key: res.key, ...(db.manifest?.fixture ? { sample: true } : {}) };
   tally.push(line);
   saveTally();
-  if (state.learnFor && res.item && (res.kind === "exact" || res.kind === "closest")) rememberMatch(state.learnFor, res.item);
-  state.learnFor = null;
+  const lf = state.learnFor; state.learnFor = null;
+  if (lf && Date.now() - lf.at < LEARN_WINDOW_MS && res.item?.upc && (res.kind === "exact" || res.kind === "closest" || res.kind === "equivalent") && res.gtin !== lf.gtin) {
+    const before = learned[lf.gtin] || null;
+    rememberMatch(lf.gtin, res.item);
+    toast(`Remembered barcode ${formatGtin(lf.gtin)} as this item`, { action: "Undo", onAction: () => { if (before) learned[lf.gtin] = before; else delete learned[lf.gtin]; writeJson(LEARNED_KEY, learned); }, ms: 7000, page: true });
+  }
   haptic(15);
   // an accidental add is undone in one tap
   toast(`Added ${money(cents)} · Tally total ${money(tallyTotal())}`, { action: "Undo", onAction: () => { tally = tally.filter((t) => t.id !== line.id); saveTally(); }, ms: 4000, page: true });
