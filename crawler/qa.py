@@ -392,10 +392,11 @@ def gate_unit_outliers(rows, cfg, stats=None):
     return _measured(share <= (mx if mx is not None else 1), share, mx, detail), outliers[:25]
 
 
-def gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings=None):
+def gates_vs_previous(rows, stats, prev, prev_stats, cfg, rules=None):
     """price_drift, item_count, category_counts against the published snapshot (measure nothing without one).
-    ceilings: {"consumable": cap, "durable": cap, "consumable_depts": {names}} from data/categories.json; published rows
-    above the cap of their department are not in the candidate by rule (2026-10-19), so they are compared as absent."""
+    rules: {"consumable": cap, "durable": cap, "consumable_depts": {names}, "exclude_paths": [keywords]} from
+    data/categories.json; published rows above the cap of their department, or under a path now excluded, are not in
+    the candidate by rule (2026-10-19), so they are compared as absent."""
     out, drift, unstable = {}, [], []
     if not prev:
         for name in ("price_drift", "item_count", "category_counts"):
@@ -422,14 +423,16 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings=None):
     # rows the pack_listing rule removes from the published counts against the units it keeps in the candidate), and
     # published rows above the price ceiling of their department (data/categories.json max_price)
     prev_bundles, prev_over = Counter(), Counter()
-    c = ceilings or {}
+    c = rules or {}
+    excl = [str(k).lower() for k in (c.get("exclude_paths") or [])]
     for p in prev.values():
         # a bundle listing published before the rule (its name still wrapped) or a unit published under it (flagged)
         if PACK_LISTING_RX.match(p.get("name") or "") or "pack_listing" in (p.get("flags") or ()):
             prev_bundles[str(p.get("cat"))] += 1
             continue
         cap = c.get("consumable") if p.get("dept") in (c.get("consumable_depts") or ()) else c.get("durable")
-        if isinstance(cap, (int, float)) and isinstance(p.get("price"), (int, float)) and p["price"] > cap:
+        path = (p.get("path") or "").lower()
+        if (isinstance(cap, (int, float)) and isinstance(p.get("price"), (int, float)) and p["price"] > cap) or any(k in path for k in excl):
             prev_over[str(p.get("cat"))] += 1
     new_units = Counter(str(r.get("cat")) for r in rows if "pack_listing" in (r.get("flags") or ()))
     removed = sum(prev_bundles.values()) + sum(prev_over.values())
@@ -438,7 +441,7 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings=None):
     mn = cfg.get("item_count_min_ratio")
     out["item_count"] = _measured(ratio >= (mn or 0), ratio, mn, f"{len(rows)} items vs {len(prev)} published ({ratio:.1%}"
                                   + (f", {removed} published rows left by rule: {sum(prev_bundles.values())} bundle listings, "
-                                     f"{sum(prev_over.values())} above the price ceiling, against {sum(new_units.values())} bundle units kept)" if removed else ")"))
+                                     f"{sum(prev_over.values())} above the price ceiling or under an excluded path, against {sum(new_units.values())} bundle units kept)" if removed else ")"))
     tol, min_rows = cfg.get("category_count_tolerance"), int(cfg.get("category_count_min_rows") or 0)
     worst = 0.0
     for cat, n_prev in (prev_stats.get("kept_by_category") or {}).items():
@@ -631,9 +634,9 @@ def check(wm=None):
     extras["live"] = live
     gates["size_parse"] = gate_size_parse(rows, cfg.get("size_parse_min"))
     gates["unit_outliers"], extras["unit_outliers"] = gate_unit_outliers(rows, cfg, stats)
-    ceilings = {"consumable": (config.get("consumable_rules") or {}).get("max_price"), "durable": (config.get("durable_rules") or {}).get("max_price"),
-                "consumable_depts": {d["name"] for d in config["departments"] if d.get("consumable")}}
-    vs, extras["drift"], extras["unstable"] = gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings)
+    rules = {"consumable": (config.get("consumable_rules") or {}).get("max_price"), "durable": (config.get("durable_rules") or {}).get("max_price"),
+             "consumable_depts": {d["name"] for d in config["departments"] if d.get("consumable")}, "exclude_paths": config.get("exclude_path_keywords") or []}
+    vs, extras["drift"], extras["unstable"] = gates_vs_previous(rows, stats, prev, prev_stats, cfg, rules)
     gates.update(vs)
     extras["drift"] = extras["drift"][:50]
     sr = cfg.get("sample_review")

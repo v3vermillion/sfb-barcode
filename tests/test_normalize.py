@@ -224,6 +224,17 @@ class Decisions20261008(unittest.TestCase):
         row, _ = N.normalize(self.item("Great Value Corn, 15 oz", upc="406727352130"), FOOD, CFG)
         self.assertNotIn("placeholder", row["flags"], "a real product name on a 4-prefix barcode is a product")
 
+    def test_baby_furniture_and_gear_are_not_carried(self):
+        # 2026-10-19 (owner): baby furniture is no part of a food bank; diapers, formula, bath and bedding stay
+        def it(path, name="Thing", price=20.0):
+            return {"name": name, "salePrice": price, "upc": "078742054261", "categoryPath": path, "sellerInfo": "Walmart.com"}
+        for path in ("Home Page/Baby/Nursery & Decor/Baby Cribs", "Home Page/Baby/Baby Travel Gear/Strollers", "Home Page/Baby/Car Seats/Infant Car Seats",
+                     "Home Page/Baby/Baby Activities & Gear/Baby Swings", "Home Page/Baby/Toddlers' Room/Toddler Furniture", "Home Page/Baby/Feeding/High Chairs & Booster Seats"):
+            self.assertEqual(N.junk_reason(it(path), "Baby", CFG), "excluded_category", path)
+        for path in ("Home Page/Baby/Diapering/Diapers", "Home Page/Baby/Feeding/Baby Food", "Home Page/Baby/Baby Bath & Skin Care/Baby Bath",
+                     "Home Page/Baby/Nursery & Decor/Baby Bedding", "Home Page/Baby/Health & Safety/Baby Gates", "Home Page/Baby/Baby & Toddler Toys/Baby Teethers"):
+            self.assertIsNone(N.junk_reason(it(path), "Baby", CFG), path)
+
     def test_a_consumable_priced_like_a_pallet_is_a_listing_error(self):
         pills = {"name": "Estomicina Anti - Diarrheal - Anti-diarreico 100 Caps (Pack of 1)", "salePrice": 1600.52, "upc": "078742054261",
                  "categoryPath": "Home Page/Health and Medicine/Digestive Health", "sellerInfo": "Walmart.com"}

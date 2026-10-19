@@ -73,6 +73,13 @@ class PackListingGates(StoreCase, unittest.TestCase):
         self.assertTrue(g["category_counts"]["pass"], "Food 261 -> 201 is the ceiling, not a category shrinking"); self.assertEqual(g["category_counts"]["value"], 0.0)
         self.assertTrue(g["item_count"]["pass"]); self.assertEqual(g["item_count"]["value"], 1.0)
         self.assertIn("60 above the price ceiling", g["item_count"]["detail"])
+        # the same for rows under a path the scope now excludes (baby furniture, 2026-10-19)
+        cribs = [row(7000 + i, name=f"Delta Children Crib {i}", price=99.0, path="Home Page/Baby/Nursery & Decor/Baby Cribs") for i in range(60)]
+        self.write_published(prev + cribs)
+        self.write_candidate(prev)
+        self.assertEqual(self.qa.check(wm=FakeWM(prev)), "review")
+        g = self.gates()["gates"]
+        self.assertTrue(g["category_counts"]["pass"]); self.assertEqual(g["item_count"]["value"], 1.0)
         # the same rows priced under the ceiling and dropped for any other reason still count as missing
         cheap = [dict(r, price=99.95) for r in dear]
         self.write_published(prev + cheap)

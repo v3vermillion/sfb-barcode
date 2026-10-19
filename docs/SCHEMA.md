@@ -40,7 +40,7 @@ product: barcode lookup only, never in typed search, not in the size-parse rate)
 
 Not carried at all (rejected with a reason in `stats.json` `rejects_by_department`): `apparel`, `footwear`, `pet_bed`,
 `alcohol`, `tobacco`, `media`, `large_equipment`, `test_listing`, `store_display`, `marketplace`,
-`third_party_seller`, `no_price`, `no_name`, `duplicate`, `food_without_upc_or_size`, `durable_without_upc`, `durable_over_cap`
+`third_party_seller`, `no_price`, `no_name`, `duplicate`, `excluded_category` (a Walmart path in `exclude_path_keywords`: tobacco, baby furniture and gear), `food_without_upc_or_size`, `durable_without_upc`, `durable_over_cap`
 (durable departments: no barcode, or priced above `durable_rules.max_price` in data/categories.json), `consumable_over_cap`
 (priced above `consumable_rules.max_price`, $150 since 2026-10-19; the live check covers such an item online), `placeholder_no_barcode`,
 `placeholder_price` (a barcode-only listing whose price is outside its department's plausible range), `multipack_listing` (a "(N pack)"
