@@ -213,14 +213,15 @@ const modals = {
     history.pushState({ modal: dlg.id, n: (history.state?.n || 0) + 1 }, "");
     dlg.querySelector(".sheet-inner").scrollTop = 0;
     dlg.querySelector(".x-btn")?.addEventListener("click", () => modals.close(dlg));
-    grabToDismiss(dlg);
   },
   close(dlg, { fromPop = false, instant = false } = {}) {
     if (!dlg.open) return;
+    instant ||= !!dlg._dragged;   // dragged off screen: the drag was the closing animation
     if (dlg._closeTimer) { if (!instant) return; clearTimeout(dlg._closeTimer); dlg._closeTimer = 0; }
     if (!fromPop && history.state?.modal === dlg.id) { history.back(); return; }   // popstate finishes the close
     const finish = () => {
       dlg._closeTimer = 0; dlg.classList.remove("is-closing");
+      dlg._dragged = false; clearTimeout(dlg._springTimer); dlg.style.translate = ""; dlg.style.transition = "";
       // toasts still showing in the sheet move over the page instead of closing with it
       for (const t of [...(dlg.querySelector(":scope > .toasts-dlg")?.children || [])]) el.toasts.appendChild(t);
       if (dlg.open) dlg.close(); dlg.dispatchEvent(new CustomEvent("closed"));
@@ -229,6 +230,7 @@ const modals = {
   },
 };
 for (const dlg of [el.sheet, el.tallySheet, el.settings]) {
+  sheetDrag(dlg);
   dlg.addEventListener("cancel", (e) => { e.preventDefault(); modals.close(dlg); });
   dlg.addEventListener("click", (e) => { if (e.target === dlg) modals.close(dlg); });
 }
@@ -246,20 +248,61 @@ window.addEventListener("popstate", () => {
 // a reload keeps the previous entry's state: never start with a stale "a modal is open" marker
 if (history.state?.modal) history.replaceState(null, "", location.href);
 
-function grabToDismiss(dlg) {
-  const inner = dlg.querySelector(".sheet-inner"), grab = dlg.querySelector(".grab");
-  if (!grab) return;
-  let y0 = null;
-  grab.addEventListener("pointerdown", (e) => { y0 = e.clientY; grab.setPointerCapture(e.pointerId); dlg.style.transition = "none"; });
-  // `translate`, not `transform`: on wide screens the sheet is centred with transform: translateX(-50%)
-  grab.addEventListener("pointermove", (e) => { if (y0 == null) return; const dy = Math.max(0, e.clientY - y0); dlg.style.translate = `0 ${dy}px`; });
+/**
+ * Drag a sheet down by its header to close it, as native sheets do. The header is the handle, the title and the row
+ * with the close button (the handle alone was a 21px strip). Wired once per dialog, on the dialog itself: a re-render of
+ * its content mid-drag (Settings refreshes its price card) cannot drop the gesture or strand the sheet half-way.
+ * - a drag starts after 6px downwards, so a tap on the header is still a tap and the close button still a button
+ * - a release past a quarter of the sheet (at most 120px) or a downward flick closes it, sliding on from where the
+ *   finger let go; anything else springs back. The click that follows a drag is swallowed (with the pointer captured
+ *   it lands on the dialog itself, which reads as a tap outside the sheet and would close it).
+ */
+function sheetDrag(dlg) {
+  let d = null;
+  const still = () => !matchMedia("(prefers-reduced-motion: no-preference)").matches;
+  const move = (y, transition = "none") => { dlg.style.transition = transition; dlg.style.translate = y > 0 ? `0 ${y}px` : ""; };
+  dlg.addEventListener("pointerdown", (e) => {
+    dlg._swallowClick = false;
+    if (d || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0) || dlg._closeTimer || dlg._dragged) return;
+    if (!e.target.closest?.(".sheet-top") || e.target.closest("button, a, input, select, textarea, [role=switch]")) return;
+    d = { id: e.pointerId, y0: e.clientY, dy: 0, t: e.timeStamp, v: 0, on: false };
+  });
+  dlg.addEventListener("pointermove", (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.on) {
+      const dy = e.clientY - d.y0;
+      if (dy < -6) { d = null; return; }   // upwards: not a dismiss
+      if (dy < 6) return;
+      d.on = true; d.y0 = e.clientY; d.t = e.timeStamp;   // the sheet moves from here: no jump by the threshold
+      clearTimeout(dlg._springTimer);
+      try { dlg.setPointerCapture(d.id); } catch { /* the gesture still works without it */ }
+    }
+    const dy = Math.max(0, e.clientY - d.y0), dt = Math.max(1, e.timeStamp - d.t);
+    d.v = 0.7 * ((dy - d.dy) / dt) + 0.3 * d.v;   // px per ms, smoothed
+    d.dy = dy; d.t = e.timeStamp;
+    move(dy);
+  });
   const end = (e) => {
-    if (y0 == null) return;
-    const dy = e.clientY - y0; y0 = null;
-    dlg.style.transition = ""; dlg.style.translate = "";
-    if (dy > 90) modals.close(dlg); else inner.scrollTop = 0;
+    if (!d || e.pointerId !== d.id) return;
+    const { on, dy, v } = d; d = null;
+    if (!on) return;
+    dlg._swallowClick = true; setTimeout(() => { dlg._swallowClick = false; }, 400);   // iOS can send it late
+    const h = dlg.getBoundingClientRect().height;
+    const close = e.type === "pointerup" && (dy > Math.min(120, h * 0.25) || (v > 0.45 && dy > 20));
+    if (!close) {
+      move(0, still() ? "none" : "translate .32s cubic-bezier(.25, 1, .5, 1)");
+      dlg._springTimer = setTimeout(() => { if (!d) dlg.style.transition = ""; }, 340);
+      return;
+    }
+    dlg._dragged = true;   // modals.close then finishes at once: this slide is the closing animation
+    if (still()) { modals.close(dlg); return; }
+    const ms = Math.round(Math.min(260, Math.max(140, (h - dy) / Math.max(v, 1.6))));
+    move(h + 40, `translate ${ms}ms cubic-bezier(.3, .6, .4, 1)`);
+    setTimeout(() => modals.close(dlg), ms);
   };
-  grab.addEventListener("pointerup", end); grab.addEventListener("pointercancel", end);
+  dlg.addEventListener("pointerup", end);
+  dlg.addEventListener("pointercancel", end);
+  dlg.addEventListener("click", (e) => { if (dlg._swallowClick) { dlg._swallowClick = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 }
 
 // ------------------------------------------------------------------ price status: one story for the pill, the card, the dot and the announcement
@@ -758,7 +801,7 @@ function rerenderSheet(res) {
   state.sheetRes = res;
   setDialogHtml(el.sheet, sheetHtml(res));
   el.sheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.sheet));
-  grabToDismiss(el.sheet); wireSheet(el.sheet, res);
+  wireSheet(el.sheet, res);
   el.sheet.querySelector(".sheet-inner").scrollTop = 0;
 }
 function refreshPrice(dlg, res) {
@@ -931,7 +974,7 @@ function refreshTally(opts) {
   if (!el.tallySheet.open) return;
   const y = el.tallySheet.querySelector(".sheet-inner")?.scrollTop || 0;
   setDialogHtml(el.tallySheet, tallyHtml(opts)); el.tallySheet.querySelector(".sheet-inner").scrollTop = y;
-  el.tallySheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.tallySheet)); grabToDismiss(el.tallySheet);
+  el.tallySheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.tallySheet));
 }
 el.tallySheet.addEventListener("click", (e) => {
   const rm = e.target.closest("[data-remove]");
@@ -1092,7 +1135,8 @@ function fillStorage() {
   }).catch(() => {});
 }
 function openSettings() { modals.open(el.settings, settingsHtml()); fillStorage(); }
-function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")?.scrollTop || 0; setDialogHtml(el.settings, settingsHtml()); el.settings.querySelector(".sheet-inner").scrollTop = y; el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); grabToDismiss(el.settings); fillStorage(); }
+function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")?.scrollTop || 0; setDialogHtml(el.settings, settingsHtml()); el.settings.querySelector(".sheet-inner").scrollTop = y; el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); fillStorage(); }
+window.__sfb.refreshSettings = refreshSettings;   // the checks re-render Settings mid-drag
 el.settings.addEventListener("click", async (e) => {
   const th = e.target.closest("[data-theme]");
   if (th) { prefs.theme = th.dataset.theme; writeJson(PREFS_KEY, prefs); applyTheme(); el.settings.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b === th))); return; }
