@@ -228,19 +228,20 @@ class Decisions20261008(unittest.TestCase):
         # 2026-10-19 (owner): baby furniture is no part of a food bank; diapers, formula, bath and bedding stay
         def it(path, name="Thing", price=20.0):
             return {"name": name, "salePrice": price, "upc": "078742054261", "categoryPath": path, "sellerInfo": "Walmart.com"}
-        # the owner's test: a donation is what one person carries in to a volunteer. Furniture, decor and structures are out
+        # furniture, decor and equipment are no part of a food bank's donations (owner)
         for path, dept in (("Home Page/Baby/Nursery & Decor/Baby Cribs", "Baby"), ("Home Page/Baby/Nursery & Decor/Gliders & Rocking Chairs", "Baby"),
                            ("Home Page/Baby/Nursery & Decor/Baby Decor", "Baby"), ("Home Page/Baby/Toddlers' Room/Toddler Furniture", "Baby"),
-                           ("Home Page/Baby/Nursery & Decor/Changing Tables", "Baby"), ("Home Page/Pets/Dogs/Dog Houses", "Pets"),
-                           ("Home Page/Pets/Chickens/Chicken Coops", "Pets"), ("Home Page/Health and Medicine/Home Health Care/Wheelchair Ramps", "Health and Medicine")):
+                           ("Home Page/Baby/Nursery & Decor/Changing Tables", "Baby"), ("Home Page/Baby/Baby Travel Gear/Strollers", "Baby"),
+                           ("Home Page/Baby/Car Seats/Infant Car Seats", "Baby"), ("Home Page/Baby/Baby Activities & Gear/Baby Swings", "Baby"),
+                           ("Home Page/Baby/Feeding/High Chairs & Booster Seats", "Baby"), ("Home Page/Pets/Dogs/Dog Houses", "Pets"),
+                           ("Home Page/Pets/Dogs/Dog Crates", "Pets"), ("Home Page/Pets/Fish Supplies/Fish Tanks", "Pets"), ("Home Page/Pets/Chickens/Chicken Coops", "Pets"),
+                           ("Home Page/Health and Medicine/Home Health Care/Wheelchair Ramps", "Health and Medicine")):
             self.assertEqual(N.junk_reason(it(path), dept, CFG), "excluded_category", path)
-        # what can be carried in stays: diapers and formula first, and carryable gear too
+        # diapers, formula, bath, bedding, baby proofing, toys, pet food and the health goods the 2026-10-08 decision keeps stay
         for path, dept in (("Home Page/Baby/Diapering/Diapers", "Baby"), ("Home Page/Baby/Feeding/Baby Food", "Baby"), ("Home Page/Baby/Feeding/Enfamil Baby Formula", "Baby"),
                            ("Home Page/Baby/Baby Bath & Skin Care/Baby Bath", "Baby"), ("Home Page/Baby/Nursery & Decor/Baby Bedding", "Baby"),
-                           ("Home Page/Baby/Health & Safety/Baby Gates", "Baby"), ("Home Page/Baby/Baby & Toddler Toys/Baby Teethers", "Baby"),
-                           ("Home Page/Baby/Baby Travel Gear/Strollers", "Baby"), ("Home Page/Baby/Car Seats/Infant Car Seats", "Baby"),
-                           ("Home Page/Baby/Baby Activities & Gear/Baby Swings", "Baby"), ("Home Page/Baby/Feeding/High Chairs & Booster Seats", "Baby"),
-                           ("Home Page/Pets/Dogs/Dog Crates", "Pets"), ("Home Page/Pets/Fish Supplies/Fish Tanks", "Pets"), ("Home Page/Health and Medicine/Home Health Care/Grab Bars", "Health and Medicine")):
+                           ("Home Page/Baby/Health & Safety/Baby Proofing", "Baby"), ("Home Page/Baby/Baby & Toddler Toys/Baby Teethers", "Baby"),
+                           ("Home Page/Pets/Dogs/Dog Food", "Pets"), ("Home Page/Pets/Cats/Cat Litter", "Pets"), ("Home Page/Health and Medicine/Home Health Care/Bath Safety", "Health and Medicine")):
             self.assertIsNone(N.junk_reason(it(path), dept, CFG), path)
 
     def test_a_consumable_priced_like_a_pallet_is_a_listing_error(self):
