@@ -383,15 +383,18 @@ await scenario(["S4"], "dragging a sheet down by its header", async (set) => {
   await touchDrag(cdp, page, 195, title.t + 8, title.t + 48, { steps: 10, ms: 40 }); await settle(page, 600);
   const back = await page.evaluate(() => ({ open: document.getElementById("settings").open, tr: document.getElementById("settings").style.translate, y: document.querySelector("#settings .sheet-inner").scrollTop }));
   check("S4", "a short drag springs back and stays open, at the same scroll position", back.open && !back.tr && Math.abs(back.y - y0) <= 1, JSON.stringify({ ...back, before: y0 }));
+  check("S4", "at rest the sheet gives its layer back (no full-screen bitmap held while it sits open)", await page.evaluate(() => getComputedStyle(document.getElementById("settings")).willChange === "auto"));
   // a tap on the header is not a drag; the close button still closes
   await page.touchscreen.tap(title.l + 10, title.t + 8); await settle(page, 500);
   check("S4", "a tap on the header leaves the sheet open", await isOpen());
   // a re-render while the finger is down
   await touchDrag(cdp, page, 195, title.t + 8, title.t + 60, { steps: 6, ms: 20, hold: true });
+  // moved without its own layer, every frame repainted the whole screen and the drag stuttered on the iPhone
+  check("S4", "while dragged the sheet is on its own compositing layer", await page.evaluate(() => getComputedStyle(document.getElementById("settings")).willChange === "transform"));
   await page.evaluate(() => window.__sfb.refreshSettings());
   for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 195, y: title.t + 60 + i * 30 }] }); await page.waitForTimeout(20); }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await settle(page, 700);
-  check("S4", "a re-render mid-drag does not strand the sheet: the drag still closes it", !(await isOpen()) && await page.evaluate(() => !document.getElementById("settings").style.translate));
+  check("S4", "a re-render mid-drag does not strand the sheet: the drag still closes it", !(await isOpen()) && await page.evaluate(() => !document.getElementById("settings").style.translate && !document.getElementById("settings").style.willChange));
   await openSettings();
   await page.tap("#settings .x-btn"); await settle(page, 600);
   check("S4", "the close button still closes", !(await isOpen()));
