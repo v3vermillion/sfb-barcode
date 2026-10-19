@@ -41,6 +41,12 @@ html = html.includes('name="sfb-live-check"') ? html.replace(/<meta name="sfb-li
 html = html.includes('name="sfb-build"') ? html.replace(/<meta name="sfb-build"[^>]*>/, metaBuild) : html.replace("</head>", `  ${metaBuild}\n</head>`);
 fs.writeFileSync(idx, html);
 
+// the stylesheet and the app script carry the build too, so a page can tell it was given parts of two versions (app.js)
+const cssPath = path.join(OUT, "app.css");
+fs.writeFileSync(cssPath, `${fs.readFileSync(cssPath, "utf8")}\n:root { --shell-build: "${BUILD}"; }\n`);
+const jsPath = path.join(OUT, "js", "app.js");
+fs.writeFileSync(jsPath, fs.readFileSync(jsPath, "utf8").replace("__SHELL_BUILD__", BUILD));
+
 // sw.js: version + precache list (everything in the shell except the worker itself). The page is cached under
 // its root URL "./" only: Cloudflare's auto-trailing-slash handling redirects /index.html to /, and a redirected
 // response must never be served for a navigation.

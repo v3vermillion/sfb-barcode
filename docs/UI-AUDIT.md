@@ -37,8 +37,8 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 
 | Id | Finding | Fix | Check | Status |
 |---|---|---|---|---|
-| F1 | iPhone launch: layout viewport 47px short; dock floats | Exact signature detected (standalone iPhone, shortfall = top inset); `--vp-gap` under everything bottom-fixed, removed when iOS corrects | F1, R8 | Fixed; confirm on iPhone |
-| F2 | Walkthrough dim and centred card short by 47px | Dim and card use the whole screen | F2 | Fixed; confirm on iPhone |
+| F1 | iPhone launch: layout viewport 47px short; dock floats | iOS 26 bug (WebKit 301108): the viewport is short only while the page is shorter than the screen, and nothing is drawn below its edge. In the Home Screen app the page is made as tall as the screen, `min(100lvh, 100% + top inset)`, so iOS gives it the full viewport. (The first fix, which extended the bottom bars by the gap, was cut off on the device: 2026-10-19.) | F1, R8 | Fixed; confirm on iPhone |
+| F2 | Walkthrough dim and centred card short by 47px | Follows from F1: the dim fills the viewport, which is now the whole screen | F2 | Fixed; confirm on iPhone |
 | F3 | Spotlight past the screen edges | Clamped inside the screen; step 1 spotlights the controls, not the bar | F3 | Fixed |
 | F4 | Focus ring on Next after an automatic open | The step takes the focus; rings only for keyboard use | F4 | Fixed |
 | F5 | Dots and Next shift; Skip misaligned | Dots in the step line; Skip on the text edge | F5 | Fixed |
@@ -96,7 +96,7 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | R4 | Spotlit search box did not raise the iOS keyboard | Fixed: focus inside the tap (R4); confirm on iPhone |
 | R5 | Worker failure before opening went unreported | Fixed (R5) |
 | R6, R7 | Unsupported browser downloaded from Settings; doubled wording | Fixed (R6, R7) |
-| R8 | Launch gap dropped while a hardware keyboard typed | Fixed (R8) |
+| R8 | Launch gap dropped while a hardware keyboard typed | Fixed: no gap is compensated any more; the dock stays on the edge (R8) |
 | R9, A5 | No focus ring in Enter-only keyboard flows | Fixed (R9) |
 | A1 | Toasts hidden while a sheet is open | Fixed (A1) |
 | A2 | Confirm button named "Add" | Fixed (A2) |
@@ -122,12 +122,21 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | V9, V10 | Banner text rewritten on every re-render; focus return after Recent and typed codes | Fixed |
 | P5 | Badge colours close (produce/exact, equivalent/closest) | Kept: every badge carries its words, so colour is never the only cue; glyphs considered for the Dynamic Type pass |
 
+### Found on the owner's iPhone after release (2026-10-19)
+
+| Id | Finding | Fix | Check |
+|---|---|---|---|
+| F1 (again) | The dock was cut off at the short edge and a light band showed under it. A double tap fixed the layout until the next one | See F1. The double tap re-laid the page out: the zoom change forced iOS to recompute the viewport | F1 |
+| U1 | The first launch after the update showed the previous page styled by the new stylesheet (run-together text, the old chips unstyled) | The page, stylesheet and script carry their build. When they disagree, the page reloads once, which brings one version, and never loops. This first takes effect from the build after this one | U1 |
+| T1 | The walkthrough text was balanced into short lines, which left a quarter of the card empty | Body text fills its measure; it only keeps a last word from standing alone | screenshots |
+| T2 | The empty-state icon peeked half-covered past the walkthrough card | Hidden while the walkthrough runs | screenshots |
+
 ## Check on a real iPhone before merging
 
 These behaviours depend on iOS itself and cannot be produced in Chromium:
 
 1. Open the app from the Home Screen. The search bar sits on the bottom edge with no band below it, including in the
-   first seconds after launch (F1).
+   first seconds after launch, and nothing changes on a double tap (F1).
 2. Run the walkthrough. Every step is fully visible, the whole screen dims, and on step 1 tapping the search box opens
    the keyboard (F2, R4).
 3. Tap the search box. The bar sits directly on the keyboard with no empty band (F45).

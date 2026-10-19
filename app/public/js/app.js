@@ -14,6 +14,20 @@ const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "t
 const scanShortcut = new URLSearchParams(location.search).get("scan") === "1";   // launched from the Home Screen "Scan" shortcut
 const LIVE_URL = (document.querySelector('meta[name="sfb-live-check"]')?.content || "").trim().replace(/\/$/, "");
 const BUILD = document.querySelector('meta[name="sfb-build"]')?.content || "dev";
+
+// One build per page. A Home Screen app reopened just as a new version takes over can get the previous version's page
+// with this version's stylesheet or script: it then renders unstyled, half-old parts. build-site.mjs stamps the build
+// into the page, the stylesheet and this script; when they disagree the page reloads once, which brings one version.
+const SHELL_BUILD = "__SHELL_BUILD__";
+{
+  const cssBuild = getComputedStyle(document.documentElement).getPropertyValue("--shell-build").trim().replace(/["']/g, "");
+  const seen = [BUILD, SHELL_BUILD, cssBuild].join(" ");
+  if (!SHELL_BUILD.startsWith("__") && (BUILD !== SHELL_BUILD || cssBuild !== SHELL_BUILD)) {
+    let reload = false;
+    try { if (sessionStorage.getItem("sfb.buildReload") !== seen) { sessionStorage.setItem("sfb.buildReload", seen); reload = true; } } catch { /* no storage: never loop */ }
+    if (reload) { location.reload(); await new Promise(() => {}); }   // stop here; the reload replaces the page
+  }
+}
 const PREFS_KEY = "sfb.prefs", TALLY_KEY = "sfb.tally", RECENT_KEY = "sfb.recent";
 
 const readJson = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -127,7 +141,6 @@ const vv = window.visualViewport;
 const rootStyle = document.documentElement.style;
 const standalone = () => navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-const isIPhone = /iPhone|iPod/.test(navigator.userAgent);
 /** True while a text field has the focus: the only time a phone keyboard can be on screen. */
 const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"); };
 /** The system's top safe-area inset in px (status bar / sensor housing), read from a probe styled with env(). */
@@ -137,21 +150,6 @@ safeProbe.style.cssText = "position:fixed;left:0;top:0;width:0;visibility:hidden
 document.body.append(safeProbe);
 const safeTop = () => safeProbe.offsetHeight;
 
-/**
- * The iPhone Home Screen app (black-translucent status bar, viewport-fit=cover) can launch with its layout viewport one
- * status bar short: innerHeight is the screen height minus the top safe area, so everything fixed to the bottom floats
- * that far above the screen edge and the band below shows the bare page, until iOS lays the page out again (a scroll,
- * the keyboard, a rotation). The signature is exact: standalone on an iPhone, nothing typed or zoomed, and the shortfall
- * against the screen equals the top inset. The gap is then added under everything fixed to the bottom (--vp-gap) and
- * removed the moment iOS corrects itself.
- */
-function viewportGap() {
-  if (!isIPhone || !standalone() || (vv && vv.scale > 1.01)) return 0;
-  const portrait = matchMedia("(orientation: portrait)").matches;
-  const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-  const gap = Math.round(full - window.innerHeight), inset = safeTop();
-  return gap > 0 && inset > 0 && Math.abs(gap - inset) <= 2 ? gap : 0;
-}
 function keyboardInset() {
   // The inset and the pan are read from the visual viewport ONLY while a text field is focused. Safari in the browser
   // (not installed) also shrinks and shifts the visual viewport when its toolbars collapse, on a rubber-band scroll and
@@ -167,8 +165,6 @@ function keyboardInset() {
   rootStyle.setProperty("--vv-top", `${top}px`);
   // the keyboard covers the home indicator: the dock drops its safe-area padding while it sits on the keyboard
   if (inset > 0) rootStyle.setProperty("--dock-safe-b", "0px"); else rootStyle.removeProperty("--dock-safe-b");
-  // with a software keyboard up the layout follows the keyboard instead; a hardware keyboard (a barcode wedge) keeps it
-  rootStyle.setProperty("--vp-gap", `${inset > 0 ? 0 : viewportGap()}px`);
 }
 vv?.addEventListener("resize", keyboardInset);
 vv?.addEventListener("scroll", keyboardInset);
@@ -1215,19 +1211,17 @@ function tourTarget(s) {
 }
 /** The spotlight sits on the step's subject, kept inside the screen; the card sits on the free side of it (the other
  * side when it does not fit), and when neither side has room the card is centred on a dimmed screen instead of
- * covering what it points at. Coordinates are the layout viewport's (what fixed elements use), extended by the iPhone
- * launch gap so the card can use the whole screen. */
+ * covering what it points at. Coordinates are the layout viewport's (what fixed elements use). */
 function placeTour() {
   if (!state.tourOpen) return;
   const s = TOUR_STEPS[tour.step], card = el.tourCard, spot = el.tourSpot;
   const r = tourTarget(s);
-  const gap = parseFloat(rootStyle.getPropertyValue("--vp-gap")) || 0;
-  const W = window.innerWidth, H = window.innerHeight + gap, M = 12, pad = 6, space = 10;
+  const W = window.innerWidth, H = window.innerHeight, M = 12, pad = 6, space = 10;
   const insetT = safeTop(), insetB = parseFloat(getComputedStyle(el.dock).paddingBottom) - 10 || 0;
   card.style.top = card.style.bottom = card.style.maxHeight = "";
   const free = () => {
     el.tour.classList.add("is-free"); spot.hidden = true; card.classList.remove("is-placed");
-    card.style.top = `${H / 2}px`;   // the middle of the whole screen, the iPhone launch gap included
+    card.style.top = `${H / 2}px`;
     card.style.maxHeight = `${Math.max(160, H - insetT - insetB - 2 * M)}px`;
   };
   if (!r) { free(); return; }
