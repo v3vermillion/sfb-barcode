@@ -102,6 +102,9 @@
 *, *::before, *::after { box-sizing: border-box; }
 /* the overscroll area is never white; a sheet, the tally, settings or the scanner open: the page behind never scrolls */
 html { height: 100%; background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scrollbar-gutter: stable;
+  /* the page never bounces: on iOS a rubber-band of the page drags the fixed header and search bar with it. Only the
+     root element's value reaches the viewport (body's does not propagate); the lists keep their own scrolling */
+  overscroll-behavior: none;
   /* a control focused by keyboard is scrolled clear of the fixed header and dock */
   scroll-padding-top: calc(var(--top-h) + var(--banner-h) + 8px); scroll-padding-bottom: calc(var(--dock-h) + var(--kb) + 8px); }
 /* no orphaned last words in headings and short paragraphs */
