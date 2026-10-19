@@ -215,8 +215,9 @@ const modals = {
     dlg.querySelector(".x-btn")?.addEventListener("click", () => modals.close(dlg));
     grabToDismiss(dlg);
   },
-  close(dlg, { fromPop = false } = {}) {
-    if (!dlg.open || dlg._closeTimer) return;
+  close(dlg, { fromPop = false, instant = false } = {}) {
+    if (!dlg.open) return;
+    if (dlg._closeTimer) { if (!instant) return; clearTimeout(dlg._closeTimer); dlg._closeTimer = 0; }
     if (!fromPop && history.state?.modal === dlg.id) { history.back(); return; }   // popstate finishes the close
     const finish = () => {
       dlg._closeTimer = 0; dlg.classList.remove("is-closing");
@@ -224,7 +225,7 @@ const modals = {
       for (const t of [...(dlg.querySelector(":scope > .toasts-dlg")?.children || [])]) el.toasts.appendChild(t);
       if (dlg.open) dlg.close(); dlg.dispatchEvent(new CustomEvent("closed"));
     };
-    if (matchMedia("(prefers-reduced-motion: no-preference)").matches) { dlg.classList.add("is-closing"); dlg._closeTimer = setTimeout(finish, 220); } else finish();
+    if (!instant && matchMedia("(prefers-reduced-motion: no-preference)").matches) { dlg.classList.add("is-closing"); dlg._closeTimer = setTimeout(finish, 220); } else finish();
   },
 };
 for (const dlg of [el.sheet, el.tallySheet, el.settings]) {
@@ -1099,7 +1100,7 @@ el.settings.addEventListener("click", async (e) => {
   if (sw) { const k = sw.dataset.pref; prefs[k] = !prefs[k]; writeJson(PREFS_KEY, prefs); sw.setAttribute("aria-checked", String(prefs[k])); haptic(5); return; }
   const actBtn = e.target.closest("[data-act]"), act = actBtn?.dataset.act;
   if (act === "update") await checkNow(actBtn);
-  else if (act === "tour") { el.settings.addEventListener("closed", () => openTour(), { once: true }); modals.close(el.settings); }
+  else if (act === "tour") replayTour();
   else if (act === "reset") {
     // an in-app confirmation, not the browser's dialog
     const area = el.settings.querySelector("#resetArea");
@@ -1151,7 +1152,16 @@ const TOUR_STEPS = [
 const tour = { step: 0, returnTo: null, after: null, raf: 0, lastRect: "" };
 const tourParam = new URLSearchParams(location.search).get("tour");
 const tourWanted = () => tourParam === "1" || (tourParam !== "0" && !scanShortcut && !readJson(TOUR_KEY, null)?.done);
-function openTour() {
+/** Settings › Replay the walkthrough: the Settings layer is swapped for the walkthrough in one step. Its history entry
+ * becomes the walkthrough's, so nothing waits on a Back navigation and its popstate (the previous way, which worked in
+ * every desktop engine but not on the owner's iPhone). */
+function replayTour() {
+  const entry = history.state?.modal === "settings" ? history.state : null;
+  modals.close(el.settings, { fromPop: true, instant: true });
+  if (entry) history.replaceState({ modal: "tour", n: entry.n }, "");
+  openTour({ reuseEntry: !!entry });
+}
+function openTour({ reuseEntry = false } = {}) {
   if (state.tourOpen || state.scanOpen || anyModalOpen()) return;
   // the walkthrough points at the home screen: a search in progress gives way to it
   if (el.home.hidden) { el.q.value = ""; el.clearBtn.hidden = true; state.query = ""; showHome(); }
@@ -1160,7 +1170,7 @@ function openTour() {
   window.scrollTo(0, 0);
   el.tour.hidden = false;
   syncInert();
-  history.pushState({ modal: "tour", n: (history.state?.n || 0) + 1 }, "");
+  if (!reuseEntry) history.pushState({ modal: "tour", n: (history.state?.n || 0) + 1 }, "");
   renderTour();
   followTarget();
 }
