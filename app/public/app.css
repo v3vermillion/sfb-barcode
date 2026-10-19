@@ -328,6 +328,14 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .row .price small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-3); letter-spacing: .02em; }
 .row.is-retired .name { color: var(--ink-2); }
 .list--compact .row { min-height: 56px; padding: 9px 12px; }
+/* Recent: the row slides left over a Remove button (a swipe; or the keyboard, which reaches the button first and reveals it) */
+.swipe { position: relative; border-radius: var(--r-m); }
+.swipe-face { position: relative; z-index: 1; touch-action: pan-y; transition: transform .2s var(--ease-out); }   /* the row keeps its own entry animation */
+.swipe[data-swiping] .swipe-face { transition: none; }
+.swipe-remove { position: absolute; inset: 0 0 0 auto; width: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; border-radius: var(--r-m); background: oklch(53% 0.2 25); color: #fff; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.swipe-remove .ico { width: 20px; height: 20px; }
+.swipe[data-open] .swipe-face, .swipe-remove:focus-visible + .swipe-face { transform: translateX(-96px); }
+.swipe-remove:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; }
 .row--code { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
 .row--code .name { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; -webkit-line-clamp: unset; }
 .row--code .code-title { font-weight: 500; }

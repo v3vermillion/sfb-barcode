@@ -71,6 +71,8 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | F32 | "Update required" undone by reconnecting | Unsupported is sticky; nothing downloads | F32, R6 | Fixed |
 | F33 | Recent upside down | Newest first | F33 | Fixed |
 | F34 | Recent prices stale after an update | Re-priced by barcode when a list opens or departments join | F34, R2 | Fixed |
+| F49 | No way to take a row off Recent | Swipe left uncovers Remove (keyboard: the button precedes the row and reveals it on focus) | F49 | Done |
+| F50 | Removing a Recent row is irreversible | Remove shows an Undo toast for five seconds | F50 | Done |
 | F35 | Logo reloaded the app | Returns home | F35 | Fixed |
 | F36 | Announcement repeated, stuck, missed offline | One sentence per change of meaning | F36 | Fixed |
 | F37 | Headline grew with Recent | Headline removed | — | Fixed |
