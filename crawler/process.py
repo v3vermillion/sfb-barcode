@@ -108,7 +108,8 @@ def build():
                                              if p_unit and p_price and p_online != p_price else p_unit)
                         row["flags"].append("kept_normal_price")
                     if p_price:
-                        row["prev_price"] = p_price
+                        lp = row.get("listing_pack")
+                        row["prev_price"] = round(p_price / lp, 2) if not same_basis and lp and "pack_listing" in row["flags"] else p_price
                 rows[iid] = _compact(row)
 
     del prev_rows
@@ -145,6 +146,7 @@ def build():
     for r in rows.values():
         nn, d = r.pop("noun", None), cfg_depts.get(r.get("dept"))
         r["_kind"] = nn[2] if nn else None             # the product noun, used by price sanity; never written
+        r["_durable"] = classify.durable(r["name"], nn)   # a model, not a size: the kind rule leaves it alone; never written
         if d:
             r["cat"] = str(classify.decide(tuple(nn) if nn else None, r.get("path"), d, cfg, stats_paths, r["name"]))
 
@@ -195,7 +197,7 @@ def build():
 
     withheld = valuation.attach_values(rows, bounds, group_min)
     for r in rows.values():
-        r.pop("_kind", None)
+        r.pop("_kind", None); r.pop("_durable", None)
     price_bounds = {d: {"low": lo, "high": hi, "p99": p99} for d, (lo, hi, p99) in bounds.items()}
 
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")

@@ -148,6 +148,13 @@ class Apply(unittest.TestCase):
         w = next(x for x in withheld if x["id"] == 5100)
         self.assertEqual(w["why"], "far above the same kind of item"); self.assertLess(w["value"], 30.0)
         self.assertNotIn("_why", rows[5100])
+        # a durable good (process.build marks it) is a model, not an error: an electric toothbrush beside manual ones
+        rows2 = snapshot([])
+        for i in range(6000, 6040):
+            r = row(i, f"Brand {i} Soft Toothbrush, 1 Count", 2.0 + (i % 5) * 0.5, cat="15", dept="Personal Care", brand=f"Brand {i}"); r["_kind"] = "toothbrush"; rows2[i] = r
+        io = row(6100, "Oral-B iO Series 5 Electric Toothbrush", 99.0, cat="15", dept="Personal Care", brand="Oral-B"); io["_kind"] = "toothbrush"; io["_durable"] = True; rows2[6100] = io
+        V.apply(rows2, cfg)
+        self.assertFalse(rows2[6100].get("price_withheld"))
 
     def test_a_low_price_two_same_size_listings_agree_on_is_kept(self):
         rows = snapshot([])

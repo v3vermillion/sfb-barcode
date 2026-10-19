@@ -321,6 +321,8 @@ class HygieneAndContainerCounts(unittest.TestCase):
                            ("Lawn & Leaf Trash Bags, 55 Gallon, 50 Count, 2 Pack", (50.0, "ct", 2)),
                            ("Great Value Whole Milk, 1 Gallon", (1.0, "gal", None)),                  # a liquid: the gallon is the size
                            ("(4 pack) Borden Fruit Punch, 1 Gallon Jug", (1.0, "gal", 4)),
+                           ("Burpee Organic Potting Mix, 8 Quart, 2 Bags", (8.0, "qt", None)),      # bags of soil: the quart is the size
+                           ("Hefty 2.5 Gallon Jumbo Storage Slider Bags, 12 Count", (12.0, "ct", None)),
                            ("Sterilite 30 Gal. Tote Box, Case of 6", (30.0, "gal", 6))]:            # a tote is not a bag
             self.assertEqual(N.parse_quantity(name), want, name); self.assertEqual(N.parse_quantity(name, extended=False), want, name)
 
@@ -328,8 +330,15 @@ class HygieneAndContainerCounts(unittest.TestCase):
         for name, want in [("Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", (24.0, "ct", None)),
                            ("Nature Made Vitamin D3 2000 IU, 100 Softgels", (100.0, "ct", None)),
                            ("Spring Valley Biotin 60 Vegetarian Capsules, 2 Pack", (60.0, "ct", 2)),
+                           ("Equate Allergy Relief 30 Coated Tablets", (30.0, "ct", None)),
                            ("Claritin 24 Hour Allergy Tablets", (None, None, None)),                 # a duration, not a count
                            ("Equate Ibuprofen 200 mg Tablets", (None, None, None)),                  # a strength
+                           ("Tums Extra Strength 750 Assorted Fruit Chewable Tablets", (None, None, None)),   # a strength before other words
+                           ("Tylenol 8 HR Arthritis Pain 650 Extended Release Caplets", (None, None, None)),  # a strength of 300 or more
+                           ("Bayer Back & Body 500 Extra Strength Caplets", (None, None, None)),
+                           ("Pepto Bismol 5 Symptom Relief Chewable Tablets", (None, None, None)),   # not a dosage-form word
+                           ("Culturelle Digestive Daily 10 Billion CFU Capsules", (None, None, None)),
+                           ("Hyland's 4 Kids Cold Tablets", (None, None, None)),
                            ("Zyrtec 24 Hour Allergy Relief Tablets, 30 Count", (30.0, "ct", None))]:  # a stated count wins
             self.assertEqual(N.parse_quantity(name), want, name)
 

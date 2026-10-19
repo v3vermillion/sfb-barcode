@@ -51,6 +51,17 @@ class PackListingGates(StoreCase, unittest.TestCase):
         self.assertEqual(len(self.gates()["extras"]["drift"]), 1)
 
 
+    def test_units_published_under_the_rule_are_compared_like_with_like(self):
+        # the second publish: the published snapshot already holds units (flagged, names unwrapped); an identical candidate
+        # is no change at all (a build that counted only the published bundle names held every category with units)
+        prev = snapshot_rows(n_food=200, n_pets=60) + [self.unit(5000 + i) for i in range(50)]
+        self.write_published(prev)
+        self.write_candidate(prev)
+        live = {5000 + i: 60.0 for i in range(50)}
+        self.assertEqual(self.qa.check(wm=FakeWM(prev, prices=live)), "review")
+        g = self.gates()["gates"]
+        self.assertEqual(g["category_counts"]["value"], 0.0); self.assertEqual(g["item_count"]["value"], 1.0)
+
     def test_the_first_build_under_the_ceiling_is_not_a_shrinking_category(self):
         # published before the $150 ceiling (2026-10-19): 60 Food rows above it (cases, equipment); the candidate has none
         prev = snapshot_rows(n_food=200, n_pets=60)

@@ -37,7 +37,9 @@ def store_brands(path=BRANDS_FILE):
     return {b.strip().lower(): store for store, d in cfg["stores"].items() for b in d.get("brands", [])}
 
 
-OTHER_STORE_BRANDS = frozenset(store_brands())
+def other_store_brands():
+    """The other chains' brands as a set, read when needed (a build or an audit never fails on an edit to brands.json)."""
+    return frozenset(store_brands())
 WALMART_STORE_BRANDS = {"great value", "equate", "mainstays", "parent's choice", "marketside", "freshness guaranteed",
                         "sam's choice", "bettergoods", "ol' roy", "special kitty", "pen+gear", "hyper tough", "onn."}
 STOP = {"the", "and", "with", "of", "in", "a", "an", "for", "to", "oz", "fl", "lb", "lbs", "g", "ml", "l", "ct", "count",
@@ -143,6 +145,7 @@ def match():
     df = Counter({t: len(v) for t, v in index.items()})
 
     out, stats = [], Counter()
+    others = other_store_brands()
     for p in store.iter_jsonl_gz(OUT / "products_us.jsonl.gz"):
         if p["upc"] in wm_upcs:
             stats["exact_in_walmart"] += 1; continue
@@ -152,7 +155,7 @@ def match():
         if not pt or not base:
             stats["unparseable"] += 1; continue
         brand = (p["brand"] or "").lower()
-        other_store = brand in OTHER_STORE_BRANDS
+        other_store = brand in others
         cands = set()
         for t in sorted(pt, key=lambda t: df.get(t, 0))[:3]:
             if df.get(t, 0) and df[t] < 20000:

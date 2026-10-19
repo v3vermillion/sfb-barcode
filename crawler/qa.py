@@ -424,7 +424,8 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings=None):
     prev_bundles, prev_over = Counter(), Counter()
     c = ceilings or {}
     for p in prev.values():
-        if PACK_LISTING_RX.match(p.get("name") or ""):
+        # a bundle listing published before the rule (its name still wrapped) or a unit published under it (flagged)
+        if PACK_LISTING_RX.match(p.get("name") or "") or "pack_listing" in (p.get("flags") or ()):
             prev_bundles[str(p.get("cat"))] += 1
             continue
         cap = c.get("consumable") if p.get("dept") in (c.get("consumable_depts") or ()) else c.get("durable")

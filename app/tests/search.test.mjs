@@ -88,8 +88,11 @@ test("a query naming another store's brand ranks Walmart's own brand first and s
   assert.equal(r.relaxed, false); assert.deepEqual(r.dropped, []);
   assert.equal(r.items[0].name, "Great Value Chicken Noodle Condensed Soup, 10.5 oz Can");
   assert.ok(r.items.some((it) => /Campbell/.test(it.name)), "the national brands still follow");
-  const two = top("members mark chicken noodle soup");        // a two-word brand, typed without its apostrophe
-  assert.equal(two.otherBrand.store, "Sam's Club"); assert.equal(two.items[0].name, "Great Value Chicken Noodle Condensed Soup, 10.5 oz Can");
+  const two = top("clancys chicken noodle soup");              // typed without its apostrophe
+  assert.equal(two.otherBrand.store, "Aldi"); assert.equal(two.items[0].name, "Great Value Chicken Noodle Condensed Soup, 10.5 oz Can");
+  const three = top("simply nature chicken noodle soup");       // a two-word brand
+  assert.equal(three.otherBrand.brand, "Simply Nature");
+  assert.equal(top("members mark chicken noodle soup").otherBrand, null, "Member's Mark is Walmart-owned: searched as typed");
   const plain = top("chicken noodle soup");                   // without a brand the usual ranking holds (store brand +0.3 only)
   assert.equal(plain.otherBrand, null);
   assert.equal(top("kirkland").otherBrand, null, "a brand alone is still searched for as typed");

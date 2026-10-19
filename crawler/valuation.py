@@ -240,8 +240,9 @@ def withhold_kind_outliers(rows):
     allergy tablets at $460.58 beside 2,000 listings of tablets around $15, or a box of dryer sheets at $489.60. The item
     price is judged against its kind's median and, when the row has a per-unit price and its kind a per-unit median,
     that too, so a large size (a 34 oz salon conditioner at ten times the 8.5 oz price) is not mistaken for an error.
-    Runs after process.resolve_packs, so a case the name supports is read as a case first. Measured on the published
-    snapshot under the $150 ceiling: about 0.3% of rows, nearly all of them out of stock. rows: an iterable of rows."""
+    Runs after process.resolve_packs, so a case the name supports is read as a case first; durable goods (process.build
+    marks `_durable`) are left alone. Measured on the published snapshot under the $150 ceiling, bundles read as units:
+    4,269 rows (0.17%), 97% of them out of stock. rows: an iterable of rows."""
     rows = list(rows)
     kmed = kind_medians(rows)
     kind_units = defaultdict(list)
@@ -253,6 +254,8 @@ def withhold_kind_outliers(rows):
     for r in rows:
         if r.get("price_withheld") or "placeholder" in r.get("flags", []) or not isinstance(r.get("price"), (int, float)):
             continue
+        if r.get("_durable"):
+            continue                    # an electric toothbrush beside manual ones, a hair dryer: a model, not an error
         km = kmed.get((r["cat"], r.get("_kind")))
         if not km or r["price"] <= km * HIGH_FACTOR:
             continue

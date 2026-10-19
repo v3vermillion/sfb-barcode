@@ -1,5 +1,5 @@
 {
-  "note": "Store brands a Strongsville food bank receives that Walmart does not sell, and the GS1 company prefixes their barcodes start with (the 7 leading digits of the 13-digit form, measured on Open Facts 2026-10-19). One file for the pipeline (crawler/identify.py: a listed brand is matched to Walmart's own brands, the same price tier) and the app (the pack manifest: a typed brand name ranks Walmart's own-brand items first and the sheet says why; a scanned barcode under a listed prefix is named by its store even when nothing else is known about it). Brand names are matched whole, case-insensitively, apostrophes aside. Add a store or brand here; the next pack build and identify refresh pick it up. A brand that is also an ordinary word or a brand Walmart sells (Presto cookware, Boulder Canyon chips, Beneful Healthy Radiance, Summit, Elevation, Belmont, Brookdale, Stonemill Kitchens) is left out on purpose: in a typed query it would be taken for the store brand (measured 2026-10-19).",
+  "note": "Store brands a Strongsville food bank receives that Walmart does not sell, and the GS1 company prefixes their barcodes start with (the 7 leading digits of the 13-digit form, measured on Open Facts 2026-10-19). One file for the pipeline (crawler/identify.py: a listed brand is matched to Walmart's own brands, the same price tier) and the app (the pack manifest: a typed brand name ranks Walmart's own-brand items first and the sheet says why; a scanned barcode under a listed prefix is named by its store even when nothing else is known about it). Brand names are matched whole, case-insensitively, apostrophes aside. Add a store or brand here; the next pack build and identify refresh pick it up. A brand that is also an ordinary word or a brand Walmart sells (Presto cookware, Boulder Canyon chips, Beneful Healthy Radiance, Summit, Elevation, Belmont, Brookdale, Stonemill Kitchens) is left out on purpose: in a typed query it would be taken for the store brand (measured 2026-10-19). Member's Mark is Walmart-owned (Sam's Club) and Walmart.com sells it, so it is a Walmart store brand (crawler/normalize.py STORE_BRANDS), not listed here.",
   "stores": {
     "Costco": {
       "brands": [
@@ -116,16 +116,11 @@
         "aplenty",
         "solimo",
         "mama bear",
-        "wickedly prime",
-        "365 by whole foods market",
-        "365 whole foods market",
-        "365 everyday value",
-        "whole foods market"
+        "wickedly prime"
       ],
       "prefixes": [
         "0842379",
-        "0195515",
-        "0099482"
+        "0195515"
       ]
     },
     "Trader Joe's": {
@@ -134,15 +129,6 @@
         "trader joes"
       ],
       "prefixes": []
-    },
-    "Sam's Club": {
-      "brands": [
-        "member's mark",
-        "members mark"
-      ],
-      "prefixes": [
-        "0193968"
-      ]
     },
     "BJ's": {
       "brands": [
@@ -189,7 +175,18 @@
       ],
       "prefixes": []
     },
-    "Save-A-Lot and Topco stores": {
+    "Whole Foods Market": {
+      "brands": [
+        "365 by whole foods market",
+        "365 whole foods market",
+        "365 everyday value",
+        "whole foods market"
+      ],
+      "prefixes": [
+        "0099482"
+      ]
+    },
+    "Other grocers' brands (Topco, AWG, Save-A-Lot)": {
       "brands": [
         "food club",
         "best choice",

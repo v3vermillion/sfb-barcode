@@ -68,9 +68,12 @@ class Brands(unittest.TestCase):
         from crawler import identify
         cfg = json.loads((Path(identify.__file__).resolve().parent.parent / "data" / "brands.json").read_text(encoding="utf-8"))
         names = identify.store_brands()
-        for b, store in [("kirkland signature", "Costco"), ("heinen's", "Heinen's"), ("happy belly", "Amazon"), ("clancy's", "Aldi"), ("market district", "Giant Eagle"), ("marc's", "Marc's")]:
-            self.assertEqual(names[b], store); self.assertIn(b, identify.OTHER_STORE_BRANDS)
+        for b, store in [("kirkland signature", "Costco"), ("heinen's", "Heinen's"), ("happy belly", "Amazon"), ("clancy's", "Aldi"), ("market district", "Giant Eagle"), ("marc's", "Marc's"), ("365 by whole foods market", "Whole Foods Market")]:
+            self.assertEqual(names[b], store); self.assertIn(b, identify.other_store_brands())
         for store, d in cfg["stores"].items():
             for pfx in d["prefixes"]:
                 self.assertRegex(pfx, r"^\d{6,10}$", f"{store}: a prefix is the leading digits of the 13-digit barcode")
-        self.assertFalse(identify.OTHER_STORE_BRANDS & identify.WALMART_STORE_BRANDS)
+        self.assertFalse(identify.other_store_brands() & identify.WALMART_STORE_BRANDS)
+        from crawler.normalize import STORE_BRANDS
+        self.assertFalse(identify.other_store_brands() & STORE_BRANDS, "Member's Mark is Walmart's own (Sam's Club)")
+        self.assertNotIn("presto!", identify.other_store_brands(), "a brand Walmart sells is not a store brand")

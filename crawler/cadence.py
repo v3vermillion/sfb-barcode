@@ -197,6 +197,9 @@ def refresh_plan(schedule, now=None):
 def interval_for(name, cadence, consumable, schedule):
     """A department's refresh interval: the plan's, else the legacy cadence (core_every_days for a consumable
     department, full_every_days for the rest)."""
+    fixed = config(schedule)["fixed_days"]
+    if fixed:
+        return float(fixed)         # the owner's fixed interval applies at once, not after the next audit rewrites the plan
     d = ((cadence or {}).get("departments") or {}).get(name) if isinstance(cadence, dict) else None
     if isinstance(d, dict) and isinstance(d.get("interval_days"), (int, float)) and d["interval_days"] > 0:
         return float(d["interval_days"])

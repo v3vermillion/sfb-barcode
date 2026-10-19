@@ -47,13 +47,23 @@ PACK_NOUNS = re.compile(r"(?<![\w.])(\d+)\s*-?\s*(?:count|ct|cnt|bars?|bottles?|
                         r"k-?cups?|capsules?|sticks?|sachets?)\b\.?", re.I)
 TOTAL = re.compile(r"(?<![\w.])(\d+)\s+total(?:\s+(?:count|ct|pieces?|pcs|wipes|packets?|pods|k-?cups|bars|bags|sticks|"
                    r"servings|capsules|cups|units?|drinks)\b|(?!\s*[a-z]))", re.I)      # "(144 Total Pieces)", "270 Total"
-# a count behind one or two words, for what pharmacy goods are counted in: "24 Extended Release Tablets", "100 Vegetarian
-# Capsules" (never a strength or duration: "500 mg Tablets", "24 Hour Allergy Tablets")
-COUNT_WORDS = re.compile(r"(?<![\w.])(\d+)\s+(?!(?:hour|hr|hrs|hours|day|days|mg|mcg|iu|percent|pack|packs|pk|count|ct)\b)"
-                         r"(?:[a-z\-]+\s+){1,2}(?:tablets?|capsules?|caplets?|softgels?|gummies|lozenges?|chewables?)\b", re.I)
-# a gallon or quart figure on bags or liners is their capacity, not the quantity: "13 Gallon Trash Bags, 40 Count" is 40
-# bags (2026-10-19; it used to read as 13 gal in a pack of 40)
-CAPACITY_RX = re.compile(r"\b(?:bags?|liners?)\b", re.I)
+# a count behind one or two dosage-form words, for what pharmacy goods are counted in: "24 Extended Release Tablets",
+# "100 Vegetarian Capsules", "60 Chewable Tablets". Only those words: "Tums Extra Strength 750 Assorted Fruit Chewable
+# Tablets" (a strength), "Pepto Bismol 5 Symptom Relief Chewable Tablets" and "24 Hour Allergy Tablets" stay unsized;
+# a number of COUNT_WORDS_MAX or more is a strength too ("Tylenol 650 Extended Release Caplets"): a count that large is
+# always written as "500 Tablets" or "500 Count", which the plain count rules read first
+COUNT_WORDS = re.compile(r"(?<![\w.])(\d+)\s+(?:(?:extended|delayed|immediate|timed?|controlled|rapid|quick|fast|easy)[\s-]?"
+                         r"(?:release|dissolve|dissolving|acting|swallow)|vegetarian|veggie|vegan|chewable|coated|enteric|enteric[\s-]coated|"
+                         r"film[\s-]coated|sugar[\s-]free|gluten[\s-]free|dissolvable|disintegrating|orally|sublingual|liquid|mini|soft|"
+                         r"gel|effervescent|sustained)\s+(?:[a-z\-]+\s+)?"
+                         r"(?:tablets?|capsules?|caplets?|softgels?|gelcaps?|gel[\s-]?tabs?|gummies|lozenges?|chewables?)\b", re.I)
+# a gallon or quart figure on trash, storage or freezer bags and can liners is their capacity, not the quantity:
+# "13 Gallon Trash Bags, 40 Count" is 40 bags (2026-10-19; it used to read as 13 gal in a pack of 40). Only those bag
+# kinds: "Potting Mix, 8 Quart, 2 Bags" is two 8-quart bags of soil
+COUNT_WORDS_MAX = 300
+CAPACITY_RX = re.compile(r"\b(?:(?:trash|garbage|kitchen|lawn|leaf|yard|compactor|contractor|recycling|drawstring|flap[\s-]?tie|"
+                         r"twist[\s-]?tie|storage|freezer|sandwich|snack|zipper|slider|vacuum|seal(?:er)?|zip|sous\s+vide|"
+                         r"gallon|quart|pint|tall|small|large|medium)\s+(?:[a-z\-]+\s+){0,2}bags?|(?:can|trash|garbage)\s+liners?|liners?)\b", re.I)
 OF_EACH = re.compile(r"(?<![\w.])(\d+)\s*(?:packs?|boxes|bags|cartons|cases|pk)\s+(?:of|with)\s+(\d+)\b", re.I)
 WRAPPER = re.compile(r"^\s*\((\d+)\s*pack\)", re.I)       # Walmart's multipack listing: "(6 pack) <one unit's name>"
 # Walmart's bundle listings (2026-10-19): a name that starts with one or more "(N pack)" / "(N pk)" / "(N-Pack)" wrappers
@@ -271,7 +281,7 @@ def parse_quantity(text: str, extended: bool = True):
             return float(n), "ct", pack
     if extended:
         c = COUNT_WORDS.search(t)
-        if c and int(c.group(1)) > 0:
+        if c and 0 < int(c.group(1)) < COUNT_WORDS_MAX:
             n = int(c.group(1))
             return float(n), "ct", (None if pack == n else pack)
         d = DOZEN.search(t)
