@@ -237,7 +237,10 @@ def live_check(wm, sample, tolerance=0.05):
                 res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"], "live": None})
                 continue
             tier["found"] += 1
-            diff = abs(float(r["price"]) - float(it["salePrice"]))
+            # a pack_listing row is one unit of a bundle listing: Walmart's price for the listing is for all of them
+            n = r.get("listing_pack") if "pack_listing" in (r.get("flags") or ()) else None
+            live_price = float(it["salePrice"]) / (n if isinstance(n, int) and n > 1 else 1)
+            diff = abs(float(r["price"]) - live_price)
             rel = diff / float(r["price"]) if r["price"] else 9e9
             if diff < 0.005:
                 res["exact"] += 1; res["within_5pct"] += 1; res["close"] += 1
@@ -249,8 +252,7 @@ def live_check(wm, sample, tolerance=0.05):
                     res["close"] += 1; tier["close"] += 1; res["by_row"][iid] = "close"
                 else:
                     res["by_row"][iid] = "far"
-                res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"],
-                                        "live": float(it["salePrice"])})
+                res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"], "live": round(live_price, 2)})
     n = res["checked"]
     found = n - res["missing"]
     res["found"] = found
@@ -399,9 +401,16 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg):
                                                    "category_counts": "category_count_tolerance"}[name]),
                               "no previous snapshot")
         return out, drift, unstable
+    from .normalize import PACK_LISTING_RX
     for r in rows:
         p = prev.get(r["id"])
-        if p and isinstance(p.get("price"), (int, float)) and p["price"] > 0 and abs(r["price"] - p["price"]) / p["price"] > 0.5:
+        if not p or not isinstance(p.get("price"), (int, float)) or p["price"] <= 0:
+            continue
+        old = p["price"]
+        n = r.get("listing_pack") if "pack_listing" in (r.get("flags") or ()) else None
+        if isinstance(n, int) and n > 1 and "pack_listing" not in (p.get("flags") or ()):
+            old = old / n          # the row is one unit of a bundle listing now; the published row was the whole bundle
+        if abs(r["price"] - old) / old > 0.5:
             drift.append({"id": r["id"], "name": r["name"], "old": p["price"], "new": r["price"]})
     share = round(len(drift) / len(rows), 5) if rows else 0.0
     mx = cfg.get("price_drift_max")
@@ -412,8 +421,13 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg):
     out["item_count"] = _measured(ratio >= (mn or 0), ratio, mn, f"{len(rows)} items vs {len(prev)} published ({ratio:.1%})")
     tol, min_rows = cfg.get("category_count_tolerance"), int(cfg.get("category_count_min_rows") or 0)
     worst = 0.0
+    # bundle listings ("(N pack) ...") are compared plain with plain: the rows the pack_listing rule removes from the
+    # published counts (every bundle listing) against the rows it adds to the candidate's (the units it keeps)
+    prev_bundles = Counter(str(p.get("cat")) for p in prev.values() if PACK_LISTING_RX.match(p.get("name") or ""))
+    new_units = Counter(str(r.get("cat")) for r in rows if "pack_listing" in (r.get("flags") or ()))
     for cat, n_prev in (prev_stats.get("kept_by_category") or {}).items():
         n = (stats.get("kept_by_category") or {}).get(cat, 0)
+        n_prev, n = n_prev - prev_bundles.get(str(cat), 0), n - new_units.get(str(cat), 0)
         if n_prev >= min_rows and n_prev > 0:
             dev = abs(n - n_prev) / n_prev
             worst = max(worst, dev)

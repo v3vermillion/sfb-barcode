@@ -28,16 +28,19 @@ Walmart listing, written by `crawler/process.py` from `crawler/normalize.py`. Th
 | `price_withheld` | true when `price` is outside the department's plausible range (data/gates.json price_sanity) |
 | `listed_name`, `name_src` | barcode-only rows: the feed's placeholder text, and where `name` came from (`walmart_listing`, `open_facts`, or `none` for "(name not provided)") |
 | `equiv` | for a withheld price: `{price, method, confidence, basis_id, basis_name}`, the value the app shows |
+| `listing_price`, `listing_pack` | rows flagged `pack_listing`: Walmart's listing was a "(N pack)" bundle; these are its own price and N, and `price` is one unit (`listing_price` / `listing_pack`) |
 | `flags` | see below |
 
 Flags: `no_size`, `sold_each` (priced per piece; sized by its basis), `size_conflict`, `retired_upc`, `upc_check_digit`,
 `promo_price`, `kept_normal_price`, `carried_over` (department not re-crawled this run), `pack_resolved`,
 `unit_price_suspect` (per-unit price more than 10x off comparable items; dropped), `placeholder` (name identifies no
 product: barcode lookup only, never in typed search, not in the size-parse rate), `discontinued` (Walmart marks it so),
-`price_withheld`, `name_filled` (a barcode-only row named from another listing or Open Facts).
+`price_withheld`, `name_filled` (a barcode-only row named from another listing or Open Facts), `pack_listing` (one unit of a
+"(N pack)" bundle listing: the wrapper is stripped from `name`, `price` is 1/N of the listing's; docs/DECISIONS.md 2026-10-19).
 
 Not carried at all (rejected with a reason in `stats.json` `rejects_by_department`): `apparel`, `footwear`, `pet_bed`,
 `alcohol`, `tobacco`, `media`, `large_equipment`, `test_listing`, `store_display`, `marketplace`,
 `third_party_seller`, `no_price`, `no_name`, `duplicate`, `food_without_upc_or_size`, `durable_without_upc`, `durable_over_cap`
 (durable departments: no barcode, or priced above `durable_rules.max_price` in data/categories.json), `placeholder_no_barcode`,
-`placeholder_price` (a barcode-only listing whose price is outside its department's plausible range).
+`placeholder_price` (a barcode-only listing whose price is outside its department's plausible range), `multipack_listing` (a "(N pack)"
+bundle listing of an item that also has a plain listing, by barcode or by brand and name: the plain listing is the item's price).

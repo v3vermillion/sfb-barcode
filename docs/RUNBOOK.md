@@ -64,7 +64,7 @@ department, every 30 days) > crawl resume (300-minute budget, then chains `conti
 audit > identify refresh > store prices. Only one run executes at a time (concurrency group `pipeline`); a crawl paused by Walmart
 429s (after the 45-minute back-off cap) chains the next run too, so the crawl never waits on the schedule, which stays as the
 backstop. Cadence: `data/schedule.json` (per-department intervals from `state/cadence.json`, see "Refresh cadence"; floors
-full_every_days 30 and core_every_days 7; audit_every_days 7, identify_every_days 30, sizing_every_days 30, stale_days 14,
+refresh.fixed_days 30 since 2026-10-19, with full_every_days and core_every_days 30 as the fallback; audit_every_days 7, identify_every_days 30, sizing_every_days 30, stale_days 45,
 budget_min 300).
 
 ### Acceptance gates (`data/gates.json`; a null threshold = measure only)
@@ -88,7 +88,7 @@ its issues) in the GitHub app for phone notifications.
 | `[review-credits]` | the Anthropic account is out of credits | add credits (auto-reload is off) |
 | `[review-model]` | the review model is gone and no replacement could be listed | set the `SFB_REVIEW_MODEL` variable |
 | `[schedule-gap]` | pipeline runs more than 3 h apart while idle | add or renew the Worker's `GH_DISPATCH_TOKEN` ("Schedule") |
-| `[audit-regression]` | the weekly audit found the published prices drifting | nothing if a refresh is due; else lower the cadence cap |
+| `[audit-regression]` | the weekly audit found the published prices drifting (off while `audit_match_min` is null, since 2026-10-19) | nothing if a refresh is due; else lower the cadence cap |
 | `[audit-failed]` | the audit could not reach Walmart | a 401/403 means the `WM_*` secrets no longer match |
 | `[accuracy-budget]` | the refresh plan cannot hold the target within the quota | adjust `refresh.*` in data/schedule.json |
 | `[stale-prices]` | no publish for `stale_days` while idle | look at the latest runs and the other open issues |
@@ -205,7 +205,7 @@ Manual run: Actions → deploy-app → Run workflow → data = auto | fixture | 
 After the first deploy the app is at `https://sfb-value.<account>.workers.dev` (rename or add a custom domain in the
 Cloudflare dashboard). Volunteers open it once online and "Add to Home Screen"; everything then works offline.
 The app checks `db/current.json` on each launch and downloads a new snapshot in the background. It shows the price date,
-turns the banner amber after 14 days without new prices and red after 45, with an "Update now" button; it asks the browser for
+turns the banner amber after 40 days without new prices and red after 60 (the list is rebuilt monthly), with an "Update now" button; it asks the browser for
 persistent storage on every platform. There is no Web Push (iOS cannot refresh data in the background from a push).
 
 Local: `cd app && npm run fixture && npm run build && npm run serve` → http://127.0.0.1:8787/.
@@ -220,7 +220,14 @@ the whole key). On the first deploy after this change Cloudflare creates them au
 in the dashboard. `namespace_id` only has to be unique within the account. `/health` reports whether both are bound;
 without them the public route answers 503 instead of spending the Walmart key without a cap.
 
-### Refresh cadence (since 2026-10-14)
+### Refresh cadence (since 2026-10-14; fixed at 30 days since 2026-10-19)
+
+**Since 2026-10-19 `refresh.fixed_days` (30) in data/schedule.json puts every department on one 30-day interval**: the
+planner below writes that interval for every department, always "fits", and `[accuracy-budget]` cannot open; the weekly
+audit still measures drift (`audit_match_min` is null, so it only measures). Set `fixed_days` to 0 to return to the measured
+intervals. With everything due together, each refresh is a full crawl (about four days at 8 calls a minute), followed by the
+gates, the publish and deploy-app; phones pick the new price list up on their next launch online, when they come online,
+or when the app is brought back to the foreground (every four hours at most).
 
 Each department is re-crawled on its own interval, `state/cadence.json`, written by the weekly audit from the drift it
 measured (`audit/drift.json`: per department, the share of prices still within tolerance and the age of the rows). The

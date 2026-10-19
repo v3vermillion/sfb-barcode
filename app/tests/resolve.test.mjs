@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible } from "../public/js/resolve.js";
+import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents } from "../public/js/resolve.js";
 
 const corn = { rank: 0, id: 1, brand: "Great Value", name: "Great Value Golden Sweet Whole Kernel Corn, Canned Corn, 15.25 oz Can", priceCents: 87, size: 15.25, unit: "oz", pack: 1, basis: "each", cat: 6, catName: "Canned & Jarred", upc: "00078742054261", retired: false, primary: true, storeBrand: true };
 const retired = { ...corn, rank: 1, id: 2, retired: true, primary: false };
@@ -147,4 +147,26 @@ test("an equivalent's title names the brand once", async () => {
 test("a price far from items of its size says so", () => {
   const notes = notesFor({ kind: "exact", item: { ...corn, unitSuspect: true } }).map((n) => n.text).join(" ");
   assert.match(notes, /case or multipack/);
+});
+
+test("one unit of a \"(N pack)\" bundle listing carries the bundle's price as its alternate and says so", () => {
+  const unit = { ...corn, id: 20, upc: null, primary: false, name: "Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", brand: "Hefty", priceCents: 1333, packListing: true, listingCents: 7999, listingPack: 6 };
+  const r = fromItem(unit);
+  assert.equal(r.kind, "exact"); assert.equal(r.priceCents, 1333);
+  assert.deepEqual(r.listing, { cents: 7999, n: 6 });
+  const notes = notesFor(r).map((n) => n.text);
+  assert.ok(notes.some((t) => /only as a pack of 6 \(\$79\.99\)\. The price shown is for one/.test(t)), notes.join(" | "));
+  assert.ok(!notes.some((t) => /alternate item/.test(t)), "a row without a barcode is not an alternate listing of one");
+  assert.equal(fromItem(corn).listing, undefined);
+  // a non-primary listing that does carry a barcode still says it is an alternate
+  assert.ok(notesFor(fromItem({ ...corn, primary: false })).some((n) => /alternate item/.test(n.text)));
+});
+
+test("live listings that are \"(N pack)\" bundles are read as N units", () => {
+  assert.deepEqual(packListingOf("(6 pack) Hefty Trash Bags, 40 Bags"), { n: 6, name: "Hefty Trash Bags, 40 Bags" });
+  assert.deepEqual(packListingOf("(2 pack) (6 Pack) Crest Toothpaste 6.4 oz."), { n: 6, name: "Crest Toothpaste 6.4 oz." });
+  assert.equal(packListingOf("(1 pack) Beans"), null); assert.equal(packListingOf("Beans (6 pack)"), null); assert.equal(packListingOf(null), null);
+  assert.equal(liveUnitCents({ price: 79.99, name: "(6 pack) Hefty Trash Bags, 40 Bags" }), 1333);
+  assert.equal(liveUnitCents({ price: 10.52, name: "Hefty Trash Bags, 40 Bags" }), 1052);
+  assert.ok(Number.isNaN(liveUnitCents({ price: "x" })));
 });

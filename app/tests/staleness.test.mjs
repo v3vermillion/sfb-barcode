@@ -5,9 +5,9 @@ import { AMBER_DAYS, RED_DAYS, daysSince, stalenessLevel, stalenessText, ageText
 const NOW = Date.UTC(2026, 9, 7, 15, 30);   // 2026-10-07 15:30 UTC, a weekday afternoon at the food bank
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString().slice(0, 10);
 
-test("thresholds are the ones the design names: amber at 14 days, red at 45", () => {
-  assert.equal(AMBER_DAYS, 14);
-  assert.equal(RED_DAYS, 45);
+test("thresholds follow the monthly cadence (2026-10-19): amber at 40 days, red at 60", () => {
+  assert.equal(AMBER_DAYS, 40);
+  assert.equal(RED_DAYS, 60);
 });
 
 test("daysSince counts whole UTC days from the snapshot's price date", () => {
@@ -27,13 +27,14 @@ test("daysSince is null for anything that is not a date", () => {
   assert.equal(daysSince("2026-09-23", "yesterday"), null);
 });
 
-test("stalenessLevel: fresh below 14 days, amber from 14, red from 45", () => {
+test("stalenessLevel: fresh below 40 days (a monthly list a few days late is normal), amber from 40, red from 60", () => {
   assert.equal(stalenessLevel(daysAgo(0), NOW), "fresh");
-  assert.equal(stalenessLevel(daysAgo(13), NOW), "fresh");
-  assert.equal(stalenessLevel(daysAgo(14), NOW), "amber");
-  assert.equal(stalenessLevel(daysAgo(30), NOW), "amber");
-  assert.equal(stalenessLevel(daysAgo(44), NOW), "amber");
-  assert.equal(stalenessLevel(daysAgo(45), NOW), "red");
+  assert.equal(stalenessLevel(daysAgo(35), NOW), "fresh");
+  assert.equal(stalenessLevel(daysAgo(39), NOW), "fresh");
+  assert.equal(stalenessLevel(daysAgo(40), NOW), "amber");
+  assert.equal(stalenessLevel(daysAgo(50), NOW), "amber");
+  assert.equal(stalenessLevel(daysAgo(59), NOW), "amber");
+  assert.equal(stalenessLevel(daysAgo(60), NOW), "red");
   assert.equal(stalenessLevel(daysAgo(400), NOW), "red");
 });
 
@@ -52,10 +53,10 @@ test("stalenessLevel defaults `now` to the clock", () => {
 
 test("stalenessText says it in plain words and is empty when fresh", () => {
   assert.equal(stalenessText("fresh", 3), "");
-  assert.equal(stalenessText("amber", 14), "Price list is 14 days old");
+  assert.equal(stalenessText("amber", 40), "Price list is 40 days old");
   assert.equal(stalenessText("amber", 30), "Price list is 30 days old");
   assert.equal(stalenessText("amber", 1), "Price list is 1 day old");          // grammar holds for any count
-  assert.equal(stalenessText("red", 45), "Price list may be out of date");     // red says what it means; the date line says how old
+  assert.equal(stalenessText("red", 60), "Price list may be out of date");     // red says what it means; the date line says how old
   assert.equal(stalenessText("amber", "16"), "Price list is 16 days old");     // tolerant of a string count
   assert.equal(stalenessText("amber", undefined), "Price list is 0 days old"); // never throws, never NaN
 });

@@ -65,8 +65,8 @@ from . import crawl, process, qa, identify, store, storeprice
 DATA = Path(__file__).resolve().parent.parent / "data"
 SCHEDULE = DATA / "schedule.json"
 CONFIG_FILES = (DATA / "gates.json", DATA / "sentinels.json", DATA / "categories.json")
-SCHEDULE_DEFAULTS = {"full_every_days": 30, "core_every_days": 7, "audit_every_days": 7, "identify_every_days": 30,
-                     "sizing_every_days": 30, "stale_days": 14, "budget_min": 300}
+SCHEDULE_DEFAULTS = {"full_every_days": 30, "core_every_days": 30, "audit_every_days": 7, "identify_every_days": 30,
+                     "sizing_every_days": 30, "stale_days": 45, "budget_min": 300}
 KINDS = ("size", "crawl", "build", "recheck", "start-full", "start-core", "start-refresh", "audit", "identify", "store", "none")
 PLANS = ("continue", "full", "core", "approve", "identify", "audit", "size", "status", "peek", "finish", "rollback", "store")
 # gates.json statuses that mean "held, waiting for a decision" (new qa: hold; old qa: needs_review / awaiting_approval)

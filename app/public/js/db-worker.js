@@ -13,7 +13,7 @@ const F = { RETIRED: 1, NO_SIZE: 2, PROMO: 4, CARRIED: 8, STORE_BRAND: 16, PRIMA
 const UNIT_NAME = [null, "oz", "fl oz", "lb", "ct", "g", "kg", "ml", "l", "gal", "qt", "pt"];
 // category names come from the pack manifest (data/categories.json); this table only covers a pack built before that
 const CAT_NAME = { 1: "Produce", 2: "Dairy & Eggs", 3: "Meat & Seafood", 4: "Deli & Prepared Foods", 5: "Frozen Foods", 6: "Canned & Jarred Foods", 7: "Pasta, Rice & Dry Goods", 8: "Bread & Bakery", 9: "Snacks & Candy", 10: "Beverages", 11: "Condiments, Sauces & Spreads", 12: "International Foods", 13: "Baby", 14: "Health & Medicine", 15: "Personal Care", 16: "Household Supplies", 17: "Kitchen & Dining", 18: "Home", 19: "Pet Food & Supplies", 20: "School, Office & Crafts", 21: "Toys, Books & Games", 22: "Seasonal & Party", 23: "Other", 24: "Auto", 25: "Electronics", 26: "Jewelry & Accessories", 27: "Sports & Outdoors", 28: "Baking, Spices & Oils", 29: "Breakfast & Cereal", 30: "Beauty", 31: "Hardware & Tools", 32: "Lawn, Garden & Floral" };
-const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64 };
+const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64, PACK_LISTING: 128 };
 const VALUE_CONF = ["rough", "low", "medium", "high"];
 const NO_RANK = 0xFFFFFFFF;
 const SHARD_SPAN = 16777216;          // 2^24 ranks per shard in an item id
@@ -195,6 +195,9 @@ function itemOf(S, rank, withBasis = true) {
   const flags = S.flags[rank], flags2 = S.flags2[rank];
   const upc = S.upcOf[rank];
   const withheld = !!(flags2 & F2.PRICE_WITHHELD);
+  // one unit of a "(N pack)" bundle listing: the bundle's own price rides in rawPrice, N follows from the two prices
+  const packListing = !withheld && !!(flags2 & F2.PACK_LISTING) && S.rawPrice[rank] > 0 && S.price[rank] > 0;
+  const listingCents = packListing ? S.rawPrice[rank] : null;
   const basisRank = S.valueBasis[rank];
   return {
     rank: gidOf(si, rank), id: S.id[rank], brand: txt.slice(0, sep), name: txt.slice(sep + 1), priceCents: S.price[rank],
@@ -202,6 +205,7 @@ function itemOf(S, rank, withBasis = true) {
     cat: S.cat[rank], catName: (db.catNames && db.catNames[S.cat[rank]]) || CAT_NAME[S.cat[rank]] || "Other", upc: upc ? String(upc).padStart(14, "0") : null,
     placeholder: !!(flags2 & F2.PLACEHOLDER), discontinued: !!(flags2 & F2.DISCONTINUED), storePrice: !!(flags2 & F2.STORE_PRICE), unitSuspect: !!(flags2 & F2.UNIT_SUSPECT),
     priceWithheld: withheld, rawPriceCents: withheld ? S.rawPrice[rank] : null, valueConfidence: withheld ? VALUE_CONF[(flags2 >> 3) & 3] : null,
+    packListing, listingCents, listingPack: packListing ? Math.max(2, Math.round(listingCents / S.price[rank])) : null,
     valueBasis: withheld && withBasis && basisRank !== NO_RANK && basisRank !== rank ? itemOf(S, basisRank, false) : null,
     retired: !!(flags & F.RETIRED), noSize: !!(flags & F.NO_SIZE), promo: !!(flags & F.PROMO), carried: !!(flags & F.CARRIED),
     storeBrand: !!(flags & F.STORE_BRAND), primary: !!(flags & F.PRIMARY), sizeConflict: !!(flags & F.SIZE_CONFLICT), unavailable: !!(flags & F.UNAVAILABLE),

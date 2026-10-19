@@ -68,7 +68,29 @@ export function fromItem(item, { closest = false, query = "", dropped = [] } = {
     title: titleOf(item),
     key: item.upc ? `g:${item.upc}` : `r:${item.rank}`,
     query, dropped,
+    // Walmart listed the item only as a "(N pack)" bundle: the price is one unit of it; the bundle's own price is the
+    // alternate the sheet offers (a volunteer may hold the whole bundle)
+    ...(item.packListing && item.listingCents > 0 && item.listingPack > 1 ? { listing: { cents: item.listingCents, n: item.listingPack } } : {}),
   };
+}
+
+// Walmart's bundle listings start with "(N pack)" / "(N pk)" / "(N-Pack)" and are priced for all N units (the crawler's
+// normalize.pack_listing rule, measured 2026-10-19). The live check applies the same reading to the listings Walmart
+// returns, so a live bundle price is never compared with, or used as, the price of one unit.
+const PACK_LISTING_RX = /^\s*(?:\(\s*\d+\s*-?\s*(?:pack|pk)\s*\)\s*)+/i;
+export function packListingOf(name) {
+  const m = PACK_LISTING_RX.exec(String(name ?? ""));
+  if (!m) return null;
+  const counts = [...m[0].matchAll(/\(\s*(\d+)\s*-?\s*(?:pack|pk)\s*\)/gi)].map((x) => Number(x[1]));
+  const n = Math.max(0, ...counts);
+  return n > 1 ? { n, name: String(name).slice(m[0].length).trim() } : null;
+}
+/** A live listing's price for one unit: its price, or a bundle listing's price divided by its count. */
+export function liveUnitCents(listing) {
+  const cents = Math.round(Number(listing?.price) * 100);
+  if (!Number.isFinite(cents)) return NaN;
+  const w = packListingOf(listing?.name);
+  return w ? Math.round(cents / w.n) : cents;
 }
 
 /** Pick the listing for a barcode: the one whose Walmart id the caller wants, else the primary (first). */
@@ -191,7 +213,8 @@ export function notesFor(res, ctx = {}) {
     if (it.unitSuspect) notes.push({ tone: "warn", text: "This price is far from similar items of the same size, so the listing may be a case or multipack. Compare the size and count with the item in your hand." });
     if (it.sizeConflict) notes.push({ tone: "", text: "Walmart's listing shows two sizes. The one in the title is used." });
     if (it.discontinued) notes.push({ tone: "", text: "Walmart marks this item as discontinued. The price is the last one listed." });
-    if (!it.primary && (res.kind === "exact" || res.kind === "closest")) notes.push({ tone: "", text: "Walmart lists this barcode under more than one item. This is an alternate item." });
+    if (it.upc && !it.primary && (res.kind === "exact" || res.kind === "closest")) notes.push({ tone: "", text: "Walmart lists this barcode under more than one item. This is an alternate item." });
+    if (res.listing) notes.push({ tone: "", text: `Walmart lists this item only as a pack of ${res.listing.n} (${moneyText(res.listing.cents)}). The price shown is for one.` });
   }
   return notes;
 }

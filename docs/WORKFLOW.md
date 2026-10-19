@@ -42,8 +42,8 @@ this order of priority:
 ## Schedule
 - A scheduled run every 30 minutes, plus the Worker's cron watchdog, plus a run that chains its successor while work
   remains. A run with nothing due ends in under a minute.
-- Each department is re-crawled on its own measured interval, between 5 and 120 days, never more often than the floors
-  (consumable 7 days, durable 30) until its drift has been measured.
+- Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19), so each refresh is a full
+  crawl of a few days; the measured per-department planner is bypassed while that is set.
 - Store prices: food, household, personal care and health every 28 days; baby, pets, beauty and pharmacy every 56.
 - The pipeline slows to 3 calls a minute on weekday mornings (`volunteer_hours`), when volunteers may be using the live
   check that shares the same Walmart key.

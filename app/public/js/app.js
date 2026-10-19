@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -436,7 +436,17 @@ $("installHint")?.addEventListener("click", async (e) => {
   if (act === "dismiss") { writeJson(INSTALL_KEY, { dismissed: Date.now() }); hideInstallHint(); }
 });
 
-// ------------------------------------------------------------------ prices-as-of banner (amber from 14 days, red from 45)
+// an installed app that is brought back to the foreground (not relaunched) checks for a new price list too, at most
+// every few hours, so a phone that is never fully closed still receives the monthly update
+const RECHECK_MS = 4 * 3600_000;
+let lastRecheck = performance.now();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !navigator.onLine || state.unsupported || !db.version || performance.now() - lastRecheck < RECHECK_MS) return;
+  lastRecheck = performance.now();
+  db.checkForUpdate().catch(() => {});
+});
+
+// ------------------------------------------------------------------ prices-as-of banner (amber from 40 days, red from 60)
 // Sits under the header, above the content; the dock never moves. Re-evaluated on every database state change,
 // when the app comes back to the foreground, when the network comes and goes, and once an hour for a phone left open.
 function renderStale() {
@@ -641,10 +651,14 @@ async function openCode(raw, { source = "typed", format, scanned = false, prefer
 function unitCents(res) { return res.unitCents ?? res.priceCents; }
 function lineTotal(res) { return Math.round(unitCents(res) * state.qty); }
 
-/** "each", "per lb", "on the label", "whole pack" or "1 of 6": what the big price is for. */
+/** "each", "per lb", "on the label", "whole pack", "1 of 6" or "pack of 6": what the big price is for. */
 function basisText(res) {
   const it = res.item;
-  return res.priceCents == null ? "" : res.unit === "lb" ? "per lb" : res.kind === "store-label" ? "on the label" : it && it.pack > 1 ? (res.unitCents != null && res.unitCents !== res.priceCents ? `1 of ${it.pack}` : "whole pack") : "each";
+  if (res.priceCents == null) return "";
+  if (res.unit === "lb") return "per lb";
+  if (res.kind === "store-label") return "on the label";
+  if (res.listing) return res.unitCents === res.listing.cents ? `pack of ${res.listing.n}` : "each";
+  return it && it.pack > 1 ? (res.unitCents != null && res.unitCents !== res.priceCents ? `1 of ${it.pack}` : "whole pack") : "each";
 }
 /** The big price, read by a screen reader as one phrase ("$4.84 each"); the visual parts are hidden from it. */
 function priceBlockHtml(res) {
@@ -680,9 +694,12 @@ function sheetHtml(res) {
   // the source, then the date of the price list kept on one line (it wraps as a whole after the dot)
   const checkedHtml = Array.isArray(checked) ? `${esc(checked[0])} · <span class="nw">${esc(checked[1])}</span>` : esc(checked);
 
-  // a loose single from a multipack is an exact item too: let the volunteer price one of the pack
-  const packSeg = it && it.pack > 1 && res.unit !== "lb" && res.priceCents != null
-    ? `<div class="seg pack-seg" role="group" aria-label="Price the whole pack or one item"><button type="button" data-pack="whole" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">Whole pack · ${money(res.priceCents)}</button><button type="button" data-pack="one" aria-pressed="${res.unitCents != null && res.unitCents !== res.priceCents}">1 of ${it.pack} · ${money(Math.round(res.priceCents / it.pack))}</button></div>`
+  // a loose single from a multipack is an exact item too: let the volunteer price one of the pack; an item Walmart
+  // lists only as a "(N pack)" bundle is priced as one unit, with the bundle's own price as the alternate
+  const packSeg = res.listing && res.priceCents != null
+    ? `<div class="seg pack-seg" role="group" aria-label="Price one item or the whole pack"><button type="button" data-pack="unit" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">One · ${money(res.priceCents)}</button><button type="button" data-pack="listing" data-cents="${res.listing.cents}" aria-pressed="${res.unitCents === res.listing.cents}">Pack of ${res.listing.n} · ${money(res.listing.cents)}</button></div>`
+    : it && it.pack > 1 && res.unit !== "lb" && res.priceCents != null
+    ? `<div class="seg pack-seg" role="group" aria-label="Price the whole pack or one item"><button type="button" data-pack="whole" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">Whole pack · ${money(res.priceCents)}</button><button type="button" data-pack="one" data-cents="${Math.round(res.priceCents / it.pack)}" aria-pressed="${res.unitCents != null && res.unitCents !== res.priceCents}">1 of ${it.pack} · ${money(Math.round(res.priceCents / it.pack))}</button></div>`
     : "";
   const liveRow = (LIVE_URL && prefs.live && res.gtin && res.kind !== "store-label" && res.kind !== "plu" && res.kind !== "not-ready") ? `<div class="live-row" data-state="idle" hidden></div>` : "";
 
@@ -782,8 +799,9 @@ function wireSheet(dlg, res) {
     haptic(5);
   }));
   dlg.querySelectorAll("[data-pack]").forEach((b) => b.addEventListener("click", () => {
-    res.unitCents = b.dataset.pack === "one" ? Math.round(res.priceCents / res.item.pack) : res.priceCents;
+    res.unitCents = Number(b.dataset.cents);
     res.packOne = b.dataset.pack === "one";
+    res.packListing = b.dataset.pack === "listing";
     dlg.querySelectorAll("[data-pack]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     refreshPrice(dlg, res);
     haptic(5);
@@ -845,9 +863,11 @@ async function liveCheck(res) {
       else unavailable();
       return;
     }
-    // several listings can share a barcode: compare with the one on screen when the route lists them
-    const listing = (j.listings || []).find((l) => res.item && String(l.itemId) === String(res.item.id)) || j;
-    const live = Math.round(Number(listing.price) * 100);
+    // several listings can share a barcode: compare with the one on screen when the route lists them, else with a plain
+    // listing before a "(N pack)" bundle; a bundle's price is read as its count times one unit (resolve.liveUnitCents)
+    const listings = j.listings || [];
+    const listing = listings.find((l) => res.item && String(l.itemId) === String(res.item.id)) || listings.find((l) => !packListingOf(l.name)) || j;
+    const live = liveUnitCents(listing);
     if (!Number.isFinite(live)) throw new Error("bad price");
     const when = j.checkedAt ? `at ${fmtTime(j.checkedAt)}` : "today";
     const src = liveSource(j);
@@ -860,7 +880,8 @@ async function liveCheck(res) {
     }
     if (res.kind === "unknown") {
       // the saved database didn't know it, Walmart does: show the live listing as the result
-      const lr = { ...res, kind: "live", priceCents: live, name: j.name || "Walmart item", brand: j.brand || "", title: [j.brand, j.name].filter(Boolean).join(" "), live: j, key: `v:${res.gtin}` };
+      const liveName = (packListingOf(listing.name || j.name)?.name) || listing.name || j.name || "Walmart item";
+      const lr = { ...res, kind: "live", priceCents: live, name: liveName, brand: j.brand || "", title: [j.brand, liveName].filter(Boolean).join(" "), live: j, key: `v:${res.gtin}` };
       state.qty = 1;
       rerenderSheet(lr);
       const r2 = el.sheet.querySelector(".live-row"); if (r2) { r2.hidden = false; r2.dataset.state = "ok"; r2.innerHTML = `${icon("bolt")}<span>Found at ${esc(src)}, checked ${when}${j.stock ? ` · ${esc(j.stock)}` : ""}</span>`; }
@@ -874,7 +895,9 @@ async function liveCheck(res) {
       row.innerHTML = `${icon("bolt")}<span>${esc(src)} ${when}: <b>${money(live)}</b></span><span class="delta ${diff > 0 ? "up" : "down"}">${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}</span><button class="btn btn--ghost btn--sm" type="button">Use this price</button>`;
       row.querySelector("button").addEventListener("click", () => {
         res.priceCents = live; res.livePrice = live; res.live = j;
-        if (res.packOne && res.item?.pack > 1) res.unitCents = Math.round(live / res.item.pack); else res.unitCents = live;
+        if (res.packOne && res.item?.pack > 1) res.unitCents = Math.round(live / res.item.pack);
+        else if (res.packListing && res.listing) { res.listing = { ...res.listing, cents: live * res.listing.n }; res.unitCents = res.listing.cents; }
+        else res.unitCents = live;
         refreshPrice(el.sheet, res);
         const pn = el.sheet.querySelector(".price-note"); if (pn) pn.textContent = `${src} price, checked ${when}`;
         row.innerHTML = `${icon("check")}<span>Using the ${esc(src)} price, <b>${money(live)}</b></span>`;
@@ -905,7 +928,7 @@ function saveTally() { writeJson(TALLY_KEY, tally); renderTallyPill(); }
 function addToTally(res) {
   const cents = lineTotal(res);
   const base = res.kind === "exact" || res.kind === "closest" ? titleOf(res.item) : res.title;
-  const title = res.packOne && res.item?.pack > 1 ? `${base} (1 of ${res.item.pack})` : base;
+  const title = res.packOne && res.item?.pack > 1 ? `${base} (1 of ${res.item.pack})` : res.packListing && res.listing ? `${base} (pack of ${res.listing.n})` : base;
   const line = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, unitCents: unitCents(res), qty: state.qty, unit: res.unit, kind: res.kind, cents, at: Date.now(), key: res.key, ...(db.manifest?.fixture ? { sample: true } : {}) };
   tally.push(line);
   saveTally();

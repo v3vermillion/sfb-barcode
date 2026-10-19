@@ -97,7 +97,7 @@ crawl of 2026-10-09 (2.1M items) is 114 MB over the wire, 63 MB of it in the *co
 | file | contents |
 |---|---|
 | `<version>/manifest.json` | snapshot facts + `shards[]`: id, name, tier (`core` = consumable departments, `more` = durables), departments, item and token counts, and the path, size and gzip size of each shard file |
-| shard `cols` | per-item columns in the shard's rank order: price (u32 cents: what the app shows), size (f32), pack (u16), unit, basis, flags, category (u8), Walmart id (f64), GTIN-14 (f64), flags2 (u8: placeholder, price withheld, discontinued, value confidence, store price, unit suspect), value basis and Walmart's own price of a withheld item. Placeholders are in the UPC index but never in the token index |
+| shard `cols` | per-item columns in the shard's rank order: price (u32 cents: what the app shows), size (f32), pack (u16), unit, basis, flags, category (u8), Walmart id (f64), GTIN-14 (f64), flags2 (u8: placeholder, price withheld, discontinued, value confidence, store price, unit suspect, pack listing), value basis and Walmart's own price of a withheld item (or, for one unit of a "(N pack)" bundle listing, the bundle's own price). Placeholders are in the UPC index but never in the token index |
 | shard `strings` | `brand\x1Fname` blobs with offset tables, split so no file exceeds Cloudflare's 25 MiB limit |
 | shard `upc` | sorted GTIN-14 keys → rank, primary listing first for each barcode |
 | shard `tokens` | sorted dictionary + varint-delta posting lists + each token's home category, then *head postings*: the items whose head noun (what the listing is: "Bananas", not "Banana Pudding") is exactly that word |
@@ -191,8 +191,8 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 - Sample → real: tally lines and recents made on the synthetic fixture carry `sample: true`; the first load of a real
   snapshot drops them and says so once, so sample prices never mix into a real tally.
 - Online: `current.json` is checked; a new snapshot is fetched in the background and applied when idle.
-- Price list date: the header pill ("Updated Oct 13") and every sheet carry the snapshot's date. From 14 days a banner
-  under the header says "Price list is N days old" (amber), from 45 days "Price list may be out of date" (red), with an **Update now**
+- Price list date: the header pill ("Updated Oct 13") and every sheet carry the snapshot's date. From 40 days a banner
+  under the header says "Price list is N days old" (amber), from 60 days "Price list may be out of date" (red; the list is rebuilt monthly), with an **Update now**
   button that checks, downloads and applies the newest snapshot (`js/staleness.js`; thresholds pinned by
   `tests/staleness.test.mjs`). It is re-evaluated on every database state change, when the app returns to the
   foreground, when the network comes back and hourly; the dock never moves. No Web Push.

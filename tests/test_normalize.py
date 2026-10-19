@@ -144,8 +144,12 @@ class T(unittest.TestCase):
                 "size": "15 oz", "salePrice": 4.0, "upc": "464583029559", "categoryPath": "Home Page/Food/Pantry/Canned goods/Canned vegetables/Canned corn"}
         row, why = N.normalize(item, FOOD, CFG)
         self.assertIsNone(why)
-        self.assertEqual((row["size"], row["unit"], row["pack"], row["cat"]), (15.25, "oz", 8, "6"))
-        self.assertAlmostEqual(row["unit_price"], 4.0 / (15.25 * 8), places=4)
+        # a "(8 pack)" bundle listing is eight units of the can: the row is one can at 1/8 of the bundle's price (2026-10-19)
+        self.assertEqual((row["size"], row["unit"], row["pack"], row["cat"]), (15.25, "oz", 1, "6"))
+        self.assertEqual((row["name"], row["price"], row["listing_price"], row["listing_pack"]),
+                         ("Great Value Golden Sweet Whole Kernel Corn, 15.25 oz", 0.5, 4.0, 8))
+        self.assertIn("pack_listing", row["flags"])
+        self.assertAlmostEqual(row["unit_price"], 0.5 / 15.25, places=4)
         self.assertTrue(row["store_brand"])
         row2, _ = N.normalize({"itemId": 2, "name": "Diet Mountain Dew Soda, 12 fl oz, 12 Pack Cans", "salePrice": 6.48,
                                "categoryPath": "Home Page/Food/Beverages/Soda"}, FOOD, CFG)
@@ -235,6 +239,55 @@ class Decisions20261008(unittest.TestCase):
     def test_apparel_found_under_food_is_not_carried(self):
         _, why = N.normalize(self.item("White Stag® Long Sleeve Ribbed Turtleneck", path="Home Page/Food/Fresh Food"), FOOD, CFG)
         self.assertEqual(why, "apparel")
+
+
+class PackListings20261019(unittest.TestCase):
+    """Decision of 2026-10-19: a "(N pack)" bundle listing is N units of the item, priced for all N."""
+
+    def item(self, name, price, **kw):
+        it = {"itemId": 7, "name": name, "brandName": kw.pop("brand", "Hefty"), "salePrice": price,
+              "upc": kw.pop("upc", None), "categoryPath": kw.pop("path", "Home Page/Household Essentials/Paper & Plastic/Trash Bags")}
+        it.update(kw)
+        return it
+
+    def test_pack_listing_reads_the_wrappers(self):
+        self.assertEqual(N.pack_listing("(6 pack) Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags"), ("Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", 6))
+        self.assertEqual(N.pack_listing("(3 pack) (3 Pack) Hershey's Instant Pudding, 3.56 Oz"), ("Hershey's Instant Pudding, 3.56 Oz", 3), "a repeated wrapper counts once")
+        self.assertEqual(N.pack_listing("(2 pack) (6 Pack) Crest Cavity Protection Toothpaste 6.4 oz."), ("Crest Cavity Protection Toothpaste 6.4 oz.", 6), "the largest count is the bundle")
+        self.assertEqual(N.pack_listing("(0 pack) (17 Pack) Lay's Stax, 5.75 Oz"), ("Lay's Stax, 5.75 Oz", 17))
+        self.assertEqual(N.pack_listing("(1 pack) Old El Paso Refried Beans, 16 oz Can"), ("Old El Paso Refried Beans, 16 oz Can", None), "(1 pack) is only stripped")
+        self.assertEqual(N.pack_listing("(48 pk) Knorr Chicken Bouillon Cubes, 2.2 oz"), ("Knorr Chicken Bouillon Cubes, 2.2 oz", 48))
+        self.assertEqual(N.pack_listing("(2-Pack) Mederma Advanced Scar Gel, 1.76 oz."), ("Mederma Advanced Scar Gel, 1.76 oz.", 2))
+        self.assertEqual(N.pack_listing("Great Value Corn, 15.25 oz (6 pack)"), ("Great Value Corn, 15.25 oz (6 pack)", None), "only a leading wrapper is a bundle listing")
+        self.assertEqual(N.pack_listing(""), ("", None))
+
+    def test_a_bundle_listing_is_one_unit_at_a_share_of_its_price(self):
+        hh = next(d for d in CFG["departments"] if d["name"] == "Household Essentials")
+        row, why = N.normalize(self.item("(6 pack) Hefty Ultra Strong 13 Gallon Trash Bags, Tall Kitchen Trash Bags, Blackout, 40 Bags", 79.99), hh, CFG)
+        self.assertIsNone(why)
+        self.assertEqual(row["name"], "Hefty Ultra Strong 13 Gallon Trash Bags, Tall Kitchen Trash Bags, Blackout, 40 Bags")
+        self.assertEqual((row["price"], row["listing_price"], row["listing_pack"]), (13.33, 79.99, 6))
+        self.assertIn("pack_listing", row["flags"])
+        self.assertEqual(row["pack"], 1, "the bundle count is never the row's pack")
+        plain, _ = N.normalize(self.item("Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", 10.52), hh, CFG)
+        self.assertNotIn("pack_listing", plain["flags"]); self.assertNotIn("listing_price", plain)
+
+    def test_the_caps_and_the_equipment_rule_judge_one_unit(self):
+        toys = next(d for d in CFG["departments"] if d["name"] == "Toys")
+        bundle = self.item("(12 pack) Play-Doh Modeling Compound, 4 oz Can", 150.0, brand="Play-Doh", upc="035000510099", path="Home Page/Toys/Arts & Crafts")
+        row, why = N.normalize(bundle, toys, CFG)
+        self.assertIsNone(why, "twelve cans at $12.50 each are under the durable cap, although the bundle is not")
+        self.assertEqual(row["price"], 12.5)
+        over = self.item("(2 pack) Giant Play Kitchen", 350.0, brand="Step2", upc="035000510099", path="Home Page/Toys/Pretend Play")
+        self.assertEqual(N.normalize(over, toys, CFG)[1], "durable_over_cap", "a $175 unit is over the cap")
+        health = next(d for d in CFG["departments"] if d["name"] == "Health and Medicine")
+        chairs = self.item("(2 pack) Massage Chair Recliner", 180.0, brand="Acme", path="Home Page/Health and Medicine/Home Health Care")
+        self.assertIsNone(N.normalize(chairs, health, CFG)[1], "a $90 unit is not large equipment (the rule starts at $100)")
+
+    def test_a_placeholder_bundle_is_judged_on_its_unit_price(self):
+        hh = next(d for d in CFG["departments"] if d["name"] == "Household Essentials")
+        row, why = N.normalize(self.item("(12 pack) coming soon", 45.84, upc="078742054261"), hh, CFG)
+        self.assertIsNone(why); self.assertIn("placeholder", row["flags"]); self.assertEqual(row["price"], 3.82)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@
 //                never in the token index), 2 price withheld, 4 discontinued, bits 3-4 value confidence (0 rough .. 3 high),
 //                32 the price is the store's own shelf price (manifest.store names the store), not Walmart.com's,
 //                64 the price is far from comparable items by size (unit_price_suspect: often a case listed as one)
+//                128 one unit of a "(N pack)" bundle listing (pack_listing): rawPrice then holds the bundle's own price
 //   strings-K    "SFBS" u32 count u32 firstRank | offsets u32[count+1] | utf8 bytes of "brand\x1Fname" per item
 //   upc.bin      "SFBU" u32 M | keys f64[M] sorted (GTIN-14 as a number; primary row first within a key) | ranks u32[M]
 //   tokens.bin   "SFBT" u32 T u32 postingBytes | dictOff u32[T+1] | dict utf8 (tokens in byte order) | postOff u32[T+1] | postings (varint deltas of ascending ranks) | tokCat u8[T] (dominant category, 0 = none)
@@ -47,7 +48,7 @@ const TO_FLOZ = { "fl oz": 1, ml: 0.033814, l: 33.814, gal: 128, qt: 32, pt: 16 
 const F = { RETIRED: 1, NO_SIZE: 2, PROMO: 4, CARRIED: 8, STORE_BRAND: 16, PRIMARY: 32, SIZE_CONFLICT: 64, UNAVAILABLE: 128 };
 const CORE_DEPTS = new Set(["Food", "Health and Medicine", "Pharmacy", "Personal Care", "Beauty", "Baby", "Pets", "Household Essentials"]);
 const CONF = { low: 0, medium: 1, high: 2 };
-const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64 };
+const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64, PACK_LISTING: 128 };
 const VALUE_CONF = { rough: 0, low: 1, medium: 2, high: 3 };
 const NO_RANK = 0xFFFFFFFF;
 
@@ -124,6 +125,8 @@ for await (const r of jsonlGz(path.join(pubDir, srcManifest.file || "items.jsonl
   if (flags.includes("discontinued")) bits2 |= F2.DISCONTINUED;
   if (flags.includes("store_price")) bits2 |= F2.STORE_PRICE;
   if (flags.includes("unit_price_suspect")) bits2 |= F2.UNIT_SUSPECT;
+  const packListing = flags.includes("pack_listing") && Number(r.listing_price) > 0 && Number(r.listing_pack) > 1;
+  if (packListing) bits2 |= F2.PACK_LISTING;
   const withheld = Boolean(r.price_withheld && r.equiv && r.equiv.price > 0);
   if (withheld) bits2 |= F2.PRICE_WITHHELD | ((VALUE_CONF[r.equiv.confidence] ?? 0) << 3);
   const name = String(r.name || "").trim();
@@ -148,7 +151,7 @@ for await (const r of jsonlGz(path.join(pubDir, srcManifest.file || "items.jsonl
   if (/^\s*\(\d+\s*pack\)/i.test(name)) score -= 0.8;   // "(6 pack) ..." multipacks after the single item a volunteer holds
   items.push({
     id: Number(r.id), upc, name, brand, price: Math.round(Number(withheld ? r.equiv.price : r.price) * 100), size: r.size == null ? 0 : Number(r.size),
-    flags2: bits2, rawPrice: withheld ? Math.round(Number(r.price) * 100) : 0, valueBasisId: withheld && r.equiv.basis_id != null ? Number(r.equiv.basis_id) : null,
+    flags2: bits2, rawPrice: withheld ? Math.round(Number(r.price) * 100) : packListing ? Math.round(Number(r.listing_price) * 100) : 0, valueBasisId: withheld && r.equiv.basis_id != null ? Number(r.equiv.basis_id) : null,
     unit: UNIT[r.unit] || 0, unitName: r.unit || null, pack: Math.min(65535, Number(r.pack) || 1), basis: r.basis === "lb" ? 1 : 0,
     cat: Number(r.cat) || 0, flags: bits, score, dept: r.dept || "Other",
   });
