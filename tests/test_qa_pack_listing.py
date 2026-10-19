@@ -51,5 +51,25 @@ class PackListingGates(StoreCase, unittest.TestCase):
         self.assertEqual(len(self.gates()["extras"]["drift"]), 1)
 
 
+    def test_the_first_build_under_the_ceiling_is_not_a_shrinking_category(self):
+        # published before the $150 ceiling (2026-10-19): 60 Food rows above it (cases, equipment); the candidate has none
+        prev = snapshot_rows(n_food=200, n_pets=60)
+        dear = [row(6000 + i, name=f"Nielsen-Massey Vanilla Extract {i}, 128 fl oz", price=499.95) for i in range(60)]
+        self.write_published(prev + dear)
+        self.write_candidate(prev)
+        self.assertEqual(self.qa.check(wm=FakeWM(prev)), "review")
+        g = self.gates()["gates"]
+        self.assertTrue(g["category_counts"]["pass"], "Food 261 -> 201 is the ceiling, not a category shrinking"); self.assertEqual(g["category_counts"]["value"], 0.0)
+        self.assertTrue(g["item_count"]["pass"]); self.assertEqual(g["item_count"]["value"], 1.0)
+        self.assertIn("60 above the price ceiling", g["item_count"]["detail"])
+        # the same rows priced under the ceiling and dropped for any other reason still count as missing
+        cheap = [dict(r, price=99.95) for r in dear]
+        self.write_published(prev + cheap)
+        self.write_candidate(prev)
+        self.assertEqual(self.qa.check(wm=FakeWM(prev)), "hold")
+        g = self.gates()["gates"]
+        self.assertFalse(g["category_counts"]["pass"]); self.assertFalse(g["item_count"]["pass"])
+
+
 if __name__ == "__main__":
     unittest.main()

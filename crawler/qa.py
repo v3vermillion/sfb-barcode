@@ -392,8 +392,10 @@ def gate_unit_outliers(rows, cfg, stats=None):
     return _measured(share <= (mx if mx is not None else 1), share, mx, detail), outliers[:25]
 
 
-def gates_vs_previous(rows, stats, prev, prev_stats, cfg):
-    """price_drift, item_count, category_counts against the published snapshot (measure nothing without one)."""
+def gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings=None):
+    """price_drift, item_count, category_counts against the published snapshot (measure nothing without one).
+    ceilings: {"consumable": cap, "durable": cap, "consumable_depts": {names}} from data/categories.json; published rows
+    above the cap of their department are not in the candidate by rule (2026-10-19), so they are compared as absent."""
     out, drift, unstable = {}, [], []
     if not prev:
         for name in ("price_drift", "item_count", "category_counts"):
@@ -416,18 +418,31 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg):
     mx = cfg.get("price_drift_max")
     out["price_drift"] = _measured(share <= (mx if mx is not None else 1), share, mx,
                                    f"{len(drift)} of {len(rows)} prices moved more than 50% ({share:.2%})")
-    ratio = round(len(rows) / len(prev), 4)
+    # rows a rule removed on purpose are no regression: bundle listings ("(N pack) ...", compared plain with plain: the
+    # rows the pack_listing rule removes from the published counts against the units it keeps in the candidate), and
+    # published rows above the price ceiling of their department (data/categories.json max_price)
+    prev_bundles, prev_over = Counter(), Counter()
+    c = ceilings or {}
+    for p in prev.values():
+        if PACK_LISTING_RX.match(p.get("name") or ""):
+            prev_bundles[str(p.get("cat"))] += 1
+            continue
+        cap = c.get("consumable") if p.get("dept") in (c.get("consumable_depts") or ()) else c.get("durable")
+        if isinstance(cap, (int, float)) and isinstance(p.get("price"), (int, float)) and p["price"] > cap:
+            prev_over[str(p.get("cat"))] += 1
+    new_units = Counter(str(r.get("cat")) for r in rows if "pack_listing" in (r.get("flags") or ()))
+    removed = sum(prev_bundles.values()) + sum(prev_over.values())
+    n_prev_all, n_all = max(1, len(prev) - removed), len(rows) - sum(new_units.values())
+    ratio = round(n_all / n_prev_all, 4)
     mn = cfg.get("item_count_min_ratio")
-    out["item_count"] = _measured(ratio >= (mn or 0), ratio, mn, f"{len(rows)} items vs {len(prev)} published ({ratio:.1%})")
+    out["item_count"] = _measured(ratio >= (mn or 0), ratio, mn, f"{len(rows)} items vs {len(prev)} published ({ratio:.1%}"
+                                  + (f", {removed} published rows left by rule: {sum(prev_bundles.values())} bundle listings, "
+                                     f"{sum(prev_over.values())} above the price ceiling, against {sum(new_units.values())} bundle units kept)" if removed else ")"))
     tol, min_rows = cfg.get("category_count_tolerance"), int(cfg.get("category_count_min_rows") or 0)
     worst = 0.0
-    # bundle listings ("(N pack) ...") are compared plain with plain: the rows the pack_listing rule removes from the
-    # published counts (every bundle listing) against the rows it adds to the candidate's (the units it keeps)
-    prev_bundles = Counter(str(p.get("cat")) for p in prev.values() if PACK_LISTING_RX.match(p.get("name") or ""))
-    new_units = Counter(str(r.get("cat")) for r in rows if "pack_listing" in (r.get("flags") or ()))
     for cat, n_prev in (prev_stats.get("kept_by_category") or {}).items():
         n = (stats.get("kept_by_category") or {}).get(cat, 0)
-        n_prev, n = n_prev - prev_bundles.get(str(cat), 0), n - new_units.get(str(cat), 0)
+        n_prev, n = n_prev - prev_bundles.get(str(cat), 0) - prev_over.get(str(cat), 0), n - new_units.get(str(cat), 0)
         if n_prev >= min_rows and n_prev > 0:
             dev = abs(n - n_prev) / n_prev
             worst = max(worst, dev)
@@ -615,7 +630,9 @@ def check(wm=None):
     extras["live"] = live
     gates["size_parse"] = gate_size_parse(rows, cfg.get("size_parse_min"))
     gates["unit_outliers"], extras["unit_outliers"] = gate_unit_outliers(rows, cfg, stats)
-    vs, extras["drift"], extras["unstable"] = gates_vs_previous(rows, stats, prev, prev_stats, cfg)
+    ceilings = {"consumable": (config.get("consumable_rules") or {}).get("max_price"), "durable": (config.get("durable_rules") or {}).get("max_price"),
+                "consumable_depts": {d["name"] for d in config["departments"] if d.get("consumable")}}
+    vs, extras["drift"], extras["unstable"] = gates_vs_previous(rows, stats, prev, prev_stats, cfg, ceilings)
     gates.update(vs)
     extras["drift"] = extras["drift"][:50]
     sr = cfg.get("sample_review")
