@@ -101,10 +101,16 @@ try {
     const home = await page.evaluate(() => ({ y: scrollY, max: document.documentElement.scrollHeight - innerHeight }));
     check("Home comes back at the top", home.y === 0, JSON.stringify(home));
     await page.click("#tallyCard"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);   // home shows the tally card (the header pill is for results)
-    await page.mouse.move(180, 500); await page.mouse.wheel(0, 300); await settle(page, 300);
-    const before = await page.evaluate(() => document.querySelector("#tallySheet .sheet-inner").scrollTop);
+    await page.mouse.move(180, 500); await page.mouse.wheel(0, 300);
+    // WebKit animates a wheel scroll: measure once it has come to rest, not part-way (281 of 300 was read once)
+    const settled = () => page.evaluate(() => new Promise((done) => {
+      const el = document.querySelector("#tallySheet .sheet-inner"); let last = -1, same = 0;
+      const tick = () => { const y = el.scrollTop; same = y === last ? same + 1 : 0; last = y; if (same >= 5) done(y); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    }));
+    const before = await settled();
     await page.locator("#tallySheet [data-remove]").nth(6).click(); await settle(page, 300);
-    const after = await page.evaluate(() => document.querySelector("#tallySheet .sheet-inner").scrollTop);
+    const after = await settled();
     check("removing a tally line keeps the place", before > 0 && Math.abs(after - before) <= 2, `${before} -> ${after}`);
     const y0 = await page.evaluate(() => scrollY);
     await page.mouse.move(180, 15); await page.mouse.wheel(0, -400); await settle(page, 300);

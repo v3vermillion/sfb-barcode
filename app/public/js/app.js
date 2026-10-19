@@ -221,7 +221,7 @@ const modals = {
     if (!fromPop && history.state?.modal === dlg.id) { history.back(); return; }   // popstate finishes the close
     const finish = () => {
       dlg._closeTimer = 0; dlg.classList.remove("is-closing");
-      dlg._dragged = false; clearTimeout(dlg._springTimer); dlg.style.translate = ""; dlg.style.transition = "";
+      dlg._dragged = false; clearTimeout(dlg._springTimer); dlg.style.translate = ""; dlg.style.transition = ""; dlg.style.willChange = "";
       // toasts still showing in the sheet move over the page instead of closing with it
       for (const t of [...(dlg.querySelector(":scope > .toasts-dlg")?.children || [])]) el.toasts.appendChild(t);
       if (dlg.open) dlg.close(); dlg.dispatchEvent(new CustomEvent("closed"));
@@ -253,6 +253,9 @@ if (history.state?.modal) history.replaceState(null, "", location.href);
  * with the close button (the handle alone was a 21px strip). Wired once per dialog, on the dialog itself: a re-render of
  * its content mid-drag (Settings refreshes its price card) cannot drop the gesture or strand the sheet half-way.
  * - a drag starts after 6px downwards, so a tap on the header is still a tap and the close button still a button
+ * - from the touch on the header until the sheet settles it is lifted onto its own compositing layer (will-change):
+ *   moved without one, every frame repainted the whole screen, the blurred page behind included, and the drag stuttered
+ *   on the iPhone; held for good, the layer would keep a full-screen bitmap in memory while the sheet just sits open
  * - a release past a quarter of the sheet (at most 120px) or a downward flick closes it, sliding on from where the
  *   finger let go; anything else springs back. The click that follows a drag is swallowed (with the pointer captured
  *   it lands on the dialog itself, which reads as a tap outside the sheet and would close it).
@@ -261,20 +264,23 @@ function sheetDrag(dlg) {
   let d = null;
   const still = () => !matchMedia("(prefers-reduced-motion: no-preference)").matches;
   const move = (y, transition = "none") => { dlg.style.transition = transition; dlg.style.translate = y > 0 ? `0 ${y}px` : ""; };
+  const lift = (on) => { dlg.style.willChange = on ? "transform" : ""; };
+  // the layer goes once the sheet is at rest: after the spring-back, or at once when nothing moved
+  const rest = (ms) => { clearTimeout(dlg._springTimer); dlg._springTimer = setTimeout(() => { if (!d) { dlg.style.transition = ""; lift(false); } }, ms); };
   dlg.addEventListener("pointerdown", (e) => {
     dlg._swallowClick = false;
     if (d || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0) || dlg._closeTimer || dlg._dragged) return;
     if (!e.target.closest?.(".sheet-top") || e.target.closest("button, a, input, select, textarea, [role=switch]")) return;
     d = { id: e.pointerId, y0: e.clientY, dy: 0, t: e.timeStamp, v: 0, on: false };
+    clearTimeout(dlg._springTimer); lift(true);   // ready before the first move, so the first frames do not repaint
   });
   dlg.addEventListener("pointermove", (e) => {
     if (!d || e.pointerId !== d.id) return;
     if (!d.on) {
       const dy = e.clientY - d.y0;
-      if (dy < -6) { d = null; return; }   // upwards: not a dismiss
+      if (dy < -6) { d = null; rest(340); return; }   // upwards: not a dismiss
       if (dy < 6) return;
       d.on = true; d.y0 = e.clientY; d.t = e.timeStamp;   // the sheet moves from here: no jump by the threshold
-      clearTimeout(dlg._springTimer);
       try { dlg.setPointerCapture(d.id); } catch { /* the gesture still works without it */ }
     }
     const dy = Math.max(0, e.clientY - d.y0), dt = Math.max(1, e.timeStamp - d.t);
@@ -285,13 +291,13 @@ function sheetDrag(dlg) {
   const end = (e) => {
     if (!d || e.pointerId !== d.id) return;
     const { on, dy, v } = d; d = null;
-    if (!on) return;
+    if (!on) { rest(340); return; }   // a tap (it may have landed during a spring-back: let that finish lifted)
     dlg._swallowClick = true; setTimeout(() => { dlg._swallowClick = false; }, 400);   // iOS can send it late
     const h = dlg.getBoundingClientRect().height;
     const close = e.type === "pointerup" && (dy > Math.min(120, h * 0.25) || (v > 0.45 && dy > 20));
     if (!close) {
       move(0, still() ? "none" : "translate .32s cubic-bezier(.25, 1, .5, 1)");
-      dlg._springTimer = setTimeout(() => { if (!d) dlg.style.transition = ""; }, 340);
+      rest(340);
       return;
     }
     dlg._dragged = true;   // modals.close then finishes at once: this slide is the closing animation
