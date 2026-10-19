@@ -48,6 +48,13 @@ export function fmtNum(n) {
   return Number.isInteger(r) ? String(r) : String(r).replace(/0+$/, "");
 }
 
+/** "Costco's own brand", "a store brand of another grocer", "Aldi's own brand" (the brand is the store's name). */
+export function whoseBrand({ brand, store }) {
+  if (!store) return "a store brand";
+  if (/^(a|an|another|other)\s/i.test(store)) return `a store brand of ${store}`;
+  return `${store}'s own brand`;
+}
+
 /** The store whose company prefix a barcode starts with (data/brands.json via the manifest: {prefix: {store, brand}}),
  * or null. The prefix is compared with the 13-digit form of the code. */
 export function storeOfCode(gtin14, prefixes) {
@@ -186,7 +193,7 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
   const store = storeOfCode(cls.gtin14, prefixes);
   return {
     kind: "unknown", code: cls.digits, gtin: cls.gtin14, codeType: cls.type, checkOk: cls.checkOk, ...(store ? { store } : {}),
-    title: store ? `${store.brand} item (${store.store})` : `Barcode ${formatGtin(cls.gtin14)}`, priceCents: null, unit: "each", key: `u:${cls.gtin14}`, scanned: cls,
+    title: store ? (store.brand === store.store ? `${store.brand} item` : `${store.brand} item (${store.store})`) : `Barcode ${formatGtin(cls.gtin14)}`, priceCents: null, unit: "each", key: `u:${cls.gtin14}`, scanned: cls,
   };
 }
 
@@ -195,7 +202,7 @@ export function notesFor(res, ctx = {}) {
   const notes = [];
   const it = res.item;
   if (res.otherBrand) {
-    notes.push({ tone: "equiv", text: `${res.otherBrand.brand} is ${res.otherBrand.store}'s own brand, which Walmart does not sell. This Walmart item is its equivalent, and Walmart's own brand is the same price tier.` });
+    notes.push({ tone: "equiv", text: `${res.otherBrand.brand} is ${whoseBrand(res.otherBrand)}, which Walmart does not sell. This Walmart item is its equivalent, and Walmart's own brand is the same price tier.` });
   }
   if (res.learned) {
     notes.push({ tone: "equiv", text: `This barcode is not in the price list. It was matched to this Walmart item on this phone${res.learned.at ? ` on ${new Date(res.learned.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""} by a search by name. Not the right item? Search by name again.` });
@@ -229,7 +236,7 @@ export function notesFor(res, ctx = {}) {
     else if (res.badDigits) notes.push({ tone: "warn", text: "This label failed its check-digit test, so no price can be read from it. Re-enter the number under the barcode, or search by name." });
     else if (res.noPrice) notes.push({ tone: "warn", text: "This label has no encoded price and is not in the price list. Use the price printed on the label, or search by name." });
     else if (res.store) {
-      notes.push({ tone: "equiv", text: `This barcode belongs to ${res.store.store}'s ${res.store.brand} brand, which Walmart does not sell, and it is not on file. Search by name to value it at Walmart's own-brand equivalent; this phone remembers the match for the next scan.` });
+      notes.push({ tone: "equiv", text: `This barcode belongs to ${res.store.brand === res.store.store ? `${res.store.store}'s own brand` : `${res.store.store}'s ${res.store.brand} brand`}, which Walmart does not sell, and it is not on file. Search by name to value it at Walmart's own-brand equivalent; this phone remembers the match for the next scan.` });
       if (res.checkOk === false) notes.push({ tone: "warn", text: "The check digit does not match, so a digit may have been mistyped." });
     } else {
       notes.push({ tone: "warn", text: "This barcode is not in the price list and has no equivalent on file. Search by the name and size on the label; this phone remembers the match for the next scan." });

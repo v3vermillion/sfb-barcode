@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -626,7 +626,7 @@ function renderResults(res, code, q) {
     meta = `<b>${fmtInt(res.total)}</b> ${res.total === 1 ? "match" : "matches"}`;
     if (res.fuzzy) meta += " · spelling corrected";
     if (res.relaxed) meta = `<span class="warn">Closest matches</span>${res.dropped?.length ? ` · “${esc(res.dropped.join(" "))}” not found` : " · no item has every word"}`;
-    if (res.otherBrand) meta = `<span class="warn">${esc(res.otherBrand.brand)} is ${esc(res.otherBrand.store)}'s brand, not sold at Walmart</span> · Walmart's own brand first${res.dropped?.length ? ` · “${esc(res.dropped.join(" "))}” not found` : ""}`;
+    if (res.otherBrand) meta = `<span class="warn">${esc(res.otherBrand.brand)} is ${esc(whoseBrand(res.otherBrand))}, not sold at Walmart</span> · Walmart's own brand first${res.dropped?.length ? ` · “${esc(res.dropped.join(" "))}” not found` : ""}`;
   }
   el.resultsMeta.innerHTML = meta;
   // the list says "No results" on screen; the announcement says it too
@@ -904,7 +904,7 @@ async function liveCheck(res) {
     const verdict = livePlausible(live, res.kind === "unknown" ? null : res.priceCents, db.manifest?.priceCeiling || undefined);
     if (verdict !== "ok") {
       row.dataset.state = "none";
-      row.innerHTML = `${icon("info")}<span>${esc(src)} currently lists <b>${money(live)}</b>, which ${verdict === "far" ? "differs widely from the saved price" : "is outside the expected range"}. ${res.kind === "unknown" ? "Search by name instead." : "The saved price is kept."}</span>`;
+      row.innerHTML = `${icon("info")}<span>${esc(src)} currently lists <b>${money(live)}</b>, which ${verdict === "far" ? "differs widely from the saved price" : "is outside the range this price list covers"}. ${res.kind === "unknown" ? "Search by name instead." : "The saved price is kept."}</span>`;
       return;
     }
     if (res.kind === "unknown") {

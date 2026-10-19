@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode } from "../public/js/resolve.js";
+import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand } from "../public/js/resolve.js";
 
 const corn = { rank: 0, id: 1, brand: "Great Value", name: "Great Value Golden Sweet Whole Kernel Corn, Canned Corn, 15.25 oz Can", priceCents: 87, size: 15.25, unit: "oz", pack: 1, basis: "each", cat: 6, catName: "Canned & Jarred", upc: "00078742054261", retired: false, primary: true, storeBrand: true };
 const retired = { ...corn, rank: 1, id: 2, retired: true, primary: false };
@@ -181,6 +181,12 @@ test("a barcode under a listed store's company prefix is named by its store even
   const r = await resolveCode(db, "096619261574", undefined, { prefixes: PREFIXES });   // the owner's Aller-Tec can, not on file
   assert.equal(r.kind, "unknown"); assert.equal(r.store.store, "Costco"); assert.equal(r.title, "Kirkland Signature item (Costco)");
   assert.match(notesFor(r).map((n) => n.text).join(" "), /Costco's Kirkland Signature brand.*remembers the match/);
+  const aldi = await resolveCode(db, "4099100012345", undefined, { prefixes: PREFIXES, learned: () => null });   // an Aldi code nothing knows
+  assert.equal(aldi.title, "Aldi item", "the brand is the store's name: said once");
+  assert.match(notesFor(aldi)[0].text, /belongs to Aldi's own brand/);
+  assert.equal(whoseBrand({ brand: "Kirkland", store: "Costco" }), "Costco's own brand");
+  assert.equal(whoseBrand({ brand: "Aldi", store: "Aldi" }), "Aldi's own brand");
+  assert.equal(whoseBrand({ brand: "Food Club", store: "another grocer" }), "a store brand of another grocer");
   const plain = await resolveCode(db, "012345678905", undefined, { prefixes: PREFIXES });
   assert.equal(plain.store, undefined); assert.match(notesFor(plain)[0].text, /remembers the match/);
 });
