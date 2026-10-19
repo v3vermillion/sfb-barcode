@@ -54,9 +54,9 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Store price label | barcode starting with 2 (scale labels: meat, deli, bakery) | price decoded from the barcode, GS1 verifier checked |
 | Produce code | 4-digit PLU (and 9xxxx organic) | produce name, price per lb or each, weight stepper |
 | Equivalent value | barcode Walmart doesn't sell, present in the equivalents table | estimated price, confidence, the Walmart basis item (tappable) |
-| Closest match | the search had to drop a word to find anything | nearest item, the ignored word named |
+| Closest match | the search had to drop a word to find anything; or it named another chain's store brand (Walmart's own brand shown as the equivalent); or a remembered match (a barcode this phone matched by name before, "Not this item? Search by name" to correct it) | nearest item, the ignored word or the brand named |
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
-| Not in database | unknown barcode, nothing online | "Find it by name" (search focused) — never a silent blank |
+| Not in database | unknown barcode, nothing online | "Search by name" (search focused; a barcode under a listed store's prefix is named by its store and the brand is typed in) — never a silent blank; the item added from that search is remembered for the barcode on this phone (`sfb.learned.v1`, 500 most recent) |
 
 Also: the home screen reads top-down and fills exactly the screen between the header and the dock: the food bank's
 name with 1 John 4:19, a **status card** only when there is something to know or do (downloading with progress, more
@@ -128,7 +128,9 @@ expansions, AND the words in every shard, then collect about 400 candidates in a
 proportion to their matches (at least 40 each), head-noun matches first for up to half of each shard's share. Score
 them (exact word > prefix, the whole brand named, size/pack number match, words adjacent in the name, the word's
 home department, the item's head noun named, the plain item, coverage of the item's content words, store brand;
-retired, out-of-stock and multipacks pushed down) and return 40. A word that matches nothing gets one-edit
+retired, out-of-stock and multipacks pushed down) and return 40. A run of query words that is another chain's store
+brand (the manifest's `brands`, from data/brands.json) is set aside, named in the result (`otherBrand`), and Walmart's
+own-brand items rank first among the matches for the rest. A word that matches nothing gets one-edit
 alternatives; if the AND is empty the most common word whose removal leaves results is dropped and the result is
 flagged. The main thread renders 12 rows synchronously and the rest on the next idle slice;
 off-screen rows skip layout via `content-visibility`.

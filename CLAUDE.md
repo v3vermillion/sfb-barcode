@@ -37,7 +37,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
 
 ## Commands (also runnable locally with WM_CONSUMER_ID / WM_PRIVATE_KEY set and SFB_STORE pointing at a data-store checkout)
 - `python -m crawler.ci --plan continue|core|full|approve|identify|audit|size|status|peek|finish|rollback|store`
-- `python -m unittest discover tests` (367 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
+- `python -m unittest discover tests` (385 tests; `tests/fixtures/run-live.json` is the live crawl state the pipeline must resume from)
 - `cd app && node --test tests/*.test.mjs`
 
 ## Layout
@@ -48,6 +48,7 @@ A snapshot publishes only when every gate passes; otherwise it holds and an issu
   storeprice.py (Strongsville store prices: refresh, apply, probe), cadence.py (per-department refresh intervals from measured drift), ci.py (orchestrator + decide())
 - data/categories.json — scope (departments, consumable or not, `split` child nodes for Home and Home Improvement; edits apply to the crawl in progress), category ids and path hints; docs/CATEGORIES.md — how every item is labelled
 - data/sentinels.json — items that must always be found and priced; data/store.json — the store whose shelf prices are shown
+- data/brands.json — other chains' store brands and their barcode company prefixes (identify.py matches them to Walmart's own brands; the app ranks Walmart's own brand first for a typed one and names the store of a scanned one); data/categories.json `consumable_rules`/`durable_rules` `max_price` — the price ceilings ($150 / $100), nothing above them is in the list
 - data/gold-search.json — search gold set (330 queries, checked on every real deploy by app/tools/gold.mjs)
 - data/gates.json — acceptance thresholds (null = measure only); data/schedule.json — cadence; data/review-criteria.md — sample review rules
 - .github/workflows/ — pipeline.yml (30-min continue, manual plans), deploy-app.yml, tests.yml, keepalive.yml,

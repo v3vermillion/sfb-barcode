@@ -54,9 +54,14 @@ this order of priority:
    produce stickers (PLU codes) give the item and its price per pound or each.
 3. **A barcode Walmart does not sell** (Aldi, Giant Eagle, Marc's, Meijer, Target, Dollar General, Kirkland, regional
    brands) is identified offline and valued at the closest Walmart equivalent, labelled "equivalent value" with the
-   basis item shown.
-4. **Typed search** shows brand, variant, size, pack and price; the volunteer taps the exact one.
-5. **Live check**: when the phone is online, an unknown barcode is priced through the Worker.
+   basis item shown. A barcode this phone matched before (an unknown one, found by name and added to the tally) opens
+   that Walmart item as a remembered match; one under a listed store's company prefix (`data/brands.json`) is named by
+   its store ("Kirkland Signature item (Costco)") and the name search starts with that brand.
+4. **Typed search** shows brand, variant, size, pack and price; the volunteer taps the exact one. Another chain's
+   store brand in the query (Kirkland, Clancy's, Market District, Happy Belly...) is set aside and Walmart's own brand
+   ranks first: the same price tier, and the sheet says so.
+5. **Live check**: when the phone is online, an unknown barcode is priced through the Worker; a live price above the
+   list's ceiling ($150 consumable, $100 durable) is not believed.
 6. **Last resort**: the same product type at the same size, per unit, flagged. Never blank, never unpriced.
 
 Used goods show the new retail price; whether to adjust for condition is food-bank policy.

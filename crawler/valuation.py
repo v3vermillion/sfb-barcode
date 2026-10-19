@@ -18,6 +18,12 @@ comparable items (the price against the same kind of item; the per-unit price ag
 price alone is not enough: a single ramen cup is meant to cost less than the 12-packs around it. Placeholder listings
 (barcode only) whose own price fails the range are dropped instead: there is nothing to show for them.
 
+Since 2026-10-19 a price more than HIGH_FACTOR times the median price of the same kind of item in its category (the
+product noun of its title; at least KIND_MIN rows) is withheld as well, unless the row's per-unit price sits within
+HIGH_FACTOR of its kind's per-unit median (a large size, not an error): 24 allergy tablets at $460.58 beside tablets
+around $15. The crawl itself keeps no consumable listing above $150 (data/categories.json consumable_rules.max_price),
+so this rule covers what the ceiling leaves.
+
 Since 2026-10-19 a price is also withheld when it is more than SIBLING_FACTOR times the median price of the item's own
 in-stock siblings: the same brand, kind, weight or volume (never a count: too coarse), pack and variant words (flavours
 and colours aside), at least SIBLING_MIN of them in stock. Walmart's feed carries stale flavour listings of one product line at several times the line's price
@@ -35,6 +41,7 @@ MATCH_MIN = 0.45
 KIND_MIN = 30          # rows of one kind of item before its median price is used
 KIND_BAND = 10         # an equivalent value within 10x of its kind's median
 LOW_FACTOR = 20        # a price and a per-unit price both this far below comparable items are withheld
+HIGH_FACTOR = 10       # a price this far above the median of the same kind of item (and its per-unit price, when it has one) is withheld
 SIBLING_FACTOR = 2.5   # a price this far above the in-stock listings of the same item (brand, kind, size, pack, variants) is withheld
 SIBLING_MIN = 3        # ... when at least this many in-stock siblings set the reference
 
@@ -161,6 +168,7 @@ def apply(rows, cfg, group_min=50):
     Returns (withheld list for the report, bounds, dropped placeholder ids)."""
     b, dropped = withhold(rows, cfg, group_min)
     withhold_sibling_outliers(rows.values())
+    withhold_kind_outliers(rows.values())
     return attach_values(rows, b, group_min), {d: {"low": lo, "high": hi, "p99": p99} for d, (lo, hi, p99) in b.items()}, dropped
 
 
@@ -225,6 +233,35 @@ def withhold_sibling_outliers(rows):
         _withhold(r)
         r["_why"] = "far above the same item's other variants"
     return out
+
+
+def withhold_kind_outliers(rows):
+    """Withhold every price far above the same kind of item (2026-10-19): a stale or mislabelled listing, such as 24
+    allergy tablets at $460.58 beside 2,000 listings of tablets around $15, or a box of dryer sheets at $489.60. The item
+    price is judged against its kind's median and, when the row has a per-unit price and its kind a per-unit median,
+    that too, so a large size (a 34 oz salon conditioner at ten times the 8.5 oz price) is not mistaken for an error.
+    Runs after process.resolve_packs, so a case the name supports is read as a case first. Measured on the published
+    snapshot under the $150 ceiling: about 0.3% of rows, nearly all of them out of stock. rows: an iterable of rows."""
+    rows = list(rows)
+    kmed = kind_medians(rows)
+    kind_units = defaultdict(list)
+    for r in rows:
+        if r.get("_kind") and not r.get("price_withheld") and "placeholder" not in r.get("flags", []) \
+                and isinstance(r.get("unit_price"), (int, float)) and r["unit_price"] > 0:
+            kind_units[(r["cat"], r["_kind"], r["base_unit"])].append(r["unit_price"])
+    kumed = {k: statistics.median(v) for k, v in kind_units.items() if len(v) >= KIND_MIN}
+    for r in rows:
+        if r.get("price_withheld") or "placeholder" in r.get("flags", []) or not isinstance(r.get("price"), (int, float)):
+            continue
+        km = kmed.get((r["cat"], r.get("_kind")))
+        if not km or r["price"] <= km * HIGH_FACTOR:
+            continue
+        kum = kumed.get((r["cat"], r.get("_kind"), r.get("base_unit")))
+        up = r.get("unit_price")
+        if isinstance(up, (int, float)) and up > 0 and kum and up <= kum * HIGH_FACTOR:
+            continue
+        _withhold(r)
+        r["_why"] = "far above the same kind of item"
 
 
 def _sibling_key(r):

@@ -165,6 +165,7 @@ def build():
     # a listing priced far above the item's own in-stock siblings (the other flavours of one product line) is a stale
     # listing, withheld and valued from a sibling below; after pack resolution, so a case the name supports stays a case
     valuation.withhold_sibling_outliers(rows.values())
+    valuation.withhold_kind_outliers(rows.values())        # then far above the same kind of item (the broader family)
     raw_share, unit_priced, outliers = unit_outlier_stats(rows.values(), group_min)
     for o in outliers:
         r = rows[o["id"]]

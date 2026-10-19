@@ -210,7 +210,7 @@ class Decisions20261008(unittest.TestCase):
 
     def test_test_listings_and_store_displays_are_not_carried(self):
         for name, price, why in (("Signing Test 3178 Dummy Stress Test", 15.77, "test_listing"),
-                                 ("14pc Delsym Pdq", 151.76, "store_display")):
+                                 ("14pc Delsym Pdq", 99.76, "store_display")):
             row, reason = N.normalize(self.item(name, price=price), FOOD, CFG)
             self.assertIsNone(row); self.assertEqual(reason, why, name)
         # a placeholder name on an internal (restricted-circulation 4-prefix) barcode is a test listing
@@ -229,6 +229,11 @@ class Decisions20261008(unittest.TestCase):
                  "categoryPath": "Home Page/Health and Medicine/Digestive Health", "sellerInfo": "Walmart.com"}
         self.assertEqual(N.junk_reason(pills, "Health and Medicine", CFG), "consumable_over_cap")
         self.assertIsNone(N.junk_reason(dict(pills, salePrice=16.52), "Health and Medicine", CFG))
+        # 2026-10-19 (owner): nothing a food bank receives costs anywhere near $460.58; the consumable cap is $150
+        self.assertEqual(CFG["consumable_rules"]["max_price"], 150)
+        aller = dict(pills, name="Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", salePrice=460.58)
+        self.assertEqual(N.junk_reason(aller, "Health and Medicine", CFG), "consumable_over_cap")
+        self.assertIsNone(N.junk_reason(dict(aller, salePrice=149.99), "Health and Medicine", CFG))
 
     def test_paper_basis_weight_is_not_a_size(self):
         row, _ = N.normalize(self.item("LUXPaper 8 1/2 x 11 Cardstock, 65 lb. Cream Parchment, 50/Pack", upc="078742054261"), FOOD, CFG)
@@ -307,6 +312,27 @@ class HygieneAndContainerCounts(unittest.TestCase):
                         ("Bounty Paper Towels, 6 Triple Rolls", 6)]:
             self.assertEqual(N.parse_quantity(name)[:2], (float(n), "ct"), name)
 
+    def test_a_gallon_figure_on_bags_is_their_capacity_not_the_size(self):
+        # 2026-10-19: "13 Gallon Trash Bags, 40 Count" used to read as 13 gal in a pack of 40
+        for name, want in [("Hefty Ultra Strong 13 Gallon Tall Kitchen Trash Bags, Blackout, 40 Bags", (40.0, "ct", None)),
+                           ("Glad ForceFlex 30 Gallon Large Drawstring Trash Bags, 28 Count", (28.0, "ct", None)),
+                           ("Glad 13 Gal Trash Bags (40 Count)", (40.0, "ct", None)),
+                           ("FoodSaver Vacuum Seal Bags, 1 Quart, 16 Count", (16.0, "ct", None)),
+                           ("Lawn & Leaf Trash Bags, 55 Gallon, 50 Count, 2 Pack", (50.0, "ct", 2)),
+                           ("Great Value Whole Milk, 1 Gallon", (1.0, "gal", None)),                  # a liquid: the gallon is the size
+                           ("(4 pack) Borden Fruit Punch, 1 Gallon Jug", (1.0, "gal", 4)),
+                           ("Sterilite 30 Gal. Tote Box, Case of 6", (30.0, "gal", 6))]:            # a tote is not a bag
+            self.assertEqual(N.parse_quantity(name), want, name); self.assertEqual(N.parse_quantity(name, extended=False), want, name)
+
+    def test_a_count_behind_a_word_or_two_is_read_for_pharmacy_goods(self):
+        for name, want in [("Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", (24.0, "ct", None)),
+                           ("Nature Made Vitamin D3 2000 IU, 100 Softgels", (100.0, "ct", None)),
+                           ("Spring Valley Biotin 60 Vegetarian Capsules, 2 Pack", (60.0, "ct", 2)),
+                           ("Claritin 24 Hour Allergy Tablets", (None, None, None)),                 # a duration, not a count
+                           ("Equate Ibuprofen 200 mg Tablets", (None, None, None)),                  # a strength
+                           ("Zyrtec 24 Hour Allergy Relief Tablets, 30 Count", (30.0, "ct", None))]:  # a stated count wins
+            self.assertEqual(N.parse_quantity(name), want, name)
+
     def test_a_count_read_as_the_size_is_not_also_a_pack(self):
         row, why = N.normalize({"itemId": 1, "upc": "037000978172", "name": "Charmin Ultra Soft Toilet Paper Mega Rolls, 12 count",
                               "salePrice": 17.01, "marketplace": False, "categoryPath": "Home Page/Household Essentials/Toilet Paper"},
@@ -355,11 +381,17 @@ class Decisions20261012(unittest.TestCase):
         _, why = N.normalize(self.item("Lego Classic Bricks Set, 484 Pieces", upc="deleted_681131001199"), toys, CFG)
         self.assertIsNone(why, "a retired barcode is still a barcode: donors give old stock")
 
-    def test_consumable_departments_are_not_capped(self):
+    def test_consumable_departments_have_their_own_cap(self):
+        # 2026-10-12: consumables were not capped with the durables; 2026-10-19 (owner): nothing a food bank receives
+        # costs anywhere near $460.58, so consumables stop at consumable_rules.max_price ($150); a case above it is
+        # left to the live check
         row, why = N.normalize(self.item("Similac Pro-Advance Infant Formula, 30.8 oz, Case of 4",
-                                         path="Home Page/Food/Baby Food", price=180.0), FOOD, CFG)
-        self.assertIsNone(why); self.assertEqual(row["price"], 180.0)
-        self.assertIsNone(N.junk_reason(self.item("Anything", upc=None, price=500.0), "Pets", CFG, consumable=True))
+                                         path="Home Page/Food/Baby Food", price=140.0), FOOD, CFG)
+        self.assertIsNone(why); self.assertEqual(row["price"], 140.0)
+        self.assertEqual(N.normalize(self.item("Similac Pro-Advance Infant Formula, 30.8 oz, Case of 4",
+                                               path="Home Page/Food/Baby Food", price=180.0), FOOD, CFG)[1], "consumable_over_cap")
+        self.assertEqual(N.junk_reason(self.item("Anything", upc=None, price=500.0), "Pets", CFG, consumable=True), "consumable_over_cap")
+        self.assertIsNone(N.junk_reason(self.item("Anything", upc=None, price=150.0), "Pets", CFG, consumable=True))
 
     def test_crawl_scope_of_the_decision(self):
         names = {d["name"] for d in CFG["departments"]}

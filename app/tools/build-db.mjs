@@ -99,7 +99,8 @@ const FORMAT_VERSION = 3;
 const packHash = crypto.createHash("sha256").update(`sfb-pack/${FORMAT_VERSION}\n`);
 const CATEGORIES_FILE = path.join(APP, "..", "data", "categories.json");
 const STORE_FILE = path.join(APP, "..", "data", "store.json");
-for (const f of [fileURLToPath(import.meta.url), path.join(APP, "public", "js", "tokenize.js"), path.join(STORE, "identify", "equivalents.jsonl.gz"), CATEGORIES_FILE, STORE_FILE]) {
+const BRANDS_FILE = path.join(APP, "..", "data", "brands.json");
+for (const f of [fileURLToPath(import.meta.url), path.join(APP, "public", "js", "tokenize.js"), path.join(STORE, "identify", "equivalents.jsonl.gz"), CATEGORIES_FILE, STORE_FILE, BRANDS_FILE]) {
   const parts = jsonlFiles(f);
   packHash.update(parts.length ? Buffer.concat(parts.map((p) => fs.readFileSync(p))) : Buffer.from("none")).update("\n");
 }
@@ -391,6 +392,22 @@ const manifest = {
   tokens: shardMeta.reduce((a, m) => a + m.tokens, 0), postings: shardMeta.reduce((a, m) => a + m.postings, 0),
   fixture: Boolean(srcManifest.fixture), gatesPassed: srcManifest.gates_passed ?? null, approvedManually: srcManifest.approved_manually ?? null,
   categories: catCfg.categories || null,
+  // the other chains' store brands (data/brands.json): a typed brand ranks Walmart's own brand first, a scanned barcode under
+  // a listed company prefix is named by its store; and the price above which nothing is in this list (the live check
+  // treats a Walmart price above it as implausible)
+  ...(() => {
+    const title = (s) => String(s).replace(/(^|[\s(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+    try {
+      const b = JSON.parse(fs.readFileSync(BRANDS_FILE, "utf8"));
+      const brands = {}, prefixes = {};
+      for (const [store, d] of Object.entries(b.stores || {})) {
+        for (const name of d.brands || []) brands[String(name).toLowerCase()] = store;
+        for (const p of d.prefixes || []) prefixes[String(p)] = { store, brand: title((d.brands || [store])[0]) };
+      }
+      return { brands, prefixes };
+    } catch { return { brands: {}, prefixes: {} }; }
+  })(),
+  priceCeiling: Math.round(100 * Math.max(Number(catCfg.consumable_rules?.max_price) || 0, Number(catCfg.durable_rules?.max_price) || 0)) || null,
   store: (() => { try { const s = JSON.parse(fs.readFileSync(STORE_FILE, "utf8")); return { id: s.store_id, name: s.name, address: s.address, label: s.label || "Strongsville Walmart" }; } catch { return null; } })(),
   storePriced: items.filter((it) => it.flags2 & F2.STORE_PRICE).length,
   shards: shardMeta,

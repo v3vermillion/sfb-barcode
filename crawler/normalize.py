@@ -47,6 +47,13 @@ PACK_NOUNS = re.compile(r"(?<![\w.])(\d+)\s*-?\s*(?:count|ct|cnt|bars?|bottles?|
                         r"k-?cups?|capsules?|sticks?|sachets?)\b\.?", re.I)
 TOTAL = re.compile(r"(?<![\w.])(\d+)\s+total(?:\s+(?:count|ct|pieces?|pcs|wipes|packets?|pods|k-?cups|bars|bags|sticks|"
                    r"servings|capsules|cups|units?|drinks)\b|(?!\s*[a-z]))", re.I)      # "(144 Total Pieces)", "270 Total"
+# a count behind one or two words, for what pharmacy goods are counted in: "24 Extended Release Tablets", "100 Vegetarian
+# Capsules" (never a strength or duration: "500 mg Tablets", "24 Hour Allergy Tablets")
+COUNT_WORDS = re.compile(r"(?<![\w.])(\d+)\s+(?!(?:hour|hr|hrs|hours|day|days|mg|mcg|iu|percent|pack|packs|pk|count|ct)\b)"
+                         r"(?:[a-z\-]+\s+){1,2}(?:tablets?|capsules?|caplets?|softgels?|gummies|lozenges?|chewables?)\b", re.I)
+# a gallon or quart figure on bags or liners is their capacity, not the quantity: "13 Gallon Trash Bags, 40 Count" is 40
+# bags (2026-10-19; it used to read as 13 gal in a pack of 40)
+CAPACITY_RX = re.compile(r"\b(?:bags?|liners?)\b", re.I)
 OF_EACH = re.compile(r"(?<![\w.])(\d+)\s*(?:packs?|boxes|bags|cartons|cases|pk)\s+(?:of|with)\s+(\d+)\b", re.I)
 WRAPPER = re.compile(r"^\s*\((\d+)\s*pack\)", re.I)       # Walmart's multipack listing: "(6 pack) <one unit's name>"
 # Walmart's bundle listings (2026-10-19): a name that starts with one or more "(N pack)" / "(N pk)" / "(N-Pack)" wrappers
@@ -221,6 +228,11 @@ def parse_quantity(text: str, extended: bool = True):
     sizes = [(float(q.group(1)), _unit(q.group(2))) for q in QTY.finditer(t) if _plausible(q)]
     # prefer metric-free US unit if both "11 oz (312 g)" present: first mention wins
     size, unit = (sizes[0] if sizes else (None, None))
+    if size is not None and unit in ("gal", "qt") and CAPACITY_RX.search(t):
+        c = COUNT.search(t) or COUNT_EXT.search(t)
+        if c and int(c.group(1)) > 0:
+            n = int(c.group(1))
+            return float(n), "ct", (None if pack == n else pack)
     if size is not None:
         if pack is None:
             # "3.75 oz, 6 Bars", "5 oz, 8 Cans": a container count beside a weight is a pack in either pass (it used to be
@@ -258,6 +270,10 @@ def parse_quantity(text: str, extended: bool = True):
                 return float(n), "ct", None                                    # "108 Count (6 Packs of 18)": n is the total
             return float(n), "ct", pack
     if extended:
+        c = COUNT_WORDS.search(t)
+        if c and int(c.group(1)) > 0:
+            n = int(c.group(1))
+            return float(n), "ct", (None if pack == n else pack)
         d = DOZEN.search(t)
         if d:
             k = d.group(1)

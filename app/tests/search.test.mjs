@@ -27,6 +27,9 @@ const ROWS = [
   row("(6 pack) Hunt's Tomato Sauce, 15 oz Can", "Hunt's", 5.88, { size: 15, unit: "oz", pack: 6, cat: "11" }),
   row("Jell-O Strawberry Gelatin Dessert Mix, 3 oz Box", "Jell-O", 1.12, { size: 3, unit: "oz", cat: "28" }),
   row("Shahia Cherry Jello Cups", "Shahia", 0.66, { cat: "9" }),
+  row("Campbell's Condensed Chicken Noodle Soup, 10.75 oz Can", "Campbell's", 1.48, { size: 10.75, unit: "oz", cat: "11" }),
+  row("Great Value Chicken Noodle Condensed Soup, 10.5 oz Can", "Great Value", 0.98, { size: 10.5, unit: "oz", cat: "11", store_brand: true }),
+  row("Progresso Chicken Noodle Soup, 19 oz Can", "Progresso", 2.48, { size: 19, unit: "oz", cat: "11" }),
 ];
 
 let db;
@@ -74,4 +77,26 @@ test("the single item ranks before its (6 pack) listing", () => {
 test("hyphenated brands are found typed joined: jello finds Jell-O first", () => {
   const r = top("jello");
   assert.equal(r.items[0].brand, "Jell-O");
+});
+
+// ---- other chains' store brands (data/brands.json, 2026-10-19): the brand words are set aside and Walmart's own brand ranks first
+test("a query naming another store's brand ranks Walmart's own brand first and says so", () => {
+  const r = top("kirkland chicken noodle soup");
+  assert.deepEqual(r.otherBrand, { brand: "Kirkland", store: "Costco" });
+  assert.equal(r.relaxed, false); assert.deepEqual(r.dropped, []);
+  assert.equal(r.items[0].name, "Great Value Chicken Noodle Condensed Soup, 10.5 oz Can");
+  assert.ok(r.items.some((it) => /Campbell/.test(it.name)), "the national brands still follow");
+  const two = top("members mark chicken noodle soup");        // a two-word brand, typed without its apostrophe
+  assert.equal(two.otherBrand.store, "Sam's Club"); assert.equal(two.items[0].name, "Great Value Chicken Noodle Condensed Soup, 10.5 oz Can");
+  const plain = top("chicken noodle soup");                   // without a brand the usual ranking holds (store brand +0.3 only)
+  assert.equal(plain.otherBrand, null);
+  assert.equal(top("kirkland").otherBrand, null, "a brand alone is still searched for as typed");
+});
+
+test("the pack manifest carries the brands, the barcode prefixes and the price ceiling", () => {
+  const m = db.manifest;
+  assert.equal(m.brands["kirkland signature"], "Costco"); assert.equal(m.brands["heinen's"], "Heinen's"); assert.equal(m.brands["happy belly"], "Amazon");
+  assert.deepEqual(m.prefixes["0096619"], { store: "Costco", brand: "Kirkland Signature" });
+  assert.equal(m.prefixes["0030034"].store, "Giant Eagle");
+  assert.equal(m.priceCeiling, 15000);
 });

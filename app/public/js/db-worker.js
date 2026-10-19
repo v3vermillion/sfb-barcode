@@ -161,6 +161,9 @@ async function load({ base, root, manifest, cacheName, filesCache, only }) {
     d.catNames = manifest.categories || null;
     d.v2 = !manifest.shards;
   }
+  // the other chains' store brands (data/brands.json via the manifest), as token runs, longest first
+  const titleCase = (s) => String(s).replace(/(^|[\s(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  d.brands = Object.entries(manifest.brands || {}).map(([name, store]) => ({ toks: tokenize(name), name: titleCase(name), store })).filter((b) => b.toks.length).sort((a, b) => b.toks.length - a.toks.length);
   // shards no new version uses are released
   const keep = new Set(d.shards.filter(Boolean).map((S) => S.key));
   for (const k of [...loaded.keys()]) if (!keep.has(k)) loaded.delete(k);
@@ -379,7 +382,21 @@ function itemTokens(key, it) {
   return t;
 }
 
-function scoreCandidates(S, ranks, qTokens, groups, typed = null) {
+/** A run of query tokens that is another chain's store brand ("kirkland signature", "members mark"): the brand, its store and
+ * the token span, or null. The longest listed brand wins; a brand word that is the whole query is not matched, so "aldi"
+ * alone still searches the list for it. */
+function otherStoreBrand(tokens) {
+  if (!db?.brands?.length || tokens.length < 2) return null;
+  for (const b of db.brands) {
+    if (b.toks.length >= tokens.length) continue;
+    for (let i = 0; i + b.toks.length <= tokens.length; i++) {
+      if (b.toks.every((t, k) => tokens[i + k] === t)) return { brand: b.name, store: b.store, start: i, end: i + b.toks.length };
+    }
+  }
+  return null;
+}
+
+function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst = false) {
   const nums = numberTokens(qTokens);
   const homes = homeCategories(S, groups);
   const scored = ranks.map((r) => {
@@ -420,7 +437,8 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null) {
     for (const h of homes) if (h && h === it.cat) s += 0.8;
     if (head && groups.some((g) => g.some((a) => head === a || (a.length >= 4 && head.startsWith(a))))) s += 1.6;
     else if (head && toks.length) s -= 0.6;          // the query's words only describe it: a diaper *bag*, a tomato *basket*
-    if (it.storeBrand) s += 0.3;
+    // Walmart's own brand is the same price tier as another chain's store brand: first when the query named one
+    if (it.storeBrand) s += ownBrandFirst ? 3 : 0.3;
     if (it.retired) s -= 1.5;
     if (it.unavailable) s -= 0.4;
     s -= (r / S.N) * 0.8;             // rank within the shard as the final tiebreaker
@@ -446,8 +464,13 @@ function andCount(bs) {
 
 function search(q, limit = 40) {
   const t0 = performance.now();
-  const tokens = tokenize(q).filter(Boolean);
+  let tokens = tokenize(q).filter(Boolean);
   if (!tokens.length) return { query: q, items: [], relaxed: false, fuzzy: false, ms: 0, total: 0 };
+  // "kirkland chicken noodle soup": Walmart does not sell Costco's brand, so the brand words are set aside (named in the
+  // result, never reported as "not found") and Walmart's own brand ranks first among the matches for the rest
+  const other = otherStoreBrand(tokens);
+  let otherBrand = null;
+  if (other) { otherBrand = { brand: other.brand, store: other.store }; tokens = [...tokens.slice(0, other.start), ...tokens.slice(other.end)]; }
   const shards = db.shards.filter(Boolean);
   let groups = expand(tokens);
   const matches = (g) => g.alts.some((a) => hasAnyToken(a));
@@ -461,7 +484,7 @@ function search(q, limit = 40) {
   // a word that still matches nothing is dropped and named, so the result is flagged, never silently widened
   let live = [];
   for (const g of groups) { if (matches(g)) live.push(g); else if (!dropped.includes(g.src)) { dropped.push(g.src); relaxed = true; } }
-  if (!live.length) return { query: q, items: [], relaxed: false, dropped, fuzzy, ms: performance.now() - t0, total: 0 };
+  if (!live.length) return { query: q, items: [], relaxed: false, dropped, fuzzy, otherBrand, ms: performance.now() - t0, total: 0 };
   // per shard: the bitset of every live group (null: the word is not in this shard, so nothing here matches all)
   const perShard = shards.map((S) => ({ S, bits: live.map((g) => groupBits(S, g.alts)) }));
   const anyAll = (keep) => perShard.some(({ bits }) => { const bs = bits.filter((_, i) => keep(i)); return bs.every(Boolean) && collect(bs, 1).length > 0; });
@@ -506,11 +529,11 @@ function search(q, limit = 40) {
       const seen = new Set(ranks);
       for (const r of collect(bits, cand)) { if (ranks.length >= cand) break; if (!seen.has(r)) ranks.push(r); }
     }
-    scored = scored.concat(scoreCandidates(S, ranks, tokens, alts, typed));
+    scored = scored.concat(scoreCandidates(S, ranks, tokens, alts, typed, !!otherBrand));
   }
   scored.sort((a, b) => b.s - a.s || a.it.rank - b.it.rank);
   const items = scored.slice(0, limit).map((x) => x.it);
-  return { query: q, items, relaxed, dropped, fuzzy, total, ms: Math.round((performance.now() - t0) * 100) / 100 };
+  return { query: q, items, relaxed, dropped, fuzzy, otherBrand, total, ms: Math.round((performance.now() - t0) * 100) / 100 };
 }
 
 // ---------------------------------------------------------------- messages

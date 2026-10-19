@@ -1,0 +1,210 @@
+{
+  "note": "Store brands a Strongsville food bank receives that Walmart does not sell, and the GS1 company prefixes their barcodes start with (the 7 leading digits of the 13-digit form, measured on Open Facts 2026-10-19). One file for the pipeline (crawler/identify.py: a listed brand is matched to Walmart's own brands, the same price tier) and the app (the pack manifest: a typed brand name ranks Walmart's own-brand items first and the sheet says why; a scanned barcode under a listed prefix is named by its store even when nothing else is known about it). Brand names are matched whole, case-insensitively, apostrophes aside. Add a store or brand here; the next pack build and identify refresh pick it up.",
+  "stores": {
+    "Costco": {
+      "brands": [
+        "kirkland signature",
+        "kirkland"
+      ],
+      "prefixes": [
+        "0096619"
+      ]
+    },
+    "Aldi": {
+      "brands": [
+        "aldi",
+        "clancy's",
+        "simply nature",
+        "millville",
+        "friendly farms",
+        "happy farms",
+        "happy harvest",
+        "specially selected",
+        "season's choice",
+        "burman's",
+        "casa mamita",
+        "bake house creations",
+        "baker's corner",
+        "benton's",
+        "fit & active",
+        "l'oven fresh",
+        "stonemill",
+        "sweet harvest",
+        "southern grove",
+        "chef's cupboard",
+        "savoritz",
+        "fusia",
+        "reggano",
+        "carlini",
+        "tuscan garden",
+        "countryside creamery",
+        "appleton farms",
+        "kirkwood",
+        "fremont fish market",
+        "never any!",
+        "little journey",
+        "radiance",
+        "barissimo",
+        "elevation",
+        "choceur",
+        "earth grown",
+        "lunch mate",
+        "deutsche kuche",
+        "mama cozzi's",
+        "park street deli",
+        "belmont",
+        "berryhill",
+        "brookdale",
+        "crofton",
+        "dakota's pride",
+        "emporium selection",
+        "goldhen",
+        "journey to india",
+        "lacura",
+        "little salad bar",
+        "live gfree",
+        "moser roth",
+        "nature's nectar",
+        "priano",
+        "pueblo lindo",
+        "pur aqua",
+        "sea queen",
+        "sundae shoppe",
+        "tandil",
+        "welby",
+        "boulder",
+        "cheese club",
+        "gardenline",
+        "huntington home",
+        "vitalife",
+        "bremer",
+        "summit",
+        "lunch buddies"
+      ],
+      "prefixes": [
+        "0041498",
+        "4099100"
+      ]
+    },
+    "Giant Eagle": {
+      "brands": [
+        "giant eagle",
+        "market district",
+        "nature's basket"
+      ],
+      "prefixes": [
+        "0030034"
+      ]
+    },
+    "Heinen's": {
+      "brands": [
+        "heinen's",
+        "heinens"
+      ],
+      "prefixes": [
+        "0020601"
+      ]
+    },
+    "Marc's": {
+      "brands": [
+        "marc's",
+        "marcs"
+      ],
+      "prefixes": []
+    },
+    "Amazon": {
+      "brands": [
+        "amazon",
+        "amazon fresh",
+        "amazon grocery",
+        "amazon kitchen",
+        "amazon basics",
+        "happy belly",
+        "aplenty",
+        "solimo",
+        "presto!",
+        "mama bear",
+        "wickedly prime",
+        "365 by whole foods market",
+        "365 whole foods market",
+        "365 everyday value",
+        "whole foods market"
+      ],
+      "prefixes": [
+        "0842379",
+        "0195515",
+        "0099482"
+      ]
+    },
+    "Trader Joe's": {
+      "brands": [
+        "trader joe's",
+        "trader joes"
+      ],
+      "prefixes": []
+    },
+    "Sam's Club": {
+      "brands": [
+        "member's mark",
+        "members mark"
+      ],
+      "prefixes": [
+        "0193968"
+      ]
+    },
+    "BJ's": {
+      "brands": [
+        "wellsley farms",
+        "berkley jensen"
+      ],
+      "prefixes": []
+    },
+    "Meijer": {
+      "brands": [
+        "meijer",
+        "true goodness",
+        "frederik's"
+      ],
+      "prefixes": [
+        "0041250"
+      ]
+    },
+    "Kroger": {
+      "brands": [
+        "kroger",
+        "private selection",
+        "simple truth",
+        "heritage farm"
+      ],
+      "prefixes": [
+        "0011110"
+      ]
+    },
+    "Target": {
+      "brands": [
+        "good & gather",
+        "market pantry",
+        "up & up",
+        "favorite day"
+      ],
+      "prefixes": [
+        "0085239"
+      ]
+    },
+    "Dollar General": {
+      "brands": [
+        "clover valley"
+      ],
+      "prefixes": []
+    },
+    "Save-A-Lot and Topco stores": {
+      "brands": [
+        "food club",
+        "best choice",
+        "shurfine",
+        "coburn farms"
+      ],
+      "prefixes": []
+    }
+  }
+}

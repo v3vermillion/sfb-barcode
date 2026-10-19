@@ -10,7 +10,8 @@ national brands are matched to the same brand first. Every row carries a confide
 and the app labels these as "equivalent value", never as an exact price.
 Data: Open Food Facts contributors, ODbL (attribution required in the app's About screen).
 """
-import argparse, csv, gzip, io, re, sys
+import argparse, csv, gzip, io, json, re, sys
+from pathlib import Path
 from collections import Counter, defaultdict
 
 import requests
@@ -27,20 +28,16 @@ OUT = store.ROOT / "identify"
 # Open Food Facts refuses requests without an identifying User-Agent (python-requests' default gets HTTP 403)
 USER_AGENT = "SFBValuation/1.0 (Strongsville Emergency Food Bank donation valuation; +https://github.com/v3vermillion/sfb-valuation)"
 
-OTHER_STORE_BRANDS = {
-    # Aldi
-    "happy harvest", "clancy's", "millville", "simply nature", "specially selected", "season's choice", "friendly farms",
-    "burman's", "casa mamita", "bake house creations", "benton's", "fit & active", "l'oven fresh", "stonemill",
-    "sweet harvest", "southern grove", "chef's cupboard", "savoritz", "fusia", "reggano", "carlini", "tuscan garden",
-    "countryside creamery", "appleton farms", "kirkwood", "fremont fish market", "never any!", "little journey",
-    "radiance", "barissimo", "elevation", "choceur", "earth grown", "lunch mate", "deutsche kuche", "mama cozzi's",
-    # Giant Eagle / Market District / Marc's / Save-A-Lot
-    "giant eagle", "market district", "marc's", "coburn farms",
-    # Meijer / Kroger / Target / Dollar General / Costco / Sam's / Amazon
-    "meijer", "true goodness", "frederik's", "kroger", "private selection", "simple truth", "heritage farm",
-    "good & gather", "market pantry", "up & up", "favorite day", "clover valley", "kirkland signature", "kirkland",
-    "member's mark", "happy belly", "amazon basics", "food club", "best choice", "shurfine",
-}
+BRANDS_FILE = Path(__file__).resolve().parent.parent / "data" / "brands.json"
+
+
+def store_brands(path=BRANDS_FILE):
+    """{brand (lower-case) -> store name} from data/brands.json: the other chains' store brands a food bank receives."""
+    cfg = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {b.strip().lower(): store for store, d in cfg["stores"].items() for b in d.get("brands", [])}
+
+
+OTHER_STORE_BRANDS = frozenset(store_brands())
 WALMART_STORE_BRANDS = {"great value", "equate", "mainstays", "parent's choice", "marketside", "freshness guaranteed",
                         "sam's choice", "bettergoods", "ol' roy", "special kitty", "pen+gear", "hyper tough", "onn."}
 STOP = {"the", "and", "with", "of", "in", "a", "an", "for", "to", "oz", "fl", "lb", "lbs", "g", "ml", "l", "ct", "count",

@@ -130,6 +130,25 @@ class Apply(unittest.TestCase):
         V.apply(rows3, CFG)
         self.assertFalse(rows3[4003].get("price_withheld"))
 
+    def test_a_price_far_above_the_same_kind_of_item_is_withheld(self):
+        # 24 allergy tablets at $460.58 beside forty listings of tablets around $15 (owner's case, 2026-10-19); no size
+        # was read from its name, so only the item price can be judged
+        rows = snapshot([])
+        for i in range(5000, 5040):
+            r = row(i, f"Brand {i} Allergy Relief Tablets, 30 Count", 12.0 + (i % 9), cat="14", dept="Health and Medicine", qty=30.0, unit="ct", brand=f"Brand {i}")
+            r["_kind"] = "tablets"; rows[i] = r
+        big = row(5100, "Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", 460.58, cat="14", dept="Health and Medicine", brand="Kirkland")
+        big["_kind"] = "tablets"; rows[5100] = big
+        # a large size is not an error: ten times the price, but the same price per tablet
+        bulk = row(5101, "Brand Allergy Relief Tablets, 365 Count", 150.0, cat="14", dept="Health and Medicine", qty=365.0, unit="ct", brand="Bulk")
+        bulk["_kind"] = "tablets"; rows[5101] = bulk
+        cfg = {"price_sanity": {"floor": 0.10, "over_p99": 5, "caps": {"default": 5000}}}
+        withheld, _, _ = V.apply(rows, cfg)
+        self.assertTrue(rows[5100].get("price_withheld")); self.assertFalse(rows[5101].get("price_withheld"))
+        w = next(x for x in withheld if x["id"] == 5100)
+        self.assertEqual(w["why"], "far above the same kind of item"); self.assertLess(w["value"], 30.0)
+        self.assertNotIn("_why", rows[5100])
+
     def test_a_low_price_two_same_size_listings_agree_on_is_kept(self):
         rows = snapshot([])
         for r in rows.values():

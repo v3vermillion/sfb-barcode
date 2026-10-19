@@ -21,10 +21,24 @@ const writeJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); 
 const prefs = Object.assign({ theme: "auto", haptics: true, live: true }, readJson(PREFS_KEY, {}));
 let tally = readJson(TALLY_KEY, []);
 let recent = readJson(RECENT_KEY, []);
+// barcodes nothing knew, matched on this phone by a search by name and added to the tally: gtin14 -> {key, title, at}
+const LEARNED_KEY = "sfb.learned.v1", LEARNED_MAX = 500;
+let learned = readJson(LEARNED_KEY, {});
+if (!learned || typeof learned !== "object" || Array.isArray(learned)) learned = {};
+const learnedFor = (gtin) => learned[gtin] || null;
+const resolveOpts = (o = {}) => ({ ...o, prefixes: db.manifest?.prefixes || null, learned: learnedFor });
+function rememberMatch(gtin, item) {
+  if (!gtin || !item?.upc) return;
+  learned[gtin] = { key: Number(item.upc), title: titleOf(item), at: Date.now() };
+  const keys = Object.keys(learned);
+  if (keys.length > LEARNED_MAX) for (const k of keys.sort((a, b) => (learned[a].at || 0) - (learned[b].at || 0)).slice(0, keys.length - LEARNED_MAX)) delete learned[k];
+  writeJson(LEARNED_KEY, learned);
+}
 
 const perf = { boot: { start: performance.now() }, keystrokes: [], scans: [], opens: [] };
 const state = {
   query: "", seq: 0, last: null, codeHit: null, pending: null, sheetRes: null, qty: 1,
+  learnFor: null,       // the barcode an unknown-item sheet sent to the name search: the item added next is remembered for it
   scan: null, scanOpen: false, scanGen: 0, scanPausedByVisibility: false, engine: "", source: null, pendingReload: false,
   openScannerAfterSheet: false, closeScannerAfterSheet: false, focusSearchAfterSheet: false,
   stale: "fresh", staleBusy: false, persisted: undefined, tourOpen: false,
@@ -34,7 +48,7 @@ const state = {
 };
 
 const db = new DbClient();
-window.__sfb = { db, perf, state, prefs, resolveCode: (c, f) => resolveCode(db, c, f), openCode, openRank, openScanner, closeScanner, runSearch, version: BUILD };
+window.__sfb = { db, perf, state, prefs, resolveCode: (c, f) => resolveCode(db, c, f, resolveOpts()), openCode, openRank, openScanner, closeScanner, runSearch, version: BUILD };
 
 // ------------------------------------------------------------------ helpers
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -560,7 +574,7 @@ async function runSearch(q) {
     return;
   }
   const cls = classifyCode(q);
-  const p = Promise.all([db.search(q, 40), cls.kind === "text" ? null : resolveCode(db, q).catch(() => null)]);
+  const p = Promise.all([db.search(q, 40), cls.kind === "text" ? null : resolveCode(db, q, undefined, resolveOpts()).catch(() => null)]);
   state.pending = p;
   const [res, code] = await p;
   if (seq !== state.seq) return;       // a newer keystroke won
@@ -574,7 +588,7 @@ async function runSearch(q) {
 function rowHtml(it, toks) {
   const { pre, brand, rest } = splitTitle(it);
   const title = brand ? `${highlight(pre, toks)}<b>${highlight(brand, toks)}</b>${highlight(rest, toks)}` : highlight(rest, toks);
-  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : "", it.unavailable ? "Out of stock at last update" : ""].filter(Boolean);
+  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : ""].filter(Boolean);
   const sub = it.basis === "lb" ? "<small>per lb</small>" : it.pack > 1 ? `<small>${money(Math.round(it.priceCents / it.pack))} each</small>` : "";
   const value = it.priceWithheld ? `<small>Equivalent value</small>` : sub;
   return `<li><button class="row${it.retired ? " is-retired" : ""}" type="button" data-rank="${it.rank}"><span class="name">${title}</span><span class="price">${money(it.priceCents)}${value}</span><span class="meta">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span></button></li>`;
@@ -611,6 +625,7 @@ function renderResults(res, code, q) {
     meta = `<b>${fmtInt(res.total)}</b> ${res.total === 1 ? "match" : "matches"}`;
     if (res.fuzzy) meta += " · spelling corrected";
     if (res.relaxed) meta = `<span class="warn">Closest matches</span>${res.dropped?.length ? ` · “${esc(res.dropped.join(" "))}” not found` : " · no item has every word"}`;
+    if (res.otherBrand) meta = `<span class="warn">${esc(res.otherBrand.brand)} is ${esc(res.otherBrand.store)}'s brand, not sold at Walmart</span> · Walmart's own brand first${res.dropped?.length ? ` · “${esc(res.dropped.join(" "))}” not found` : ""}`;
   }
   el.resultsMeta.innerHTML = meta;
   // the list says "No results" on screen; the announcement says it too
@@ -638,10 +653,11 @@ el.list.addEventListener("click", (e) => {
 async function openRank(rank, { closest = false, source = "search" } = {}) {
   const item = await db.item(rank);
   if (!item) return;
-  openResolution(fromItem(item, { closest, query: state.query, dropped: state.last?.dropped || [] }), { source });
+  openResolution(fromItem(item, { closest, query: state.query, dropped: state.last?.dropped || [], otherBrand: state.last?.otherBrand || null }), { source });
 }
 async function openCode(raw, { source = "typed", format, scanned = false, preferId = null } = {}) {
-  const res = await resolveCode(db, raw, format, { scanned, preferId });
+  state.learnFor = null;
+  const res = await resolveCode(db, raw, format, resolveOpts({ scanned, preferId }));
   if (!res) { toast("Not a valid barcode number", { iconName: "info" }); return null; }
   openResolution(res, { source });
   return res;
@@ -724,6 +740,8 @@ function sheetHtml(res) {
       ? `<button class="btn btn--ghost" type="button" data-act="scan">${icon("scan")}<span>Scan</span></button><button class="btn btn--ghost" type="button" data-act="close">Back to results</button>`
       : `<button class="btn btn--ghost btn--block" type="button" data-act="scan">${icon("scan")}<span>Scan a barcode</span></button>`;
 
+  // a remembered match can be corrected: the name search again, and the next item added replaces it
+  const again = res.learned ? `<button class="btn btn--ghost btn--block" type="button" data-act="find">${icon("search")}<span>Not this item? Search by name</span></button>` : "";
   const also = res.others?.length ? `<section class="also"><h2 class="h2">Other items with this barcode</h2><ol class="list list--compact">${res.others.map((o) => rowHtml(o, [])).join("")}</ol></section>` : "";
   const basisCard = res.kind === "equivalent" && res.equiv.basis ? basisCardHtml("Priced from this Walmart item", res.equiv.basis)
     : res.kind === "plu" && res.item ? basisCardHtml("Priced from this Walmart item", res.item) : "";
@@ -748,7 +766,7 @@ function sheetHtml(res) {
     </div><div class="sheet-side">
     ${packSeg}
     ${stepper}
-    <div class="actions">${primary}${secondary}</div>
+    <div class="actions">${primary}${secondary}${again}</div>
     </div></div>
     ${basisCard}${also}
     ${facts.length ? `<ul class="facts">${facts.map(([k, v]) => `<li><span>${k}</span><span>${v}</span></li>`).join("")}</ul>` : ""}
@@ -810,7 +828,15 @@ function wireSheet(dlg, res) {
     const act = b.dataset.act;
     if (act === "add") { addToTally(res); if (state.source !== "scan") { el.q.value = ""; el.clearBtn.hidden = true; state.query = ""; showHome(); } modals.close(dlg); }
     else if (act === "scan") { if (!state.scanOpen) state.openScannerAfterSheet = true; modals.close(dlg); }
-    else if (act === "find") { if (state.scanOpen) state.closeScannerAfterSheet = true; state.focusSearchAfterSheet = true; el.q.value = ""; state.query = ""; showHome(); el.q.placeholder = "Name and size"; modals.close(dlg); }
+    else if (act === "find") {
+      if (state.scanOpen) state.closeScannerAfterSheet = true;
+      state.focusSearchAfterSheet = true;
+      // an unknown or remembered barcode: the item added from this search is remembered for it; a barcode under a listed
+      // store's prefix starts the search with that brand, so Walmart's own brand ranks first for whatever is typed next
+      state.learnFor = (res.kind === "unknown" || res.learned) && res.gtin && !res.badDigits && !res.noPrice ? res.gtin : null;
+      el.q.value = res.kind === "unknown" && res.store ? `${res.store.brand} ` : ""; state.query = el.q.value; el.clearBtn.hidden = !el.q.value;
+      showHome(); el.q.placeholder = "Name and size"; modals.close(dlg);
+    }
     else if (act === "close") { if (state.scanOpen && state.source === "scan") state.closeScannerAfterSheet = true; modals.close(dlg); }
   }));
   dlg.querySelectorAll("[data-rank]").forEach((b) => b.addEventListener("click", async () => {
@@ -872,7 +898,7 @@ async function liveCheck(res) {
     const when = j.checkedAt ? `at ${fmtTime(j.checkedAt)}` : "today";
     const src = liveSource(j);
     // the same sanity the pipeline applies to saved prices: a feed error never reaches a tally
-    const verdict = livePlausible(live, res.kind === "unknown" ? null : res.priceCents);
+    const verdict = livePlausible(live, res.kind === "unknown" ? null : res.priceCents, db.manifest?.priceCeiling || undefined);
     if (verdict !== "ok") {
       row.dataset.state = "none";
       row.innerHTML = `${icon("info")}<span>${esc(src)} currently lists <b>${money(live)}</b>, which ${verdict === "far" ? "differs widely from the saved price" : "is outside the expected range"}. ${res.kind === "unknown" ? "Search by name instead." : "The saved price is kept."}</span>`;
@@ -932,6 +958,8 @@ function addToTally(res) {
   const line = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, unitCents: unitCents(res), qty: state.qty, unit: res.unit, kind: res.kind, cents, at: Date.now(), key: res.key, ...(db.manifest?.fixture ? { sample: true } : {}) };
   tally.push(line);
   saveTally();
+  if (state.learnFor && res.item && (res.kind === "exact" || res.kind === "closest")) rememberMatch(state.learnFor, res.item);
+  state.learnFor = null;
   haptic(15);
   // an accidental add is undone in one tap
   toast(`Added ${money(cents)} · Tally total ${money(tallyTotal())}`, { action: "Undo", onAction: () => { tally = tally.filter((t) => t.id !== line.id); saveTally(); }, ms: 4000, page: true });
@@ -1026,7 +1054,7 @@ function refreshRecent() {
     let changed = false;
     for (const r of recent) {
       if (!r.code || r.version === db.version) continue;
-      const res = await resolveCode(db, r.code, undefined, { preferId: r.id }).catch(() => null);
+      const res = await resolveCode(db, r.code, undefined, resolveOpts({ preferId: r.id })).catch(() => null);
       if (!res || res.priceCents == null || res.kind === "unknown" || res.kind === "not-ready") continue;
       // the key follows the kind (a live entry the list now knows becomes an exact one), so reopening it never adds a twin
       Object.assign(r, { key: res.key, kind: res.kind, priceCents: res.priceCents, unit: res.unit, title: res.kind === "exact" || res.kind === "closest" ? titleOf(res.item) : res.title, id: res.item?.id ?? r.id, rank: res.item?.rank ?? r.rank, version: db.version });
@@ -1399,7 +1427,8 @@ async function onScanHit(hit) {
   el.scanner.classList.add("is-hit");
   el.scanHint.textContent = `Scanned ${formatGtin(hit.gtin?.gtin14 || hit.raw)}`;
   let res = null;
-  try { res = await resolveCode(db, hit.raw, hit.format, { scanned: true }); } catch (err) { console.warn("resolve", err); }
+  state.learnFor = null;
+  try { res = await resolveCode(db, hit.raw, hit.format, resolveOpts({ scanned: true })); } catch (err) { console.warn("resolve", err); }
   if (!state.scanOpen) return;
   if (!res) { el.scanHint.textContent = "This is not a product barcode"; setTimeout(resumeScan, 900); return; }
   if (res.kind === "not-ready") { el.scanHint.textContent = "The price list is still loading"; setTimeout(resumeScan, 1200); return; }

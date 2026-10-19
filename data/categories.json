@@ -197,8 +197,8 @@
     "max_price": 100
   },
   "consumable_rules": {
-    "note": "Consumable departments (2026-10-13): a price above max_price (USD) is a listing error, not a donation (an anti-diarrheal at $1,600.52); rejected rows count as consumable_over_cap in stats.json.",
-    "max_price": 500
+    "note": "Consumable departments: a price above max_price (USD) is not a donation (owner, 2026-10-19: nothing a food bank receives costs anywhere near the $460.58 allergy tablets that showed; 2026-10-13: an anti-diarrheal at $1,600.52). Rejected rows count as consumable_over_cap in stats.json; a scanned item above the cap still gets a live Walmart price when online, and the app treats a live price above either cap as implausible.",
+    "max_price": 150
   },
   "exclude_path_keywords": [
     "/tobacco"
