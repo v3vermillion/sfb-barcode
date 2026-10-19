@@ -47,8 +47,31 @@ PACK_NOUNS = re.compile(r"(?<![\w.])(\d+)\s*-?\s*(?:count|ct|cnt|bars?|bottles?|
                         r"k-?cups?|capsules?|sticks?|sachets?)\b\.?", re.I)
 TOTAL = re.compile(r"(?<![\w.])(\d+)\s+total(?:\s+(?:count|ct|pieces?|pcs|wipes|packets?|pods|k-?cups|bars|bags|sticks|"
                    r"servings|capsules|cups|units?|drinks)\b|(?!\s*[a-z]))", re.I)      # "(144 Total Pieces)", "270 Total"
+# a count behind one or two dosage-form words, for what pharmacy goods are counted in: "24 Extended Release Tablets",
+# "100 Vegetarian Capsules", "60 Chewable Tablets". Only those words: "Tums Extra Strength 750 Assorted Fruit Chewable
+# Tablets" (a strength), "Pepto Bismol 5 Symptom Relief Chewable Tablets" and "24 Hour Allergy Tablets" stay unsized;
+# a number of COUNT_WORDS_MAX or more is a strength too ("Tylenol 650 Extended Release Caplets"): a count that large is
+# always written as "500 Tablets" or "500 Count", which the plain count rules read first
+COUNT_WORDS = re.compile(r"(?<![\w.])(\d+)\s+(?:(?:extended|delayed|immediate|timed?|controlled|rapid|quick|fast|easy)[\s-]?"
+                         r"(?:release|dissolve|dissolving|acting|swallow)|vegetarian|veggie|vegan|chewable|coated|enteric|enteric[\s-]coated|"
+                         r"film[\s-]coated|sugar[\s-]free|gluten[\s-]free|dissolvable|disintegrating|orally|sublingual|liquid|mini|soft|"
+                         r"gel|effervescent|sustained)\s+(?:[a-z\-]+\s+)?"
+                         r"(?:tablets?|capsules?|caplets?|softgels?|gelcaps?|gel[\s-]?tabs?|gummies|lozenges?|chewables?)\b", re.I)
+# a gallon or quart figure on trash, storage or freezer bags and can liners is their capacity, not the quantity:
+# "13 Gallon Trash Bags, 40 Count" is 40 bags (2026-10-19; it used to read as 13 gal in a pack of 40). Only those bag
+# kinds: "Potting Mix, 8 Quart, 2 Bags" is two 8-quart bags of soil
+COUNT_WORDS_MAX = 300
+CAPACITY_RX = re.compile(r"\b(?:(?:trash|garbage|kitchen|lawn|leaf|yard|compactor|contractor|recycling|drawstring|flap[\s-]?tie|"
+                         r"twist[\s-]?tie|storage|freezer|sandwich|snack|zipper|slider|vacuum|seal(?:er)?|zip|sous\s+vide|"
+                         r"gallon|quart|pint|tall|small|large|medium)\s+(?:[a-z\-]+\s+){0,2}bags?|(?:can|trash|garbage)\s+liners?|liners?)\b", re.I)
 OF_EACH = re.compile(r"(?<![\w.])(\d+)\s*(?:packs?|boxes|bags|cartons|cases|pk)\s+(?:of|with)\s+(\d+)\b", re.I)
 WRAPPER = re.compile(r"^\s*\((\d+)\s*pack\)", re.I)       # Walmart's multipack listing: "(6 pack) <one unit's name>"
+# Walmart's bundle listings (2026-10-19): a name that starts with one or more "(N pack)" / "(N pk)" / "(N-Pack)" wrappers
+# is N units of the item named after them, priced for all N. pack_listing() strips the wrappers and gives the count;
+# normalize() then prices the row at 1/N (flag `pack_listing`, the listing's own price and count kept in
+# `listing_price` and `listing_pack`), and process.build() drops it when a plain listing of the same item exists.
+PACK_LISTING_RX = re.compile(r"^\s*(?:\(\s*\d+\s*-?\s*(?:pack|pk)\s*\)\s*)+", re.I)
+PACK_LISTING_N_RX = re.compile(r"\(\s*(\d+)\s*-?\s*(?:pack|pk)\s*\)", re.I)
 DOZEN = re.compile(r"\b(?:(\d+|a|one|two|three|four|five|six)\s+)?dozen\b", re.I)
 POUND_SIGN = re.compile(r"(?<![\w.#])(\d+(?:\.\d+)?)#(?![\w#])")                  # "Strawberries 1#" = 1 lb
 BARE_VOLUME = re.compile(r"\b(half[\s-]+gallon|gallon|quart|pint)\b(?!\s+glass)", re.I)  # "Eggnog, Quart"
@@ -215,6 +238,11 @@ def parse_quantity(text: str, extended: bool = True):
     sizes = [(float(q.group(1)), _unit(q.group(2))) for q in QTY.finditer(t) if _plausible(q)]
     # prefer metric-free US unit if both "11 oz (312 g)" present: first mention wins
     size, unit = (sizes[0] if sizes else (None, None))
+    if size is not None and unit in ("gal", "qt") and CAPACITY_RX.search(t):
+        c = COUNT.search(t) or COUNT_EXT.search(t)
+        if c and int(c.group(1)) > 0:
+            n = int(c.group(1))
+            return float(n), "ct", (None if pack == n else pack)
     if size is not None:
         if pack is None:
             # "3.75 oz, 6 Bars", "5 oz, 8 Cans": a container count beside a weight is a pack in either pass (it used to be
@@ -252,6 +280,10 @@ def parse_quantity(text: str, extended: bool = True):
                 return float(n), "ct", None                                    # "108 Count (6 Packs of 18)": n is the total
             return float(n), "ct", pack
     if extended:
+        c = COUNT_WORDS.search(t)
+        if c and 0 < int(c.group(1)) < COUNT_WORDS_MAX:
+            n = int(c.group(1))
+            return float(n), "ct", (None if pack == n else pack)
         d = DOZEN.search(t)
         if d:
             k = d.group(1)
@@ -316,6 +348,18 @@ def pack_options(text: str):
     return sorted(opts)
 
 
+def pack_listing(name: str):
+    """(the item's own name, N) for a bundle listing "(N pack) <name>", else (name, None). Repeated wrappers count once
+    ("(3 pack) (3 Pack) X" is 3); when they differ the largest is the bundle ("(2 pack) (6 Pack) Crest 4.8 oz" at
+    $20.88 is six tubes); "(0 pack)" and "(1 pack)" are feed artifacts and only stripped."""
+    m = PACK_LISTING_RX.match(name or "")
+    if not m:
+        return name, None
+    counts = [int(x) for x in PACK_LISTING_N_RX.findall(m.group(0))]
+    n = max(counts) if counts else 0
+    return name[m.end():].strip(), (n if n > 1 else None)
+
+
 def sold_each(name: str, size_field, path) -> bool:
     """True when the listing is priced per piece with no net quantity to state: produce sold each, store-made cakes,
     gift baskets, flowers and plants, cake toppers and candles. Such a row is sized by its basis (one item), not a
@@ -344,7 +388,9 @@ def variants(name: str):
 PAPER_WEIGHT_RX = re.compile(r"\b(?:cardstock|card\s+stock|paper|parchment|bond|vellum|bristol|envelopes?)\b", re.I)
 
 
-def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True):
+def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True, price=None):
+    """Why the listing is not carried, or None. `price` is the price of one unit when the listing is a bundle
+    ("(6 pack) ..." at $79.99 is six $13.33 units): the caps and the equipment rule judge that, not the bundle."""
     name = (item.get("name") or "").strip()
     path = (item.get("categoryPath") or "").lower()
     if not name or name in {"-", "."}:
@@ -356,12 +402,13 @@ def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True):
         return "third_party_seller"
     if not isinstance(item.get("salePrice"), (int, float)) or item["salePrice"] <= 0:
         return "no_price"
+    unit_price = price if isinstance(price, (int, float)) and not isinstance(price, bool) and price > 0 else item["salePrice"]
     for kw in cfg.get("exclude_path_keywords", []):
         if kw in path:
             return "excluded_category"
     # not carried at all: apparel, footwear, pet beds, alcohol, tobacco, media (docs/CATEGORIES.md)
     why = classify.exclusion(name, item.get("brandName"), item.get("categoryPath"), dept_name, item.get("upc"),
-                             item.get("salePrice"))
+                             unit_price)
     if why:
         return why
     if dept_name == "Food" and not item.get("upc") and parse_quantity(name)[0] is None and not item.get("size"):
@@ -373,12 +420,12 @@ def junk_reason(item: dict, dept_name: str, cfg: dict, consumable: bool = True):
         if rules.get("barcode_required") and not item.get("upc"):
             return "durable_without_upc"
         cap = rules.get("max_price")
-        if isinstance(cap, (int, float)) and not isinstance(cap, bool) and item["salePrice"] > cap:
+        if isinstance(cap, (int, float)) and not isinstance(cap, bool) and unit_price > cap:
             return "durable_over_cap"
     else:
         # a consumable priced like a pallet is a listing error ("Anti-Diarrheal 100 Caps" at $1,600.52), 2026-10-13
         cap = (cfg.get("consumable_rules") or {}).get("max_price")
-        if isinstance(cap, (int, float)) and not isinstance(cap, bool) and item["salePrice"] > cap:
+        if isinstance(cap, (int, float)) and not isinstance(cap, bool) and unit_price > cap:
             return "consumable_over_cap"
     return None
 
@@ -391,12 +438,18 @@ def category(item: dict, dept: dict, cfg: dict) -> str:
 
 def normalize(item: dict, dept: dict, cfg: dict):
     """Return (row, None) for a kept item, or (None, reason) for a rejected one."""
-    reason = junk_reason(item, dept["name"], cfg, dept.get("consumable", True))
+    # a bundle listing "(N pack) <item>" is N units of the item, priced for all N: the row is the item at 1/N (its own
+    # price and count are kept beside it), so a scan or a search never answers with the price of six boxes
+    inner_name, listing_pack = pack_listing(re.sub(r"\s+", " ", item.get("name") or "").strip())
+    sale = item.get("salePrice")
+    listing_price = round(float(sale), 2) if isinstance(sale, (int, float)) and not isinstance(sale, bool) else None
+    price = round(listing_price / listing_pack, 2) if listing_price is not None and listing_pack else listing_price
+    reason = junk_reason(item, dept["name"], cfg, dept.get("consumable", True), price=price)
     if reason:
         return None, reason
-    raw_name = re.sub(r"\s+", " ", item["name"]).strip()
+    raw_name = inner_name
     name, discontinued = classify.clean_name(raw_name)
-    kind = classify.placeholder_kind(raw_name, item.get("brandName"), item.get("salePrice"))
+    kind = classify.placeholder_kind(raw_name, item.get("brandName"), price)
     key, retired, check_ok = gtin14(item.get("upc"))
     if kind and key and key[1:3] == "04":
         kind = "test"                             # a placeholder name on an internal (restricted-circulation 04x) barcode
@@ -424,7 +477,6 @@ def normalize(item: dict, dept: dict, cfg: dict):
             flags.append("size_conflict")
     if pack is None:
         pack = fp or 1
-    price = round(float(item["salePrice"]), 2)
     basis = "lb" if PER_LB.search(name) or PER_LB.search(item.get("size") or "") else "each"
     base, dim = to_base(size, unit)
     nn = classify.noun(name, item.get("categoryPath"), dept, cfg)
@@ -459,6 +511,8 @@ def normalize(item: dict, dept: dict, cfg: dict):
         flags.append("placeholder")               # barcode lookup only: kept out of typed search and the size-parse rate
     if discontinued:
         flags.append("discontinued")
+    if listing_pack:
+        flags.append("pack_listing")             # one unit of a "(N pack)" bundle listing: listing_price / listing_pack
     brand = item.get("brandName")
     row = {
         "id": item["itemId"], "upc": key, "name": name, "brand": brand,
@@ -473,6 +527,8 @@ def normalize(item: dict, dept: dict, cfg: dict):
     reviews = item.get("numReviews")
     if isinstance(reviews, int) and not isinstance(reviews, bool) and reviews > 0:
         row["reviews"] = reviews               # popularity, for search ranking in the app (absent on older crawls)
+    if listing_pack:
+        row["listing_price"], row["listing_pack"] = listing_price, listing_pack
     if len(options) > 1:
         row["pack_options"] = options          # resolved and removed by process.build()
     if nn:

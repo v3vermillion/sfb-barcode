@@ -54,9 +54,9 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Store price label | barcode starting with 2 (scale labels: meat, deli, bakery) | price decoded from the barcode, GS1 verifier checked |
 | Produce code | 4-digit PLU (and 9xxxx organic) | produce name, price per lb or each, weight stepper |
 | Equivalent value | barcode Walmart doesn't sell, present in the equivalents table | estimated price, confidence, the Walmart basis item (tappable) |
-| Closest match | the search had to drop a word to find anything | nearest item, the ignored word named |
+| Closest match | the search had to drop a word to find anything; or it named another chain's store brand (Walmart's own brand shown as the equivalent); or a remembered match (a barcode this phone matched by name before, "Not this item? Search by name" to correct it) | nearest item, the ignored word or the brand named |
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
-| Not in database | unknown barcode, nothing online | "Find it by name" (search focused) — never a silent blank |
+| Not in database | unknown barcode, nothing online | "Search by name" (search focused; a barcode under a listed store's prefix is named by its store and the brand is typed in) — never a silent blank; the item added from that search is remembered for the barcode on this phone (`sfb.learned.v1`, 500 most recent) |
 
 Also: the home screen reads top-down and fills exactly the screen between the header and the dock: the food bank's
 name with 1 John 4:19, a **status card** only when there is something to know or do (downloading with progress, more
@@ -97,11 +97,12 @@ crawl of 2026-10-09 (2.1M items) is 114 MB over the wire, 63 MB of it in the *co
 | file | contents |
 |---|---|
 | `<version>/manifest.json` | snapshot facts + `shards[]`: id, name, tier (`core` = consumable departments, `more` = durables), departments, item and token counts, and the path, size and gzip size of each shard file |
-| shard `cols` | per-item columns in the shard's rank order: price (u32 cents: what the app shows), size (f32), pack (u16), unit, basis, flags, category (u8), Walmart id (f64), GTIN-14 (f64), flags2 (u8: placeholder, price withheld, discontinued, value confidence, store price, unit suspect), value basis and Walmart's own price of a withheld item. Placeholders are in the UPC index but never in the token index |
+| shard `cols` | per-item columns in the shard's rank order: price (u32 cents: what the app shows), size (f32), pack (u16), unit, basis, flags, category (u8), Walmart id (f64), GTIN-14 (f64), flags2 (u8: placeholder, price withheld, discontinued, value confidence, store price, unit suspect, pack listing), value basis and Walmart's own price of a withheld item (or, for one unit of a "(N pack)" bundle listing, the bundle's own price). Placeholders are in the UPC index but never in the token index |
 | shard `strings` | `brand\x1Fname` blobs with offset tables, split so no file exceeds Cloudflare's 25 MiB limit |
 | shard `upc` | sorted GTIN-14 keys → rank, primary listing first for each barcode |
 | shard `tokens` | sorted dictionary + varint-delta posting lists + each token's home category, then *head postings*: the items whose head noun (what the listing is: "Bananas", not "Banana Pudding") is exactly that word |
 | `<version>/equiv.bin.gz` | equivalents: GTIN → estimated price, confidence, basis item (`shard << 24 \| rank`), name/quantity |
+| (cols.bin, trailing) | `listingPack u16[N]`: the N of a "(N pack)" bundle listing, since 2026-10-19; an older pack derives it from the two prices |
 | `<version>/plu.json` | PLU → produce name, unit, price and the matching produce item (`{shard, rank}`) |
 
 An item's id in the app is `shard × 2^24 + rank`. Items inside a shard are in *rank order* (primary listing, store
@@ -128,7 +129,9 @@ expansions, AND the words in every shard, then collect about 400 candidates in a
 proportion to their matches (at least 40 each), head-noun matches first for up to half of each shard's share. Score
 them (exact word > prefix, the whole brand named, size/pack number match, words adjacent in the name, the word's
 home department, the item's head noun named, the plain item, coverage of the item's content words, store brand;
-retired, out-of-stock and multipacks pushed down) and return 40. A word that matches nothing gets one-edit
+retired, out-of-stock and multipacks pushed down) and return 40. A run of query words that is another chain's store
+brand (the manifest's `brands`, from data/brands.json) is set aside, named in the result (`otherBrand`), and Walmart's
+own-brand items rank first among the matches for the rest. A word that matches nothing gets one-edit
 alternatives; if the AND is empty the most common word whose removal leaves results is dropped and the result is
 flagged. The main thread renders 12 rows synchronously and the rest on the next idle slice;
 off-screen rows skip layout via `content-visibility`.
@@ -191,8 +194,8 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 - Sample → real: tally lines and recents made on the synthetic fixture carry `sample: true`; the first load of a real
   snapshot drops them and says so once, so sample prices never mix into a real tally.
 - Online: `current.json` is checked; a new snapshot is fetched in the background and applied when idle.
-- Price list date: the header pill ("Updated Oct 13") and every sheet carry the snapshot's date. From 14 days a banner
-  under the header says "Price list is N days old" (amber), from 45 days "Price list may be out of date" (red), with an **Update now**
+- Price list date: the header pill ("Updated Oct 13") and every sheet carry the snapshot's date. From 40 days a banner
+  under the header says "Price list is N days old" (amber), from 60 days "Price list may be out of date" (red; the list is rebuilt monthly), with an **Update now**
   button that checks, downloads and applies the newest snapshot (`js/staleness.js`; thresholds pinned by
   `tests/staleness.test.mjs`). It is re-evaluated on every database state change, when the app returns to the
   foreground, when the network comes back and hourly; the dock never moves. No Web Push.

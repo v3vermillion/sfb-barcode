@@ -144,8 +144,12 @@ class T(unittest.TestCase):
                 "size": "15 oz", "salePrice": 4.0, "upc": "464583029559", "categoryPath": "Home Page/Food/Pantry/Canned goods/Canned vegetables/Canned corn"}
         row, why = N.normalize(item, FOOD, CFG)
         self.assertIsNone(why)
-        self.assertEqual((row["size"], row["unit"], row["pack"], row["cat"]), (15.25, "oz", 8, "6"))
-        self.assertAlmostEqual(row["unit_price"], 4.0 / (15.25 * 8), places=4)
+        # a "(8 pack)" bundle listing is eight units of the can: the row is one can at 1/8 of the bundle's price (2026-10-19)
+        self.assertEqual((row["size"], row["unit"], row["pack"], row["cat"]), (15.25, "oz", 1, "6"))
+        self.assertEqual((row["name"], row["price"], row["listing_price"], row["listing_pack"]),
+                         ("Great Value Golden Sweet Whole Kernel Corn, 15.25 oz", 0.5, 4.0, 8))
+        self.assertIn("pack_listing", row["flags"])
+        self.assertAlmostEqual(row["unit_price"], 0.5 / 15.25, places=4)
         self.assertTrue(row["store_brand"])
         row2, _ = N.normalize({"itemId": 2, "name": "Diet Mountain Dew Soda, 12 fl oz, 12 Pack Cans", "salePrice": 6.48,
                                "categoryPath": "Home Page/Food/Beverages/Soda"}, FOOD, CFG)
@@ -206,7 +210,7 @@ class Decisions20261008(unittest.TestCase):
 
     def test_test_listings_and_store_displays_are_not_carried(self):
         for name, price, why in (("Signing Test 3178 Dummy Stress Test", 15.77, "test_listing"),
-                                 ("14pc Delsym Pdq", 151.76, "store_display")):
+                                 ("14pc Delsym Pdq", 99.76, "store_display")):
             row, reason = N.normalize(self.item(name, price=price), FOOD, CFG)
             self.assertIsNone(row); self.assertEqual(reason, why, name)
         # a placeholder name on an internal (restricted-circulation 4-prefix) barcode is a test listing
@@ -220,11 +224,36 @@ class Decisions20261008(unittest.TestCase):
         row, _ = N.normalize(self.item("Great Value Corn, 15 oz", upc="406727352130"), FOOD, CFG)
         self.assertNotIn("placeholder", row["flags"], "a real product name on a 4-prefix barcode is a product")
 
+    def test_baby_furniture_and_gear_are_not_carried(self):
+        # 2026-10-19 (owner): baby furniture is no part of a food bank; diapers, formula, bath and bedding stay
+        def it(path, name="Thing", price=20.0):
+            return {"name": name, "salePrice": price, "upc": "078742054261", "categoryPath": path, "sellerInfo": "Walmart.com"}
+        # furniture, decor and equipment are no part of a food bank's donations (owner)
+        for path, dept in (("Home Page/Baby/Nursery & Decor/Baby Cribs", "Baby"), ("Home Page/Baby/Nursery & Decor/Gliders & Rocking Chairs", "Baby"),
+                           ("Home Page/Baby/Nursery & Decor/Baby Decor", "Baby"), ("Home Page/Baby/Toddlers' Room/Toddler Furniture", "Baby"),
+                           ("Home Page/Baby/Nursery & Decor/Changing Tables", "Baby"), ("Home Page/Baby/Baby Travel Gear/Strollers", "Baby"),
+                           ("Home Page/Baby/Car Seats/Infant Car Seats", "Baby"), ("Home Page/Baby/Baby Activities & Gear/Baby Swings", "Baby"),
+                           ("Home Page/Baby/Feeding/High Chairs & Booster Seats", "Baby"), ("Home Page/Pets/Dogs/Dog Houses", "Pets"),
+                           ("Home Page/Pets/Dogs/Dog Crates", "Pets"), ("Home Page/Pets/Fish Supplies/Fish Tanks", "Pets"), ("Home Page/Pets/Chickens/Chicken Coops", "Pets"),
+                           ("Home Page/Health and Medicine/Home Health Care/Wheelchair Ramps", "Health and Medicine")):
+            self.assertEqual(N.junk_reason(it(path), dept, CFG), "excluded_category", path)
+        # diapers, formula, bath, bedding, baby proofing, toys, pet food and the health goods the 2026-10-08 decision keeps stay
+        for path, dept in (("Home Page/Baby/Diapering/Diapers", "Baby"), ("Home Page/Baby/Feeding/Baby Food", "Baby"), ("Home Page/Baby/Feeding/Enfamil Baby Formula", "Baby"),
+                           ("Home Page/Baby/Baby Bath & Skin Care/Baby Bath", "Baby"), ("Home Page/Baby/Nursery & Decor/Baby Bedding", "Baby"),
+                           ("Home Page/Baby/Health & Safety/Baby Proofing", "Baby"), ("Home Page/Baby/Baby & Toddler Toys/Baby Teethers", "Baby"),
+                           ("Home Page/Pets/Dogs/Dog Food", "Pets"), ("Home Page/Pets/Cats/Cat Litter", "Pets"), ("Home Page/Health and Medicine/Home Health Care/Bath Safety", "Health and Medicine")):
+            self.assertIsNone(N.junk_reason(it(path), dept, CFG), path)
+
     def test_a_consumable_priced_like_a_pallet_is_a_listing_error(self):
         pills = {"name": "Estomicina Anti - Diarrheal - Anti-diarreico 100 Caps (Pack of 1)", "salePrice": 1600.52, "upc": "078742054261",
                  "categoryPath": "Home Page/Health and Medicine/Digestive Health", "sellerInfo": "Walmart.com"}
         self.assertEqual(N.junk_reason(pills, "Health and Medicine", CFG), "consumable_over_cap")
         self.assertIsNone(N.junk_reason(dict(pills, salePrice=16.52), "Health and Medicine", CFG))
+        # 2026-10-19 (owner): nothing a food bank receives costs anywhere near $460.58; the consumable cap is $150
+        self.assertEqual(CFG["consumable_rules"]["max_price"], 150)
+        aller = dict(pills, name="Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", salePrice=460.58)
+        self.assertEqual(N.junk_reason(aller, "Health and Medicine", CFG), "consumable_over_cap")
+        self.assertIsNone(N.junk_reason(dict(aller, salePrice=149.99), "Health and Medicine", CFG))
 
     def test_paper_basis_weight_is_not_a_size(self):
         row, _ = N.normalize(self.item("LUXPaper 8 1/2 x 11 Cardstock, 65 lb. Cream Parchment, 50/Pack", upc="078742054261"), FOOD, CFG)
@@ -235,6 +264,55 @@ class Decisions20261008(unittest.TestCase):
     def test_apparel_found_under_food_is_not_carried(self):
         _, why = N.normalize(self.item("White Stag® Long Sleeve Ribbed Turtleneck", path="Home Page/Food/Fresh Food"), FOOD, CFG)
         self.assertEqual(why, "apparel")
+
+
+class PackListings20261019(unittest.TestCase):
+    """Decision of 2026-10-19: a "(N pack)" bundle listing is N units of the item, priced for all N."""
+
+    def item(self, name, price, **kw):
+        it = {"itemId": 7, "name": name, "brandName": kw.pop("brand", "Hefty"), "salePrice": price,
+              "upc": kw.pop("upc", None), "categoryPath": kw.pop("path", "Home Page/Household Essentials/Paper & Plastic/Trash Bags")}
+        it.update(kw)
+        return it
+
+    def test_pack_listing_reads_the_wrappers(self):
+        self.assertEqual(N.pack_listing("(6 pack) Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags"), ("Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", 6))
+        self.assertEqual(N.pack_listing("(3 pack) (3 Pack) Hershey's Instant Pudding, 3.56 Oz"), ("Hershey's Instant Pudding, 3.56 Oz", 3), "a repeated wrapper counts once")
+        self.assertEqual(N.pack_listing("(2 pack) (6 Pack) Crest Cavity Protection Toothpaste 6.4 oz."), ("Crest Cavity Protection Toothpaste 6.4 oz.", 6), "the largest count is the bundle")
+        self.assertEqual(N.pack_listing("(0 pack) (17 Pack) Lay's Stax, 5.75 Oz"), ("Lay's Stax, 5.75 Oz", 17))
+        self.assertEqual(N.pack_listing("(1 pack) Old El Paso Refried Beans, 16 oz Can"), ("Old El Paso Refried Beans, 16 oz Can", None), "(1 pack) is only stripped")
+        self.assertEqual(N.pack_listing("(48 pk) Knorr Chicken Bouillon Cubes, 2.2 oz"), ("Knorr Chicken Bouillon Cubes, 2.2 oz", 48))
+        self.assertEqual(N.pack_listing("(2-Pack) Mederma Advanced Scar Gel, 1.76 oz."), ("Mederma Advanced Scar Gel, 1.76 oz.", 2))
+        self.assertEqual(N.pack_listing("Great Value Corn, 15.25 oz (6 pack)"), ("Great Value Corn, 15.25 oz (6 pack)", None), "only a leading wrapper is a bundle listing")
+        self.assertEqual(N.pack_listing(""), ("", None))
+
+    def test_a_bundle_listing_is_one_unit_at_a_share_of_its_price(self):
+        hh = next(d for d in CFG["departments"] if d["name"] == "Household Essentials")
+        row, why = N.normalize(self.item("(6 pack) Hefty Ultra Strong 13 Gallon Trash Bags, Tall Kitchen Trash Bags, Blackout, 40 Bags", 79.99), hh, CFG)
+        self.assertIsNone(why)
+        self.assertEqual(row["name"], "Hefty Ultra Strong 13 Gallon Trash Bags, Tall Kitchen Trash Bags, Blackout, 40 Bags")
+        self.assertEqual((row["price"], row["listing_price"], row["listing_pack"]), (13.33, 79.99, 6))
+        self.assertIn("pack_listing", row["flags"])
+        self.assertEqual(row["pack"], 1, "the bundle count is never the row's pack")
+        plain, _ = N.normalize(self.item("Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", 10.52), hh, CFG)
+        self.assertNotIn("pack_listing", plain["flags"]); self.assertNotIn("listing_price", plain)
+
+    def test_the_caps_and_the_equipment_rule_judge_one_unit(self):
+        toys = next(d for d in CFG["departments"] if d["name"] == "Toys")
+        bundle = self.item("(12 pack) Play-Doh Modeling Compound, 4 oz Can", 150.0, brand="Play-Doh", upc="035000510099", path="Home Page/Toys/Arts & Crafts")
+        row, why = N.normalize(bundle, toys, CFG)
+        self.assertIsNone(why, "twelve cans at $12.50 each are under the durable cap, although the bundle is not")
+        self.assertEqual(row["price"], 12.5)
+        over = self.item("(2 pack) Giant Play Kitchen", 350.0, brand="Step2", upc="035000510099", path="Home Page/Toys/Pretend Play")
+        self.assertEqual(N.normalize(over, toys, CFG)[1], "durable_over_cap", "a $175 unit is over the cap")
+        health = next(d for d in CFG["departments"] if d["name"] == "Health and Medicine")
+        chairs = self.item("(2 pack) Massage Chair Recliner", 180.0, brand="Acme", path="Home Page/Health and Medicine/Home Health Care")
+        self.assertIsNone(N.normalize(chairs, health, CFG)[1], "a $90 unit is not large equipment (the rule starts at $100)")
+
+    def test_a_placeholder_bundle_is_judged_on_its_unit_price(self):
+        hh = next(d for d in CFG["departments"] if d["name"] == "Household Essentials")
+        row, why = N.normalize(self.item("(12 pack) coming soon", 45.84, upc="078742054261"), hh, CFG)
+        self.assertIsNone(why); self.assertIn("placeholder", row["flags"]); self.assertEqual(row["price"], 3.82)
 
 
 if __name__ == "__main__":
@@ -253,6 +331,36 @@ class HygieneAndContainerCounts(unittest.TestCase):
                         ("Parent's Choice Diapers, Size 3, 36 Diapers", 36), ("Equate Ibuprofen 200 mg, 100 Tablets", 100),
                         ("Bounty Paper Towels, 6 Triple Rolls", 6)]:
             self.assertEqual(N.parse_quantity(name)[:2], (float(n), "ct"), name)
+
+    def test_a_gallon_figure_on_bags_is_their_capacity_not_the_size(self):
+        # 2026-10-19: "13 Gallon Trash Bags, 40 Count" used to read as 13 gal in a pack of 40
+        for name, want in [("Hefty Ultra Strong 13 Gallon Tall Kitchen Trash Bags, Blackout, 40 Bags", (40.0, "ct", None)),
+                           ("Glad ForceFlex 30 Gallon Large Drawstring Trash Bags, 28 Count", (28.0, "ct", None)),
+                           ("Glad 13 Gal Trash Bags (40 Count)", (40.0, "ct", None)),
+                           ("FoodSaver Vacuum Seal Bags, 1 Quart, 16 Count", (16.0, "ct", None)),
+                           ("Lawn & Leaf Trash Bags, 55 Gallon, 50 Count, 2 Pack", (50.0, "ct", 2)),
+                           ("Great Value Whole Milk, 1 Gallon", (1.0, "gal", None)),                  # a liquid: the gallon is the size
+                           ("(4 pack) Borden Fruit Punch, 1 Gallon Jug", (1.0, "gal", 4)),
+                           ("Burpee Organic Potting Mix, 8 Quart, 2 Bags", (8.0, "qt", None)),      # bags of soil: the quart is the size
+                           ("Hefty 2.5 Gallon Jumbo Storage Slider Bags, 12 Count", (12.0, "ct", None)),
+                           ("Sterilite 30 Gal. Tote Box, Case of 6", (30.0, "gal", 6))]:            # a tote is not a bag
+            self.assertEqual(N.parse_quantity(name), want, name); self.assertEqual(N.parse_quantity(name, extended=False), want, name)
+
+    def test_a_count_behind_a_word_or_two_is_read_for_pharmacy_goods(self):
+        for name, want in [("Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", (24.0, "ct", None)),
+                           ("Nature Made Vitamin D3 2000 IU, 100 Softgels", (100.0, "ct", None)),
+                           ("Spring Valley Biotin 60 Vegetarian Capsules, 2 Pack", (60.0, "ct", 2)),
+                           ("Equate Allergy Relief 30 Coated Tablets", (30.0, "ct", None)),
+                           ("Claritin 24 Hour Allergy Tablets", (None, None, None)),                 # a duration, not a count
+                           ("Equate Ibuprofen 200 mg Tablets", (None, None, None)),                  # a strength
+                           ("Tums Extra Strength 750 Assorted Fruit Chewable Tablets", (None, None, None)),   # a strength before other words
+                           ("Tylenol 8 HR Arthritis Pain 650 Extended Release Caplets", (None, None, None)),  # a strength of 300 or more
+                           ("Bayer Back & Body 500 Extra Strength Caplets", (None, None, None)),
+                           ("Pepto Bismol 5 Symptom Relief Chewable Tablets", (None, None, None)),   # not a dosage-form word
+                           ("Culturelle Digestive Daily 10 Billion CFU Capsules", (None, None, None)),
+                           ("Hyland's 4 Kids Cold Tablets", (None, None, None)),
+                           ("Zyrtec 24 Hour Allergy Relief Tablets, 30 Count", (30.0, "ct", None))]:  # a stated count wins
+            self.assertEqual(N.parse_quantity(name), want, name)
 
     def test_a_count_read_as_the_size_is_not_also_a_pack(self):
         row, why = N.normalize({"itemId": 1, "upc": "037000978172", "name": "Charmin Ultra Soft Toilet Paper Mega Rolls, 12 count",
@@ -302,11 +410,17 @@ class Decisions20261012(unittest.TestCase):
         _, why = N.normalize(self.item("Lego Classic Bricks Set, 484 Pieces", upc="deleted_681131001199"), toys, CFG)
         self.assertIsNone(why, "a retired barcode is still a barcode: donors give old stock")
 
-    def test_consumable_departments_are_not_capped(self):
+    def test_consumable_departments_have_their_own_cap(self):
+        # 2026-10-12: consumables were not capped with the durables; 2026-10-19 (owner): nothing a food bank receives
+        # costs anywhere near $460.58, so consumables stop at consumable_rules.max_price ($150); a case above it is
+        # left to the live check
         row, why = N.normalize(self.item("Similac Pro-Advance Infant Formula, 30.8 oz, Case of 4",
-                                         path="Home Page/Food/Baby Food", price=180.0), FOOD, CFG)
-        self.assertIsNone(why); self.assertEqual(row["price"], 180.0)
-        self.assertIsNone(N.junk_reason(self.item("Anything", upc=None, price=500.0), "Pets", CFG, consumable=True))
+                                         path="Home Page/Food/Baby Food", price=140.0), FOOD, CFG)
+        self.assertIsNone(why); self.assertEqual(row["price"], 140.0)
+        self.assertEqual(N.normalize(self.item("Similac Pro-Advance Infant Formula, 30.8 oz, Case of 4",
+                                               path="Home Page/Food/Baby Food", price=180.0), FOOD, CFG)[1], "consumable_over_cap")
+        self.assertEqual(N.junk_reason(self.item("Anything", upc=None, price=500.0), "Pets", CFG, consumable=True), "consumable_over_cap")
+        self.assertIsNone(N.junk_reason(self.item("Anything", upc=None, price=150.0), "Pets", CFG, consumable=True))
 
     def test_crawl_scope_of_the_decision(self):
         names = {d["name"] for d in CFG["departments"]}

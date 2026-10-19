@@ -132,10 +132,14 @@ class PackResolution(unittest.TestCase):
     def test_a_reading_nothing_supports_stays_flagged(self):
         beans = "Home Page/Food/Pantry/Canned goods/Canned beans"
         raw = [item(i, f"Baked Beans, {15 + i % 3} oz Can", 1.5 + (i % 4) * 0.1, beans) for i in range(60)]
-        raw.append(item(904, "Baked Beans Deluxe, 16 oz Can", 60.0, beans))            # no pack anywhere: still flagged
-        rows, _ = self.build(raw)
-        self.assertIn("unit_price_suspect", rows[200904]["flags"])
+        raw.append(item(904, "Baked Beans Deluxe, 16 oz Can", 60.0, beans))            # no pack anywhere
+        rows, stats = self.build(raw)
         self.assertNotIn("pack_resolved", rows[200904]["flags"])
+        # 2026-10-19: $60 beside twenty in-stock 16 oz cans of the same brand and kind at about $1.60 is a stale listing,
+        # withheld and valued from a sibling (before that date the row kept its price with the per-unit price dropped)
+        self.assertTrue(rows[200904].get("price_withheld")); self.assertNotIn("unit_price_suspect", rows[200904]["flags"])
+        w = next(x for x in stats["price_withheld"] if x["id"] == 200904)
+        self.assertEqual(w["why"], "far above the same item's other variants"); self.assertLess(w["value"], 3.0)
 
 
 if __name__ == "__main__":

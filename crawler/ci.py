@@ -65,8 +65,9 @@ from . import crawl, process, qa, identify, store, storeprice
 DATA = Path(__file__).resolve().parent.parent / "data"
 SCHEDULE = DATA / "schedule.json"
 CONFIG_FILES = (DATA / "gates.json", DATA / "sentinels.json", DATA / "categories.json")
-SCHEDULE_DEFAULTS = {"full_every_days": 30, "core_every_days": 7, "audit_every_days": 7, "identify_every_days": 30,
-                     "sizing_every_days": 30, "stale_days": 14, "budget_min": 300}
+SCHEDULE_DEFAULTS = {"full_every_days": 30, "core_every_days": 30, "audit_every_days": 7, "identify_every_days": 30,
+                     "sizing_every_days": 30, "stale_days": 45, "budget_min": 300,
+                     "rollback_pause_days": 7}
 KINDS = ("size", "crawl", "build", "recheck", "start-full", "start-core", "start-refresh", "audit", "identify", "store", "none")
 PLANS = ("continue", "full", "core", "approve", "identify", "audit", "size", "status", "peek", "finish", "rollback", "store")
 # gates.json statuses that mean "held, waiting for a decision" (new qa: hold; old qa: needs_review / awaiting_approval)
@@ -411,9 +412,10 @@ def decide(state, manifest, sizing, audit_latest, gates, cfg, now, *, current_ha
     age = age_days(manifest.get("published"), now) if manifest else None
     # weekly core publishes keep `published` young, so the monthly full crawl keys off the last full publish
     full_age = age_days(manifest.get("full_published") or manifest.get("published"), now) if manifest else None
-    # a rollback holds new crawl starts for one core period, so the restored prices stay live while the cause is fixed
+    # a rollback holds new crawl starts for rollback_pause_days (a week), so the restored prices stay live while the
+    # cause is fixed (it used to be one core period, which the monthly cadence of 2026-10-19 would have made a month)
     since_rollback = age_days(manifest.get("rolled_back_at"), now) if manifest else None
-    paused = since_rollback is not None and since_rollback <= cfg["core_every_days"]
+    paused = since_rollback is not None and since_rollback <= cfg.get("rollback_pause_days", 7)
     if scope:
         # per-department cadence (crawler/cadence.py): refresh what is older than its interval, all of it = a full crawl
         due, all_due = due_departments(manifest, cadence, cfg, scope, now)

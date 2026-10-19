@@ -16,11 +16,13 @@
 // format 2 (all integers little-endian, arrays 8-byte aligned, every .bin gzipped as a whole):
 //   cols.bin     "SFBC" u32 N | price u32[N] cents | size f32[N] | pack u16[N] | unit u8[N] | basis u8[N] | flags u8[N] | cat u8[N] | id f64[N] | upc f64[N]
 //                | flags2 u8[N] | valueBasis u32[N] (local rank, 0xFFFFFFFF = none) | rawPrice u32[N] cents (0 = not withheld)
+//                | listingPack u16[N] (the N of a "(N pack)" bundle listing, 0 otherwise; trailing, a pack without it derives N)
 //                price is what the app shows: Walmart's price, or for a withheld price (flags2 PRICE_WITHHELD) its
 //                equivalent value, with Walmart's own price in rawPrice; flags2 bits: 1 placeholder (barcode lookup only,
 //                never in the token index), 2 price withheld, 4 discontinued, bits 3-4 value confidence (0 rough .. 3 high),
 //                32 the price is the store's own shelf price (manifest.store names the store), not Walmart.com's,
 //                64 the price is far from comparable items by size (unit_price_suspect: often a case listed as one)
+//                128 one unit of a "(N pack)" bundle listing (pack_listing): rawPrice then holds the bundle's own price
 //   strings-K    "SFBS" u32 count u32 firstRank | offsets u32[count+1] | utf8 bytes of "brand\x1Fname" per item
 //   upc.bin      "SFBU" u32 M | keys f64[M] sorted (GTIN-14 as a number; primary row first within a key) | ranks u32[M]
 //   tokens.bin   "SFBT" u32 T u32 postingBytes | dictOff u32[T+1] | dict utf8 (tokens in byte order) | postOff u32[T+1] | postings (varint deltas of ascending ranks) | tokCat u8[T] (dominant category, 0 = none)
@@ -47,7 +49,7 @@ const TO_FLOZ = { "fl oz": 1, ml: 0.033814, l: 33.814, gal: 128, qt: 32, pt: 16 
 const F = { RETIRED: 1, NO_SIZE: 2, PROMO: 4, CARRIED: 8, STORE_BRAND: 16, PRIMARY: 32, SIZE_CONFLICT: 64, UNAVAILABLE: 128 };
 const CORE_DEPTS = new Set(["Food", "Health and Medicine", "Pharmacy", "Personal Care", "Beauty", "Baby", "Pets", "Household Essentials"]);
 const CONF = { low: 0, medium: 1, high: 2 };
-const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64 };
+const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64, PACK_LISTING: 128 };
 const VALUE_CONF = { rough: 0, low: 1, medium: 2, high: 3 };
 const NO_RANK = 0xFFFFFFFF;
 
@@ -98,7 +100,8 @@ const FORMAT_VERSION = 3;
 const packHash = crypto.createHash("sha256").update(`sfb-pack/${FORMAT_VERSION}\n`);
 const CATEGORIES_FILE = path.join(APP, "..", "data", "categories.json");
 const STORE_FILE = path.join(APP, "..", "data", "store.json");
-for (const f of [fileURLToPath(import.meta.url), path.join(APP, "public", "js", "tokenize.js"), path.join(STORE, "identify", "equivalents.jsonl.gz"), CATEGORIES_FILE, STORE_FILE]) {
+const BRANDS_FILE = path.join(APP, "..", "data", "brands.json");
+for (const f of [fileURLToPath(import.meta.url), path.join(APP, "public", "js", "tokenize.js"), path.join(STORE, "identify", "equivalents.jsonl.gz"), CATEGORIES_FILE, STORE_FILE, BRANDS_FILE]) {
   const parts = jsonlFiles(f);
   packHash.update(parts.length ? Buffer.concat(parts.map((p) => fs.readFileSync(p))) : Buffer.from("none")).update("\n");
 }
@@ -124,6 +127,8 @@ for await (const r of jsonlGz(path.join(pubDir, srcManifest.file || "items.jsonl
   if (flags.includes("discontinued")) bits2 |= F2.DISCONTINUED;
   if (flags.includes("store_price")) bits2 |= F2.STORE_PRICE;
   if (flags.includes("unit_price_suspect")) bits2 |= F2.UNIT_SUSPECT;
+  const packListing = flags.includes("pack_listing") && Number(r.listing_price) > 0 && Number(r.listing_pack) > 1;
+  if (packListing) bits2 |= F2.PACK_LISTING;
   const withheld = Boolean(r.price_withheld && r.equiv && r.equiv.price > 0);
   if (withheld) bits2 |= F2.PRICE_WITHHELD | ((VALUE_CONF[r.equiv.confidence] ?? 0) << 3);
   const name = String(r.name || "").trim();
@@ -148,7 +153,8 @@ for await (const r of jsonlGz(path.join(pubDir, srcManifest.file || "items.jsonl
   if (/^\s*\(\d+\s*pack\)/i.test(name)) score -= 0.8;   // "(6 pack) ..." multipacks after the single item a volunteer holds
   items.push({
     id: Number(r.id), upc, name, brand, price: Math.round(Number(withheld ? r.equiv.price : r.price) * 100), size: r.size == null ? 0 : Number(r.size),
-    flags2: bits2, rawPrice: withheld ? Math.round(Number(r.price) * 100) : 0, valueBasisId: withheld && r.equiv.basis_id != null ? Number(r.equiv.basis_id) : null,
+    flags2: bits2, rawPrice: withheld ? Math.round(Number(r.price) * 100) : packListing ? Math.round(Number(r.listing_price) * 100) : 0,
+    listingPack: packListing ? Math.min(0xFFFF, Math.round(Number(r.listing_pack))) : 0, valueBasisId: withheld && r.equiv.basis_id != null ? Number(r.equiv.basis_id) : null,
     unit: UNIT[r.unit] || 0, unitName: r.unit || null, pack: Math.min(65535, Number(r.pack) || 1), basis: r.basis === "lb" ? 1 : 0,
     cat: Number(r.cat) || 0, flags: bits, score, dept: r.dept || "Other",
   });
@@ -240,15 +246,15 @@ function writeShard(sh, si) {
   { // columns
     const price = new Uint32Array(n), size = new Float32Array(n), pack = new Uint16Array(n), unit = new Uint8Array(n),
       basis = new Uint8Array(n), flags = new Uint8Array(n), cat = new Uint8Array(n), id = new Float64Array(n), upc = new Float64Array(n);
-    const flags2 = new Uint8Array(n), valueBasis = new Uint32Array(n).fill(NO_RANK), rawPrice = new Uint32Array(n);
+    const flags2 = new Uint8Array(n), valueBasis = new Uint32Array(n).fill(NO_RANK), rawPrice = new Uint32Array(n), listingPack = new Uint16Array(n);
     for (let i = 0; i < n; i++) {
       const it = its[i];
       price[i] = it.price; size[i] = it.size; pack[i] = it.pack; unit[i] = it.unit; basis[i] = it.basis; flags[i] = it.flags; cat[i] = it.cat; id[i] = it.id; upc[i] = it.upc;
-      flags2[i] = it.flags2; rawPrice[i] = Math.min(0xFFFFFFFF, it.rawPrice);
+      flags2[i] = it.flags2; rawPrice[i] = Math.min(0xFFFFFFFF, it.rawPrice); listingPack[i] = it.listingPack || 0;
       const w = it.valueBasisId != null ? where.get(it.valueBasisId) : null;
       if (w && w[0] === si) valueBasis[i] = w[1];               // a basis in another shard is shown without its card
     }
-    files.cols = writeFile("cols.bin", concatAligned([header("SFBC", n), ...[price, size, pack, unit, basis, flags, cat, id, upc, flags2, valueBasis, rawPrice].map((a) => Buffer.from(a.buffer))]));
+    files.cols = writeFile("cols.bin", concatAligned([header("SFBC", n), ...[price, size, pack, unit, basis, flags, cat, id, upc, flags2, valueBasis, rawPrice, listingPack].map((a) => Buffer.from(a.buffer))]));
   }
   { // names, in parts of at most ~40 MB raw
     const SHARD_BYTES = 40 * 1048576;
@@ -388,6 +394,22 @@ const manifest = {
   tokens: shardMeta.reduce((a, m) => a + m.tokens, 0), postings: shardMeta.reduce((a, m) => a + m.postings, 0),
   fixture: Boolean(srcManifest.fixture), gatesPassed: srcManifest.gates_passed ?? null, approvedManually: srcManifest.approved_manually ?? null,
   categories: catCfg.categories || null,
+  // the other chains' store brands (data/brands.json): a typed brand ranks Walmart's own brand first, a scanned barcode under
+  // a listed company prefix is named by its store; and the price above which nothing is in this list (the live check
+  // treats a Walmart price above it as implausible)
+  ...(() => {
+    const title = (s) => String(s).replace(/(^|[\s(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+    try {
+      const b = JSON.parse(fs.readFileSync(BRANDS_FILE, "utf8"));
+      const brands = {}, prefixes = {};
+      for (const [store, d] of Object.entries(b.stores || {})) {
+        for (const name of d.brands || []) brands[String(name).toLowerCase()] = store;
+        for (const p of d.prefixes || []) prefixes[String(p)] = { store, brand: title((d.brands || [store])[0]) };
+      }
+      return { brands, prefixes };
+    } catch { return { brands: {}, prefixes: {} }; }
+  })(),
+  priceCeiling: Math.round(100 * Math.max(Number(catCfg.consumable_rules?.max_price) || 0, Number(catCfg.durable_rules?.max_price) || 0)) || null,
   store: (() => { try { const s = JSON.parse(fs.readFileSync(STORE_FILE, "utf8")); return { id: s.store_id, name: s.name, address: s.address, label: s.label || "Strongsville Walmart" }; } catch { return null; } })(),
   storePriced: items.filter((it) => it.flags2 & F2.STORE_PRICE).length,
   shards: shardMeta,

@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from . import store
 
 DEFAULTS = {
+    "fixed_days": 0,                 # > 0: every department on this one interval, the measured plan bypassed (owner, 2026-10-19)
     "target_close_rate": 0.92,       # cycle-average share of listed rows within the tolerance (audit bar 0.90 + margin)
     "min_days": 5,
     "max_days": 120,
@@ -48,6 +49,7 @@ def config(schedule):
         if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0:
             c[k] = v
     c["min_days"] = max(1, int(c["min_days"])); c["max_days"] = max(c["min_days"], int(c["max_days"]))
+    c["fixed_days"] = int(c["fixed_days"]) if c["fixed_days"] > 0 else 0
     return c
 
 
@@ -132,15 +134,17 @@ def plan(departments, drift, pages, rows, per_min, c, now=None, floors=None):
     cost = {d: float(pages.get(d) or 0) * float(c["calls_per_page"]) for d in departments}
     rate = {d: float((drift.get(d) or {}).get("drift_per_day", c["default_drift_per_day"])) for d in departments}
     weight = {d: float(rows.get(d) or 0) for d in departments}
-    t = {d: ideal_interval(rate[d], c) for d in departments}
+    fixed = int(c.get("fixed_days") or 0)
+    t = {d: (fixed or ideal_interval(rate[d], c)) for d in departments}
     for d in departments:
         fl = (floors or {}).get(d)
         thin = float((drift.get(d) or {}).get("evidence_row_days", 0) or 0) < float(c["prior_weight"])
-        if thin and isinstance(fl, (int, float)) and not isinstance(fl, bool):
+        if not fixed and thin and isinstance(fl, (int, float)) and not isinstance(fl, bool):
             t[d] = int(min(c["max_days"], max(t[d], fl)))
     ideal = dict(t)
     daily = lambda: sum(cost[d] / t[d] for d in departments if t[d])
-    while daily() > budget:
+    # a fixed interval is the owner's choice: nothing is stretched and the plan always "fits" (the cost is still reported)
+    while not fixed and daily() > budget:
         cands = [d for d in departments if t[d] < c["max_days"] and cost[d] > 0]
         if not cands:
             break
@@ -155,10 +159,10 @@ def plan(departments, drift, pages, rows, per_min, c, now=None, floors=None):
     measured = [d for d in departments if float((drift.get(d) or {}).get("evidence_row_days", 0) or 0) >= float(c["prior_weight"])]
     m_rows = sum(weight[d] for d in measured)
     expected_measured = (1.0 - sum(weight[d] * rate[d] * t[d] / 2.0 for d in measured) / m_rows) if m_rows else None
-    fits = daily() <= budget + 1e-9 and (expected_measured is None or expected_measured >= float(c["target_close_rate"]) - 1e-9)
+    fits = bool(fixed) or (daily() <= budget + 1e-9 and (expected_measured is None or expected_measured >= float(c["target_close_rate"]) - 1e-9))
     stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
     return {
-        "computed": stamp, "target_close_rate": c["target_close_rate"], "per_min": per_min,
+        "computed": stamp, "target_close_rate": c["target_close_rate"], "per_min": per_min, "fixed_days": fixed or None,
         "budget_calls_per_day": round(budget, 1), "cost_calls_per_day": round(daily(), 1),
         "expected_close_rate": round(expected, 4), "fits": bool(fits),
         "expected_close_rate_measured": round(expected_measured, 4) if expected_measured is not None else None,
@@ -193,6 +197,9 @@ def refresh_plan(schedule, now=None):
 def interval_for(name, cadence, consumable, schedule):
     """A department's refresh interval: the plan's, else the legacy cadence (core_every_days for a consumable
     department, full_every_days for the rest)."""
+    fixed = config(schedule)["fixed_days"]
+    if fixed:
+        return float(fixed)         # the owner's fixed interval applies at once, not after the next audit rewrites the plan
     d = ((cadence or {}).get("departments") or {}).get(name) if isinstance(cadence, dict) else None
     if isinstance(d, dict) and isinstance(d.get("interval_days"), (int, float)) and d["interval_days"] > 0:
         return float(d["interval_days"])
@@ -204,7 +211,7 @@ def markdown(p):
         return ""
     L = [f"Refresh plan ({p['computed'][:10]}): expected within-tolerance share {p['expected_close_rate']:.1%} against a "
          f"{p['target_close_rate']:.0%} target, {p['cost_calls_per_day']:.0f} of {p['budget_calls_per_day']:.0f} calls a day"
-         + (" (fits)" if p["fits"] else " (DOES NOT FIT)"), "",
+         + (f" (fixed {p['fixed_days']}-day interval, owner's choice)" if p.get("fixed_days") else " (fits)" if p["fits"] else " (DOES NOT FIT)"), "",
          "| department | drift/day | interval | ideal | pages | rows | calls/day | evidence (row-days) |", "|---|---|---|---|---|---|---|---|"]
     for name, d in sorted(p["departments"].items(), key=lambda kv: -kv[1]["rows"]):
         L.append(f"| {name} | {d['drift_per_day']:.2%} | {d['interval_days']} d | {d['ideal_days']} d | {d['pages']} | {d['rows']} | "

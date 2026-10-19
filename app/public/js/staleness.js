@@ -1,11 +1,12 @@
 // staleness.js — how old are the prices on this phone, in a volunteer's words.
 // Pure functions, no DOM: app.js renders the banner, tests/staleness.test.mjs pins the thresholds.
-// The pipeline stamps every snapshot with priceDate (YYYY-MM-DD, UTC). A snapshot is "amber" from 14 days
-// and "red" from 45 days: amber means the phone should be updated when it is next online, red means the
-// values may no longer match the shelf and the volunteer should update before trusting them.
+// The pipeline stamps every snapshot with priceDate (YYYY-MM-DD, UTC). The price list is rebuilt once a month
+// (data/schedule.json refresh.fixed_days, 2026-10-19), and a crawl takes a few days, so a list up to ~35 days old is
+// the normal state. A snapshot is "amber" from 40 days (a monthly update is late: update when next online) and "red"
+// from 60 days (two updates missed: the values may no longer match the shelf; update before trusting them).
 
-export const AMBER_DAYS = 14;
-export const RED_DAYS = 45;
+export const AMBER_DAYS = 40;
+export const RED_DAYS = 60;
 
 const DAY_MS = 86_400_000;
 
@@ -22,7 +23,7 @@ export function daysSince(priceDateISO, now = Date.now()) {
   return Math.floor((nowMs - t) / DAY_MS);
 }
 
-/** "fresh" | "amber" (>= 14 days) | "red" (>= 45 days). A missing or unreadable date is "fresh": nothing to say about it. */
+/** "fresh" | "amber" (>= AMBER_DAYS) | "red" (>= RED_DAYS). A missing or unreadable date is "fresh": nothing to say about it. */
 export function stalenessLevel(priceDateISO, now = Date.now()) {
   const days = daysSince(priceDateISO, now);
   if (days == null || days < AMBER_DAYS) return "fresh";

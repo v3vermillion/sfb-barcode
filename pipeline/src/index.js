@@ -164,7 +164,9 @@ async function livePrice(req, env, ctx, gtinRaw) {
     else if (r.status !== 200) { status = 502; payload = { ok: false, reason: "walmart unavailable", gtin }; }
     else {
       const d = JSON.parse(r.body);
-      const items = (d.items || []).filter(walmartSold);
+      // a plain listing before a "(N pack)" bundle listing of the same barcode: the bundle's price is for N units
+      const isBundle = (l) => /^\s*\(\s*\d+\s*-?\s*(?:pack|pk)\s*\)/i.test(l.name || "");
+      const items = (d.items || []).filter(walmartSold).sort((a, b) => Number(isBundle(a)) - Number(isBundle(b)));
       if (!items.length) payload = { ok: false, reason: (d.items || []).length ? "not sold by walmart" : "not found", gtin };
       else {
         const it = items[0];

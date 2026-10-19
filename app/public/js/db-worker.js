@@ -13,7 +13,7 @@ const F = { RETIRED: 1, NO_SIZE: 2, PROMO: 4, CARRIED: 8, STORE_BRAND: 16, PRIMA
 const UNIT_NAME = [null, "oz", "fl oz", "lb", "ct", "g", "kg", "ml", "l", "gal", "qt", "pt"];
 // category names come from the pack manifest (data/categories.json); this table only covers a pack built before that
 const CAT_NAME = { 1: "Produce", 2: "Dairy & Eggs", 3: "Meat & Seafood", 4: "Deli & Prepared Foods", 5: "Frozen Foods", 6: "Canned & Jarred Foods", 7: "Pasta, Rice & Dry Goods", 8: "Bread & Bakery", 9: "Snacks & Candy", 10: "Beverages", 11: "Condiments, Sauces & Spreads", 12: "International Foods", 13: "Baby", 14: "Health & Medicine", 15: "Personal Care", 16: "Household Supplies", 17: "Kitchen & Dining", 18: "Home", 19: "Pet Food & Supplies", 20: "School, Office & Crafts", 21: "Toys, Books & Games", 22: "Seasonal & Party", 23: "Other", 24: "Auto", 25: "Electronics", 26: "Jewelry & Accessories", 27: "Sports & Outdoors", 28: "Baking, Spices & Oils", 29: "Breakfast & Cereal", 30: "Beauty", 31: "Hardware & Tools", 32: "Lawn, Garden & Floral" };
-const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64 };
+const F2 = { PLACEHOLDER: 1, PRICE_WITHHELD: 2, DISCONTINUED: 4, STORE_PRICE: 32, UNIT_SUSPECT: 64, PACK_LISTING: 128 };
 const VALUE_CONF = ["rough", "low", "medium", "high"];
 const NO_RANK = 0xFFFFFFFF;
 const SHARD_SPAN = 16777216;          // 2^24 ranks per shard in an item id
@@ -99,7 +99,9 @@ async function openShard(sh, cache) {
     S.basis = r.arr(Uint8Array, N); S.flags = r.arr(Uint8Array, N); S.cat = r.arr(Uint8Array, N); S.id = r.arr(Float64Array, N); S.upcOf = r.arr(Float64Array, N);
     // format 2 appended flags2, the value basis and Walmart's own price of a withheld item; a format-1 pack has none
     if (pad8(r.o) + N * 9 <= cols.byteLength) { S.flags2 = r.arr(Uint8Array, N); S.valueBasis = r.arr(Uint32Array, N); S.rawPrice = r.arr(Uint32Array, N); }
-    else { S.flags2 = new Uint8Array(N); S.valueBasis = new Uint32Array(N).fill(NO_RANK); S.rawPrice = new Uint32Array(N); } }
+    else { S.flags2 = new Uint8Array(N); S.valueBasis = new Uint32Array(N).fill(NO_RANK); S.rawPrice = new Uint32Array(N); }
+    // 2026-10-19 appended the count of a "(N pack)" bundle listing; a pack without it derives N from the two prices
+    S.listingPack = pad8(r.o) + N * 2 <= cols.byteLength ? r.arr(Uint16Array, N) : null; }
   S.strings = strings.map((buf) => { const r = new Reader(buf); r.magic("SFBS"); const count = r.u32(), first = r.u32(); const offs = r.arr(Uint32Array, count + 1); const bytes = r.bytes(offs[count]); return { first, count, offs, bytes }; });
   { const r = new Reader(upc); r.magic("SFBU"); const M = r.u32(); S.upcKeys = r.arr(Float64Array, M); S.upcRanks = r.arr(Uint32Array, M); }
   { const r = new Reader(tokens); r.magic("SFBT"); const T = r.u32(), pbytes = r.u32(); const dictOff = r.arr(Uint32Array, T + 1); const dictBytes = r.bytes(dictOff[T]);
@@ -161,6 +163,9 @@ async function load({ base, root, manifest, cacheName, filesCache, only }) {
     d.catNames = manifest.categories || null;
     d.v2 = !manifest.shards;
   }
+  // the other chains' store brands (data/brands.json via the manifest), as token runs, longest first
+  const titleCase = (s) => String(s).replace(/(^|[\s(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  d.brands = Object.entries(manifest.brands || {}).map(([name, store]) => ({ toks: tokenize(name), name: titleCase(name), store })).filter((b) => b.toks.length).sort((a, b) => b.toks.length - a.toks.length);
   // shards no new version uses are released
   const keep = new Set(d.shards.filter(Boolean).map((S) => S.key));
   for (const k of [...loaded.keys()]) if (!keep.has(k)) loaded.delete(k);
@@ -195,6 +200,11 @@ function itemOf(S, rank, withBasis = true) {
   const flags = S.flags[rank], flags2 = S.flags2[rank];
   const upc = S.upcOf[rank];
   const withheld = !!(flags2 & F2.PRICE_WITHHELD);
+  // one unit of a "(N pack)" bundle listing: the bundle's own price rides in rawPrice and its count in listingPack (an older
+  // pack derives N from the two prices, which drifts for a unit under about 20 cents)
+  const packListing = !withheld && !!(flags2 & F2.PACK_LISTING) && S.rawPrice[rank] > 0 && S.price[rank] > 0;
+  const listingCents = packListing ? S.rawPrice[rank] : null;
+  const listingPack = packListing ? (S.listingPack && S.listingPack[rank] > 1 ? S.listingPack[rank] : Math.max(2, Math.round(listingCents / S.price[rank]))) : null;
   const basisRank = S.valueBasis[rank];
   return {
     rank: gidOf(si, rank), id: S.id[rank], brand: txt.slice(0, sep), name: txt.slice(sep + 1), priceCents: S.price[rank],
@@ -202,6 +212,7 @@ function itemOf(S, rank, withBasis = true) {
     cat: S.cat[rank], catName: (db.catNames && db.catNames[S.cat[rank]]) || CAT_NAME[S.cat[rank]] || "Other", upc: upc ? String(upc).padStart(14, "0") : null,
     placeholder: !!(flags2 & F2.PLACEHOLDER), discontinued: !!(flags2 & F2.DISCONTINUED), storePrice: !!(flags2 & F2.STORE_PRICE), unitSuspect: !!(flags2 & F2.UNIT_SUSPECT),
     priceWithheld: withheld, rawPriceCents: withheld ? S.rawPrice[rank] : null, valueConfidence: withheld ? VALUE_CONF[(flags2 >> 3) & 3] : null,
+    packListing, listingCents, listingPack,
     valueBasis: withheld && withBasis && basisRank !== NO_RANK && basisRank !== rank ? itemOf(S, basisRank, false) : null,
     retired: !!(flags & F.RETIRED), noSize: !!(flags & F.NO_SIZE), promo: !!(flags & F.PROMO), carried: !!(flags & F.CARRIED),
     storeBrand: !!(flags & F.STORE_BRAND), primary: !!(flags & F.PRIMARY), sizeConflict: !!(flags & F.SIZE_CONFLICT), unavailable: !!(flags & F.UNAVAILABLE),
@@ -375,7 +386,21 @@ function itemTokens(key, it) {
   return t;
 }
 
-function scoreCandidates(S, ranks, qTokens, groups, typed = null) {
+/** A run of query tokens that is another chain's store brand ("kirkland signature", "members mark"): the brand, its store and
+ * the token span, or null. The longest listed brand wins; a brand word that is the whole query is not matched, so "aldi"
+ * alone still searches the list for it. */
+function otherStoreBrand(tokens) {
+  if (!db?.brands?.length || tokens.length < 2) return null;
+  for (const b of db.brands) {
+    if (b.toks.length >= tokens.length) continue;
+    for (let i = 0; i + b.toks.length <= tokens.length; i++) {
+      if (b.toks.every((t, k) => tokens[i + k] === t)) return { brand: b.name, store: b.store, start: i, end: i + b.toks.length };
+    }
+  }
+  return null;
+}
+
+function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst = false) {
   const nums = numberTokens(qTokens);
   const homes = homeCategories(S, groups);
   const scored = ranks.map((r) => {
@@ -416,7 +441,8 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null) {
     for (const h of homes) if (h && h === it.cat) s += 0.8;
     if (head && groups.some((g) => g.some((a) => head === a || (a.length >= 4 && head.startsWith(a))))) s += 1.6;
     else if (head && toks.length) s -= 0.6;          // the query's words only describe it: a diaper *bag*, a tomato *basket*
-    if (it.storeBrand) s += 0.3;
+    // Walmart's own brand is the same price tier as another chain's store brand: first when the query named one
+    if (it.storeBrand) s += ownBrandFirst ? 3 : 0.3;
     if (it.retired) s -= 1.5;
     if (it.unavailable) s -= 0.4;
     s -= (r / S.N) * 0.8;             // rank within the shard as the final tiebreaker
@@ -442,8 +468,13 @@ function andCount(bs) {
 
 function search(q, limit = 40) {
   const t0 = performance.now();
-  const tokens = tokenize(q).filter(Boolean);
+  let tokens = tokenize(q).filter(Boolean);
   if (!tokens.length) return { query: q, items: [], relaxed: false, fuzzy: false, ms: 0, total: 0 };
+  // "kirkland chicken noodle soup": Walmart does not sell Costco's brand, so the brand words are set aside (named in the
+  // result, never reported as "not found") and Walmart's own brand ranks first among the matches for the rest
+  const other = otherStoreBrand(tokens);
+  let otherBrand = null;
+  if (other) { otherBrand = { brand: other.brand, store: other.store }; tokens = [...tokens.slice(0, other.start), ...tokens.slice(other.end)]; }
   const shards = db.shards.filter(Boolean);
   let groups = expand(tokens);
   const matches = (g) => g.alts.some((a) => hasAnyToken(a));
@@ -457,7 +488,7 @@ function search(q, limit = 40) {
   // a word that still matches nothing is dropped and named, so the result is flagged, never silently widened
   let live = [];
   for (const g of groups) { if (matches(g)) live.push(g); else if (!dropped.includes(g.src)) { dropped.push(g.src); relaxed = true; } }
-  if (!live.length) return { query: q, items: [], relaxed: false, dropped, fuzzy, ms: performance.now() - t0, total: 0 };
+  if (!live.length) return { query: q, items: [], relaxed: false, dropped, fuzzy, otherBrand, ms: performance.now() - t0, total: 0 };
   // per shard: the bitset of every live group (null: the word is not in this shard, so nothing here matches all)
   const perShard = shards.map((S) => ({ S, bits: live.map((g) => groupBits(S, g.alts)) }));
   const anyAll = (keep) => perShard.some(({ bits }) => { const bs = bits.filter((_, i) => keep(i)); return bs.every(Boolean) && collect(bs, 1).length > 0; });
@@ -502,11 +533,11 @@ function search(q, limit = 40) {
       const seen = new Set(ranks);
       for (const r of collect(bits, cand)) { if (ranks.length >= cand) break; if (!seen.has(r)) ranks.push(r); }
     }
-    scored = scored.concat(scoreCandidates(S, ranks, tokens, alts, typed));
+    scored = scored.concat(scoreCandidates(S, ranks, tokens, alts, typed, !!otherBrand));
   }
   scored.sort((a, b) => b.s - a.s || a.it.rank - b.it.rank);
   const items = scored.slice(0, limit).map((x) => x.it);
-  return { query: q, items, relaxed, dropped, fuzzy, total, ms: Math.round((performance.now() - t0) * 100) / 100 };
+  return { query: q, items, relaxed, dropped, fuzzy, otherBrand, total, ms: Math.round((performance.now() - t0) * 100) / 100 };
 }
 
 // ---------------------------------------------------------------- messages

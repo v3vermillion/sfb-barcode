@@ -75,3 +75,11 @@ test("without the rate-limit bindings the route fails closed", async () => {
   assert.equal(r.status, 503); assert.equal(r.body.reason, "not configured");
   assert.equal(h.calls.length, 0);
 });
+
+test("a plain listing comes before a \"(N pack)\" bundle listing of the same barcode", async () => {
+  const bundle = { ...corn, itemId: 3, salePrice: 5.22, name: "(6 pack) Great Value Corn" };
+  const h = harness({ walmart: () => ok([bundle, corn]) });
+  const a = await h.hit("/v1/price/078742054261");
+  assert.equal(a.body.itemId, 1); assert.equal(a.body.price, 0.87);
+  assert.deepEqual(a.body.listings.map((l) => l.itemId), [1, 3], "every listing is still returned, the bundle after the plain one");
+});

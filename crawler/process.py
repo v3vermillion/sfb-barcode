@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from . import classify, store, valuation
-from .normalize import normalize, parse_quantity, to_base
+from .normalize import normalize, pack_listing, parse_quantity, to_base
 
 BUILD = store.ROOT / "build"
 
@@ -60,9 +60,9 @@ def build():
             if r.get("dept") in crawled_names:
                 fl = r.get("flags") or ()
                 prev_rows[r["id"]] = (r.get("price"), r.get("online_price", r.get("price")), r.get("unit_price"),
-                                      "promo_price" in fl, "kept_normal_price" in fl)
+                                      "promo_price" in fl, "kept_normal_price" in fl, "pack_listing" in fl)
             else:
-                carry[r["id"]] = _compact(r)
+                carry[r["id"]] = _compact(derive_pack_listing(r))
 
     rows, rejected = {}, set()        # item ids kept (rows) or rejected: a second listing of either is a duplicate
     rejects = defaultdict(Counter)
@@ -92,20 +92,24 @@ def build():
                 if isinstance(prev, dict):        # listed in another department last time
                     fl = prev.get("flags") or ()
                     prev = (prev.get("price"), prev.get("online_price", prev.get("price")), prev.get("unit_price"),
-                            "promo_price" in fl, "kept_normal_price" in fl)
+                            "promo_price" in fl, "kept_normal_price" in fl, "pack_listing" in fl)
                 # a promo keeps the last normal price, also when the promo already ran at the last publish (that row
                 # carries the normal price it kept, flagged kept_normal_price); without a normal price on record the
-                # promo price stands, flagged. The normal price is Walmart.com's, never the store's (online_price).
+                # promo price stands, flagged. The normal price is Walmart.com's, never the store's (online_price), and
+                # it must be on the same basis: a bundle listing priced per unit now and as the whole bundle before
+                # (the publish before the pack_listing rule) has no normal price on record.
                 if prev:
-                    p_price, p_online, p_unit, p_promo, p_kept = prev
-                    if "promo_price" in row["flags"] and isinstance(p_online, (int, float)) and (not p_promo or p_kept):
+                    p_price, p_online, p_unit, p_promo, p_kept, p_pack_listing = prev
+                    same_basis = p_pack_listing == ("pack_listing" in row["flags"])
+                    if "promo_price" in row["flags"] and same_basis and isinstance(p_online, (int, float)) and (not p_promo or p_kept):
                         row["promo"] = row["price"]
                         row["price"] = p_online
                         row["unit_price"] = (round(p_unit * p_online / p_price, 4)
                                              if p_unit and p_price and p_online != p_price else p_unit)
                         row["flags"].append("kept_normal_price")
                     if p_price:
-                        row["prev_price"] = p_price
+                        lp = row.get("listing_pack")
+                        row["prev_price"] = round(p_price / lp, 2) if not same_basis and lp and "pack_listing" in row["flags"] else p_price
                 rows[iid] = _compact(row)
 
     del prev_rows
@@ -120,6 +124,11 @@ def build():
     # sanity, so a store price is judged like any other
     from . import storeprice
     store_priced = storeprice.apply(rows)
+
+    # a bundle listing that only repeats a plain listing of the same item (same barcode, or same brand and name) adds
+    # nothing: the plain listing is Walmart's own price for the unit a volunteer holds, the bundle only an estimate of it
+    for iid, dept_name in drop_redundant_pack_listings(rows):
+        rejects[dept_name]["multipack_listing"] += 1
 
     names_filled = fill_placeholder_names(rows)
 
@@ -137,6 +146,7 @@ def build():
     for r in rows.values():
         nn, d = r.pop("noun", None), cfg_depts.get(r.get("dept"))
         r["_kind"] = nn[2] if nn else None             # the product noun, used by price sanity; never written
+        r["_durable"] = classify.durable(r["name"], nn)   # a model, not a size: the kind rule leaves it alone; never written
         if d:
             r["cat"] = str(classify.decide(tuple(nn) if nn else None, r.get("path"), d, cfg, stats_paths, r["name"]))
 
@@ -148,6 +158,24 @@ def build():
     bounds, dropped_placeholders = valuation.withhold(rows, gates_config(), group_min)
     for _, dept_name, why in dropped_placeholders:
         rejects[dept_name][why] += 1
+
+    # per-unit prices that are more than 10x off their category+unit median are almost always a parsing
+    # artefact (a packet size taken for the carton, a count read as a weight): keep the item price, drop the
+    # per-unit price and flag the row so the app shows nothing misleading and identify.py never uses it as a basis
+    before_share, _, before = unit_outlier_stats(rows.values(), group_min)
+    resolved = resolve_packs(rows.values(), group_min)
+    # a listing priced far above the item's own in-stock siblings (the other flavours of one product line) is a stale
+    # listing, withheld and valued from a sibling below; after pack resolution, so a case the name supports stays a case
+    valuation.withhold_sibling_outliers(rows.values())
+    valuation.withhold_kind_outliers(rows.values())        # then far above the same kind of item (the broader family)
+    raw_share, unit_priced, outliers = unit_outlier_stats(rows.values(), group_min)
+    for o in outliers:
+        r = rows[o["id"]]
+        r["unit_price"] = None
+        r["flags"].append("unit_price_suspect")
+    unit_outliers_raw = {"share": raw_share, "unit_priced_rows": unit_priced, "count": len(outliers),
+                         "examples": outliers[:25], "before_pack_resolution": {"share": before_share, "count": len(before)},
+                         "pack_resolved": resolved, "scope": "consumable departments (no per-unit price elsewhere)"}
 
     # one primary row per UPC (barcode lookups): prefer current, a believable price, in stock, normal price, then the
     # lowest price (a single unit, not a case listed under the same barcode: Similac Advance 12.4 oz at $21.97, not
@@ -167,23 +195,9 @@ def build():
         if len(group) > 1 and max(prices) > 1.5 * min(prices):
             conflicts.append({"upc": upc, "items": [(g["id"], g["name"], g["price"]) for g in group][:5]})
 
-    # per-unit prices that are more than 10x off their category+unit median are almost always a parsing
-    # artefact (a packet size taken for the carton, a count read as a weight): keep the item price, drop the
-    # per-unit price and flag the row so the app shows nothing misleading and identify.py never uses it as a basis
-    before_share, _, before = unit_outlier_stats(rows.values(), group_min)
-    resolved = resolve_packs(rows.values(), group_min)
-    raw_share, unit_priced, outliers = unit_outlier_stats(rows.values(), group_min)
-    for o in outliers:
-        r = rows[o["id"]]
-        r["unit_price"] = None
-        r["flags"].append("unit_price_suspect")
-    unit_outliers_raw = {"share": raw_share, "unit_priced_rows": unit_priced, "count": len(outliers),
-                         "examples": outliers[:25], "before_pack_resolution": {"share": before_share, "count": len(before)},
-                         "pack_resolved": resolved, "scope": "consumable departments (no per-unit price elsewhere)"}
-
     withheld = valuation.attach_values(rows, bounds, group_min)
     for r in rows.values():
-        r.pop("_kind", None)
+        r.pop("_kind", None); r.pop("_durable", None)
     price_bounds = {d: {"low": lo, "high": hi, "p99": p99} for d, (lo, hi, p99) in bounds.items()}
 
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -211,6 +225,60 @@ def build():
     store.write_json(store.ROOT / "state" / "run.json", state)
     print(f"candidate: {n} items, {len(by_upc)} UPCs, {carried} carried over")
     return stats
+
+
+def derive_pack_listing(r):
+    """A row carried over from a snapshot built before the pack_listing rule (its name still starts with "(N pack)"):
+    the same conversion normalize() makes, in place. Rows already converted, or not bundle listings, are returned as
+    they are."""
+    if "pack_listing" in (r.get("flags") or ()):
+        return r
+    inner, n = pack_listing(r.get("name") or "")
+    if not n or not isinstance(r.get("price"), (int, float)):
+        return r
+    r["listing_price"], r["listing_pack"] = r["price"], n
+    r["name"] = inner
+    r["price"] = round(r["price"] / n, 2)
+    if isinstance(r.get("online_price"), (int, float)):
+        r["online_price"] = round(r["online_price"] / n, 2)
+    if isinstance(r.get("promo"), (int, float)):
+        r["promo"] = round(r["promo"] / n, 2)
+    size, unit, pack = parse_quantity(inner)
+    base, dim = to_base(size, unit)
+    if size is not None:
+        r.update(size=size, unit=unit, pack=pack or 1, base_qty=base, base_unit=dim)
+    else:
+        r["pack"] = pack or 1
+    if isinstance(r.get("unit_price"), (int, float)) and r.get("base_qty"):
+        r["unit_price"] = round(r["price"] / (r["base_qty"] * (r.get("pack") or 1)), 4)
+    r["flags"] = list(r.get("flags") or []) + ["pack_listing"]
+    return r
+
+
+def _same_item_key(r):
+    return " ".join(f"{r.get('brand') or ''} {r.get('name') or ''}".lower().split())
+
+
+def drop_redundant_pack_listings(rows):
+    """Remove the one-unit rows derived from bundle listings (flag pack_listing) whose item also has a plain listing:
+    the same barcode, or the same brand and name. rows is a dict id -> row, changed in place. Returns the (id,
+    department) pairs removed, for the reject counts."""
+    plain_upcs, plain_names = set(), set()
+    for r in rows.values():
+        fl = r.get("flags") or ()
+        if "pack_listing" in fl or "placeholder" in fl:
+            continue
+        if r.get("upc"):
+            plain_upcs.add(r["upc"])
+        plain_names.add(_same_item_key(r))
+    dropped = []
+    for iid, r in list(rows.items()):
+        if "pack_listing" not in (r.get("flags") or ()):
+            continue
+        if (r.get("upc") and r["upc"] in plain_upcs) or _same_item_key(r) in plain_names:
+            dropped.append((iid, r.get("dept")))
+            del rows[iid]
+    return dropped
 
 
 NAME_NOT_PROVIDED = "(name not provided)"

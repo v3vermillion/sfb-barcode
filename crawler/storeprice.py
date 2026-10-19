@@ -243,7 +243,8 @@ def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=No
             continue
         due.append((rank, rec is not None, -(age or 0), str(r["id"]), r["id"]))
         if meta is not None:
-            meta[r["id"]] = (r.get("dept"), r.get("price"))
+            # the price the store's answer is compared with is the listing's own (a bundle's, for a pack_listing row)
+            meta[r["id"]] = (r.get("dept"), r.get("listing_price") if "pack_listing" in (r.get("flags") or ()) else r.get("price"))
     due.sort()
     return [d[-1] for d in due]
 
@@ -455,7 +456,9 @@ def apply(rows, now=None, cfg=None):
             continue
         old = r.get("price")
         r["online_price"] = old
-        r["price"] = round(float(rec["p"]), 2)
+        # a bundle listing's store price is the bundle's: the row is one unit of it (normalize.pack_listing)
+        lp = r.get("listing_pack") if "pack_listing" in (r.get("flags") or ()) else None
+        r["price"] = round(float(rec["p"]) / (lp if isinstance(lp, int) and lp > 1 else 1), 2)
         if r.get("unit_price") and isinstance(old, (int, float)) and old > 0:
             r["unit_price"] = round(r["unit_price"] * r["price"] / old, 4)
         r.pop("promo", None)

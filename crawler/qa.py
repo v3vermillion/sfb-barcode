@@ -237,7 +237,10 @@ def live_check(wm, sample, tolerance=0.05):
                 res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"], "live": None})
                 continue
             tier["found"] += 1
-            diff = abs(float(r["price"]) - float(it["salePrice"]))
+            # a pack_listing row is one unit of a bundle listing: Walmart's price for the listing is for all of them
+            n = r.get("listing_pack") if "pack_listing" in (r.get("flags") or ()) else None
+            live_price = float(it["salePrice"]) / (n if isinstance(n, int) and n > 1 else 1)
+            diff = abs(float(r["price"]) - live_price)
             rel = diff / float(r["price"]) if r["price"] else 9e9
             if diff < 0.005:
                 res["exact"] += 1; res["within_5pct"] += 1; res["close"] += 1
@@ -249,8 +252,7 @@ def live_check(wm, sample, tolerance=0.05):
                     res["close"] += 1; tier["close"] += 1; res["by_row"][iid] = "close"
                 else:
                     res["by_row"][iid] = "far"
-                res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"],
-                                        "live": float(it["salePrice"])})
+                res["examples"].append({"id": r["id"], "name": r["name"], "snapshot": r["price"], "live": round(live_price, 2)})
     n = res["checked"]
     found = n - res["missing"]
     res["found"] = found
@@ -390,8 +392,11 @@ def gate_unit_outliers(rows, cfg, stats=None):
     return _measured(share <= (mx if mx is not None else 1), share, mx, detail), outliers[:25]
 
 
-def gates_vs_previous(rows, stats, prev, prev_stats, cfg):
-    """price_drift, item_count, category_counts against the published snapshot (measure nothing without one)."""
+def gates_vs_previous(rows, stats, prev, prev_stats, cfg, rules=None):
+    """price_drift, item_count, category_counts against the published snapshot (measure nothing without one).
+    rules: {"consumable": cap, "durable": cap, "consumable_depts": {names}, "exclude_paths": [keywords]} from
+    data/categories.json; published rows above the cap of their department, or under a path now excluded, are not in
+    the candidate by rule (2026-10-19), so they are compared as absent."""
     out, drift, unstable = {}, [], []
     if not prev:
         for name in ("price_drift", "item_count", "category_counts"):
@@ -399,21 +404,49 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg):
                                                    "category_counts": "category_count_tolerance"}[name]),
                               "no previous snapshot")
         return out, drift, unstable
+    from .normalize import PACK_LISTING_RX
     for r in rows:
         p = prev.get(r["id"])
-        if p and isinstance(p.get("price"), (int, float)) and p["price"] > 0 and abs(r["price"] - p["price"]) / p["price"] > 0.5:
+        if not p or not isinstance(p.get("price"), (int, float)) or p["price"] <= 0:
+            continue
+        old = p["price"]
+        n = r.get("listing_pack") if "pack_listing" in (r.get("flags") or ()) else None
+        if isinstance(n, int) and n > 1 and "pack_listing" not in (p.get("flags") or ()):
+            old = old / n          # the row is one unit of a bundle listing now; the published row was the whole bundle
+        if abs(r["price"] - old) / old > 0.5:
             drift.append({"id": r["id"], "name": r["name"], "old": p["price"], "new": r["price"]})
     share = round(len(drift) / len(rows), 5) if rows else 0.0
     mx = cfg.get("price_drift_max")
     out["price_drift"] = _measured(share <= (mx if mx is not None else 1), share, mx,
                                    f"{len(drift)} of {len(rows)} prices moved more than 50% ({share:.2%})")
-    ratio = round(len(rows) / len(prev), 4)
+    # rows a rule removed on purpose are no regression: bundle listings ("(N pack) ...", compared plain with plain: the
+    # rows the pack_listing rule removes from the published counts against the units it keeps in the candidate), and
+    # published rows above the price ceiling of their department (data/categories.json max_price)
+    prev_bundles, prev_over = Counter(), Counter()
+    c = rules or {}
+    excl = [str(k).lower() for k in (c.get("exclude_paths") or [])]
+    for p in prev.values():
+        # a bundle listing published before the rule (its name still wrapped) or a unit published under it (flagged)
+        if PACK_LISTING_RX.match(p.get("name") or "") or "pack_listing" in (p.get("flags") or ()):
+            prev_bundles[str(p.get("cat"))] += 1
+            continue
+        cap = c.get("consumable") if p.get("dept") in (c.get("consumable_depts") or ()) else c.get("durable")
+        path = (p.get("path") or "").lower()
+        if (isinstance(cap, (int, float)) and isinstance(p.get("price"), (int, float)) and p["price"] > cap) or any(k in path for k in excl):
+            prev_over[str(p.get("cat"))] += 1
+    new_units = Counter(str(r.get("cat")) for r in rows if "pack_listing" in (r.get("flags") or ()))
+    removed = sum(prev_bundles.values()) + sum(prev_over.values())
+    n_prev_all, n_all = max(1, len(prev) - removed), len(rows) - sum(new_units.values())
+    ratio = round(n_all / n_prev_all, 4)
     mn = cfg.get("item_count_min_ratio")
-    out["item_count"] = _measured(ratio >= (mn or 0), ratio, mn, f"{len(rows)} items vs {len(prev)} published ({ratio:.1%})")
+    out["item_count"] = _measured(ratio >= (mn or 0), ratio, mn, f"{len(rows)} items vs {len(prev)} published ({ratio:.1%}"
+                                  + (f", {removed} published rows left by rule: {sum(prev_bundles.values())} bundle listings, "
+                                     f"{sum(prev_over.values())} above the price ceiling or under an excluded path, against {sum(new_units.values())} bundle units kept)" if removed else ")"))
     tol, min_rows = cfg.get("category_count_tolerance"), int(cfg.get("category_count_min_rows") or 0)
     worst = 0.0
     for cat, n_prev in (prev_stats.get("kept_by_category") or {}).items():
         n = (stats.get("kept_by_category") or {}).get(cat, 0)
+        n_prev, n = n_prev - prev_bundles.get(str(cat), 0) - prev_over.get(str(cat), 0), n - new_units.get(str(cat), 0)
         if n_prev >= min_rows and n_prev > 0:
             dev = abs(n - n_prev) / n_prev
             worst = max(worst, dev)
@@ -601,7 +634,9 @@ def check(wm=None):
     extras["live"] = live
     gates["size_parse"] = gate_size_parse(rows, cfg.get("size_parse_min"))
     gates["unit_outliers"], extras["unit_outliers"] = gate_unit_outliers(rows, cfg, stats)
-    vs, extras["drift"], extras["unstable"] = gates_vs_previous(rows, stats, prev, prev_stats, cfg)
+    rules = {"consumable": (config.get("consumable_rules") or {}).get("max_price"), "durable": (config.get("durable_rules") or {}).get("max_price"),
+             "consumable_depts": {d["name"] for d in config["departments"] if d.get("consumable")}, "exclude_paths": config.get("exclude_path_keywords") or []}
+    vs, extras["drift"], extras["unstable"] = gates_vs_previous(rows, stats, prev, prev_stats, cfg, rules)
     gates.update(vs)
     extras["drift"] = extras["drift"][:50]
     sr = cfg.get("sample_review")

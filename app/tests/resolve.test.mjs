@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible } from "../public/js/resolve.js";
+import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand } from "../public/js/resolve.js";
 
 const corn = { rank: 0, id: 1, brand: "Great Value", name: "Great Value Golden Sweet Whole Kernel Corn, Canned Corn, 15.25 oz Can", priceCents: 87, size: 15.25, unit: "oz", pack: 1, basis: "each", cat: 6, catName: "Canned & Jarred", upc: "00078742054261", retired: false, primary: true, storeBrand: true };
 const retired = { ...corn, rank: 1, id: 2, retired: true, primary: false };
@@ -147,4 +147,83 @@ test("an equivalent's title names the brand once", async () => {
 test("a price far from items of its size says so", () => {
   const notes = notesFor({ kind: "exact", item: { ...corn, unitSuspect: true } }).map((n) => n.text).join(" ");
   assert.match(notes, /case or multipack/);
+});
+
+test("one unit of a \"(N pack)\" bundle listing carries the bundle's price as its alternate and says so", () => {
+  const unit = { ...corn, id: 20, upc: null, primary: false, name: "Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", brand: "Hefty", priceCents: 1333, packListing: true, listingCents: 7999, listingPack: 6 };
+  const r = fromItem(unit);
+  assert.equal(r.kind, "exact"); assert.equal(r.priceCents, 1333);
+  assert.deepEqual(r.listing, { cents: 7999, n: 6 });
+  const notes = notesFor(r).map((n) => n.text);
+  assert.ok(notes.some((t) => /only as a pack of 6 \(\$79\.99\)\. The price shown is for one/.test(t)), notes.join(" | "));
+  assert.ok(!notes.some((t) => /alternate item/.test(t)), "a row without a barcode is not an alternate listing of one");
+  assert.equal(fromItem(corn).listing, undefined);
+  // a non-primary listing that does carry a barcode still says it is an alternate
+  assert.ok(notesFor(fromItem({ ...corn, primary: false })).some((n) => /alternate item/.test(n.text)));
+});
+
+test("live listings that are \"(N pack)\" bundles are read as N units", () => {
+  assert.deepEqual(packListingOf("(6 pack) Hefty Trash Bags, 40 Bags"), { n: 6, name: "Hefty Trash Bags, 40 Bags" });
+  assert.deepEqual(packListingOf("(2 pack) (6 Pack) Crest Toothpaste 6.4 oz."), { n: 6, name: "Crest Toothpaste 6.4 oz." });
+  assert.equal(packListingOf("(1 pack) Beans"), null); assert.equal(packListingOf("Beans (6 pack)"), null); assert.equal(packListingOf(null), null);
+  assert.equal(liveUnitCents({ price: 79.99, name: "(6 pack) Hefty Trash Bags, 40 Bags" }), 1333);
+  assert.equal(liveUnitCents({ price: 10.52, name: "Hefty Trash Bags, 40 Bags" }), 1052);
+  assert.ok(Number.isNaN(liveUnitCents({ price: "x" })));
+});
+
+// ---- other chains' store brands and remembered matches (2026-10-19)
+const PREFIXES = { "0096619": { store: "Costco", brand: "Kirkland Signature" }, "0030034": { store: "Giant Eagle", brand: "Giant Eagle" }, "4099100": { store: "Aldi", brand: "Aldi" } };
+test("a barcode under a listed store's company prefix is named by its store even when nothing else is known", async () => {
+  assert.deepEqual(storeOfCode("00096619261574", PREFIXES), { store: "Costco", brand: "Kirkland Signature", prefix: "0096619" });
+  assert.equal(storeOfCode("00078742054261", PREFIXES), null);
+  assert.equal(storeOfCode("04099100000000", PREFIXES).store, "Aldi");          // an EAN-13 (Aldi Sued) code
+  const db = mkDb();
+  const r = await resolveCode(db, "096619261574", undefined, { prefixes: PREFIXES });   // the owner's Aller-Tec can, not on file
+  assert.equal(r.kind, "unknown"); assert.equal(r.store.store, "Costco"); assert.equal(r.title, "Kirkland Signature item (Costco)");
+  assert.match(notesFor(r).map((n) => n.text).join(" "), /Costco's Kirkland Signature brand.*remembers the match/);
+  const aldi = await resolveCode(db, "4099100012345", undefined, { prefixes: PREFIXES, learned: () => null });   // an Aldi code nothing knows
+  assert.equal(aldi.title, "Aldi item", "the brand is the store's name: said once");
+  assert.match(notesFor(aldi)[0].text, /belongs to Aldi's own brand/);
+  assert.equal(whoseBrand({ brand: "Kirkland", store: "Costco" }), "Costco's own brand");
+  assert.equal(whoseBrand({ brand: "Aldi", store: "Aldi" }), "Aldi's own brand");
+  assert.equal(whoseBrand({ brand: "Food Club", store: "another grocer" }), "a store brand of another grocer");
+  const plain = await resolveCode(db, "012345678905", undefined, { prefixes: PREFIXES });
+  assert.equal(plain.store, undefined); assert.match(notesFor(plain)[0].text, /remembers the match/);
+});
+
+test("a barcode this phone matched before resolves to that Walmart item, labelled as a remembered match", async () => {
+  const db = mkDb();
+  const learned = { "00096619261574": { key: 78742054261, title: "Great Value Golden Sweet Whole Kernel Corn", at: Date.UTC(2026, 9, 19) } };
+  const r = await resolveCode(db, "096619261574", undefined, { prefixes: PREFIXES, learned: (g) => learned[g] || null });
+  assert.equal(r.kind, "closest"); assert.equal(r.item.id, 1); assert.equal(r.gtin, "00096619261574"); assert.equal(r.key, "g:00096619261574");
+  assert.equal(r.priceCents, 87); assert.equal(kindLabel(r), "Closest match");
+  const note = notesFor(r).map((n) => n.text).join(" ");
+  assert.match(note, /matched to this Walmart item on this phone/); assert.doesNotMatch(note, /No item matched every word/);
+  const asMap = await resolveCode(db, "096619261574", undefined, { learned });
+  assert.equal(asMap.kind, "closest");
+  // the remembered item's own price is withheld now: still a remembered match, valued at its equivalent
+  const wdb = { async lookupUpc(key) { return key === 78742054261 ? { items: [withheld], equivalent: null } : { items: [], equivalent: null }; }, async lookupPlu() { return null; } };
+  const w = await resolveCode(wdb, "096619261574", undefined, { learned });
+  assert.equal(w.kind, "equivalent"); assert.ok(w.learned); assert.ok(notesFor(w).some((n) => /matched to this Walmart item on this phone/.test(n.text)));
+  // the remembered item has left the list: back to the unknown sheet, never a blank
+  const gone = await resolveCode(db, "096619261574", undefined, { prefixes: PREFIXES, learned: () => ({ key: 999, title: "x", at: 1 }) });
+  assert.equal(gone.kind, "unknown"); assert.equal(gone.store.store, "Costco");
+});
+
+test("a search that named another store's brand opens the Walmart item as its equivalent", () => {
+  const r = fromItem(corn, { query: "kirkland corn", otherBrand: { brand: "Kirkland", store: "Costco" } });
+  assert.equal(r.kind, "closest");
+  const notes = notesFor(r).map((n) => n.text);
+  assert.match(notes[0], /Kirkland is Costco's own brand, which Walmart does not sell/);
+  assert.ok(!notes.some((t) => /No item matched every word/.test(t)), "no dropped words: no 'not matched' warning");
+  const both = fromItem(corn, { query: "kirkland corn 40 oz", dropped: ["40"], otherBrand: { brand: "Kirkland", store: "Costco" } });
+  assert.ok(notesFor(both).some((n) => /“40” was ignored/.test(n.text)));
+});
+
+test("a live price above the list's ceiling is implausible; online stock is not a note", () => {
+  assert.equal(livePlausible(46058, null, 15000), "implausible");          // $460.58 against a $150 ceiling
+  assert.equal(livePlausible(14999, null, 15000), "ok");
+  assert.equal(livePlausible(46058, null), "ok");                           // no ceiling stated: the $10,000 line
+  assert.ok(!notesFor(fromItem({ ...corn, unavailable: true })).some((n) => /stock/i.test(n.text)));
+  assert.ok(notesFor(fromItem({ ...corn, unavailable: true, storePrice: true })).some((n) => /store's shelf/.test(n.text)));
 });

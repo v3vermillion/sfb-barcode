@@ -1,13 +1,14 @@
 {
-  "note": "Cadence of the automated pipeline (read by crawler/ci.py decide()). Days unless stated. budget_min is the Walmart crawl time per run. Since 2026-10-14 each department is refreshed on its own interval from state/cadence.json (crawler/cadence.py, measured drift under the Walmart quota); core_every_days (consumable departments) and full_every_days (the rest) are the floors a department keeps to until the audits have measured it, and the fallback without a plan. volunteer_hours caps the pipeline's calls per minute while volunteers may be using the app's live check (same Walmart key).",
+  "note": "Cadence of the automated pipeline (read by crawler/ci.py decide()). Days unless stated. budget_min is the Walmart crawl time per run. Since 2026-10-19 every department is re-crawled on one fixed interval, refresh.fixed_days (30): the measured per-department planner (crawler/cadence.py) is bypassed while it is set (0 or absent = measured intervals between min_days and max_days as before); core_every_days (consumable departments) and full_every_days (the rest) are the fallback without a plan and are kept equal to it. stale_days (the [stale-prices] alert) allows a monthly publish plus the days a crawl takes. volunteer_hours caps the pipeline's calls per minute while volunteers may be using the app's live check (same Walmart key). rollback_pause_days: no crawl starts for this long after a rollback.",
   "full_every_days": 30,
-  "core_every_days": 7,
+  "core_every_days": 30,
   "audit_every_days": 7,
   "identify_every_days": 30,
   "sizing_every_days": 30,
-  "stale_days": 14,
+  "stale_days": 45,
   "budget_min": 300,
   "refresh": {
+    "fixed_days": 30,
     "target_close_rate": 0.92,
     "min_days": 5,
     "max_days": 120,
@@ -29,5 +30,6 @@
     "from": "08:00",
     "to": "12:00",
     "per_min": 3
-  }
+  },
+  "rollback_pause_days": 7
 }

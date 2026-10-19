@@ -38,7 +38,7 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 CRITERIA = DATA / "review-criteria.md"
 CAND = store.ROOT / "build" / "candidate"
 SAMPLE_FIELDS = ("id", "upc", "brand", "name", "size", "unit", "pack", "price", "unit_price", "base_unit",
-                 "dept", "stock", "flags", "path")
+                 "dept", "stock", "flags", "path", "listing_price", "listing_pack")
 
 
 def _now():

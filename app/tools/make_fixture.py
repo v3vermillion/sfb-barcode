@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 from crawler.normalize import normalize, gtin14, parse_quantity, to_base  # noqa: E402
-from crawler.identify import OTHER_STORE_BRANDS, WALMART_STORE_BRANDS  # noqa: E402
+from crawler.identify import other_store_brands, WALMART_STORE_BRANDS  # noqa: E402
 import fixture_vocab as V  # noqa: E402
 from sentinel_items import SENTINEL_ITEMS  # noqa: E402
 
@@ -548,7 +548,7 @@ def write_jsonl_gz(path, rows):
 def make_equivalents(rows, n_target, seed):
     """Other-store barcodes priced at the closest Walmart item (identify.py output shape)."""
     rng = random.Random(seed + 101)
-    other = sorted(OTHER_STORE_BRANDS)
+    other = sorted(other_store_brands())
     wm_upcs = {r["upc"] for r in rows if r.get("upc")}
     cands = [r for r in rows if r.get("unit_price") and r.get("base_unit") and r.get("brand") and r["dept"] in ("Food", "Household Essentials", "Personal Care", "Baby", "Pets", "Health and Medicine", "Beauty")]
     out, stats, used = [], Counter(), set()

@@ -42,8 +42,8 @@ this order of priority:
 ## Schedule
 - A scheduled run every 30 minutes, plus the Worker's cron watchdog, plus a run that chains its successor while work
   remains. A run with nothing due ends in under a minute.
-- Each department is re-crawled on its own measured interval, between 5 and 120 days, never more often than the floors
-  (consumable 7 days, durable 30) until its drift has been measured.
+- Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19), so each refresh is a full
+  crawl of a few days; the measured per-department planner is bypassed while that is set.
 - Store prices: food, household, personal care and health every 28 days; baby, pets, beauty and pharmacy every 56.
 - The pipeline slows to 3 calls a minute on weekday mornings (`volunteer_hours`), when volunteers may be using the live
   check that shares the same Walmart key.
@@ -54,9 +54,14 @@ this order of priority:
    produce stickers (PLU codes) give the item and its price per pound or each.
 3. **A barcode Walmart does not sell** (Aldi, Giant Eagle, Marc's, Meijer, Target, Dollar General, Kirkland, regional
    brands) is identified offline and valued at the closest Walmart equivalent, labelled "equivalent value" with the
-   basis item shown.
-4. **Typed search** shows brand, variant, size, pack and price; the volunteer taps the exact one.
-5. **Live check**: when the phone is online, an unknown barcode is priced through the Worker.
+   basis item shown. A barcode this phone matched before (an unknown one, found by name and added to the tally) opens
+   that Walmart item as a remembered match; one under a listed store's company prefix (`data/brands.json`) is named by
+   its store ("Kirkland Signature item (Costco)") and the name search starts with that brand.
+4. **Typed search** shows brand, variant, size, pack and price; the volunteer taps the exact one. Another chain's
+   store brand in the query (Kirkland, Clancy's, Market District, Happy Belly...) is set aside and Walmart's own brand
+   ranks first: the same price tier, and the sheet says so.
+5. **Live check**: when the phone is online, an unknown barcode is priced through the Worker; a live price above the
+   list's ceiling ($150 consumable, $100 durable) is not believed.
 6. **Last resort**: the same product type at the same size, per unit, flagged. Never blank, never unpriced.
 
 Used goods show the new retail price; whether to adjust for condition is food-bank policy.

@@ -197,11 +197,40 @@
     "max_price": 100
   },
   "consumable_rules": {
-    "note": "Consumable departments (2026-10-13): a price above max_price (USD) is a listing error, not a donation (an anti-diarrheal at $1,600.52); rejected rows count as consumable_over_cap in stats.json.",
-    "max_price": 500
+    "note": "Consumable departments: a price above max_price (USD) is not a donation (owner, 2026-10-19: nothing a food bank receives costs anywhere near the $460.58 allergy tablets that showed; 2026-10-13: an anti-diarrheal at $1,600.52). Rejected rows count as consumable_over_cap in stats.json; a scanned item above the cap still gets a live Walmart price when online, and the app treats a live price above either cap as implausible.",
+    "max_price": 150
   },
   "exclude_path_keywords": [
-    "/tobacco"
+    "/tobacco",
+    "/baby/nursery & decor/baby decor",
+    "/baby/nursery & decor/baby cribs",
+    "/baby/nursery & decor/gliders & rocking chairs",
+    "/baby/nursery & decor/changing tables",
+    "/baby/nursery & decor/baby bassinets",
+    "/baby/nursery & decor/baby dressers",
+    "/baby/nursery & decor/diaper changing station",
+    "/baby/diaper changing station",
+    "/baby/toddlers' room/toddlers' room decor",
+    "/baby/toddlers' room/toddler furniture",
+    "/baby/greenguard baby & toddler furniture",
+    "/baby/baby travel gear/",
+    "/baby/strollers/",
+    "/baby/car seats/",
+    "/baby/baby activities & gear/",
+    "/baby/feeding/high chairs & booster seats",
+    "/baby/graco/",
+    "/baby/jeep 85th",
+    "/pets/dogs/dog houses",
+    "/pets/dogs/dog kennels",
+    "/pets/dogs/dog crates",
+    "/pets/dogs/dog gates",
+    "/pets/cats/cat houses",
+    "/pets/fish supplies/fish tanks",
+    "/pets/birds/bird cages",
+    "/pets/chickens/chicken coops",
+    "/pets/rabbits/rabbit hutches",
+    "/pets/reptiles/terrariums",
+    "/health and medicine/home health care/wheelchair ramps"
   ],
   "path_rules": [
     [
@@ -724,7 +753,7 @@
   "retired_categories": {
     "12": "International/Specialty (2026-10-08: international foods are labelled by what they are)"
   },
-  "exclude_note": "What is not carried at all (apparel, footwear, pet beds, alcohol, tobacco, media) is decided by crawler/classify.exclusion() from the name, brand and path; docs/CATEGORIES.md lists the rules.",
+  "exclude_note": "What is not carried at all (apparel, footwear, pet beds, alcohol, tobacco, media) is decided by crawler/classify.exclusion() from the name, brand and path; docs/CATEGORIES.md lists the rules. exclude_path_keywords are matched as substrings of the lower-cased Walmart category path (\"home page/baby/nursery & decor/baby cribs/...\"); a match rejects the listing as excluded_category. Since 2026-10-19 (owner): furniture, decor and equipment are no part of a food bank's donations. Baby keeps diapering, feeding, bath and skin care, bedding, health and safety and toys and drops nursery and toddler furniture and decor, strollers, car seats and activity gear; Pets drops houses, kennels, crates, gates, tanks, cages, coops, hutches and terrariums; Health drops wheelchair ramps.",
   "consumable_note": "consumable departments get a per-unit price (price per oz, fl oz or count); durable-goods departments never do (2026-10-08).",
   "order_note": "Department order is the app's shard order: consumables first, then durable departments by how likely a food bank is to receive them (paper plates and party goods, seasonal decorations, kitchen and bath, toys, school and office supplies, emergency prep last). Phones short of memory keep the shards in this order and drop the rest (docs/DECISIONS.md 2026-10-12, 2026-10-14); a dropped shard's barcodes still answer through the live check."
 }

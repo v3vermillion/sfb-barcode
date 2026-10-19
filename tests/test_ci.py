@@ -251,8 +251,10 @@ class Decide(unittest.TestCase):
         self.assertEqual(dec(**fresh, identify={"refreshed": "nope"}), "identify")
 
     def test_schedule_defaults_apply_when_cfg_missing_or_partial(self):
-        self.assertEqual(dec(state("published"), man=manifest(8), cfg=None), "start-core")
+        self.assertEqual(dec(state("published"), man=manifest(8), cfg=None), "audit", "the default cadence is 30 days (2026-10-19)")
+        self.assertEqual(dec(state("published"), man=manifest(31), cfg=None), "start-full", "a month after a full publish everything is due")
         self.assertEqual(dec(state("published"), man=manifest(8), cfg={"core_every_days": 10}), "audit")
+        self.assertEqual(dec(state("published"), man=manifest(11), cfg={"core_every_days": 10}), "start-core")
 
     def test_naive_now_is_treated_as_utc(self):
         self.assertEqual(dec(state("published"), man=manifest(8), now=NOW.replace(tzinfo=None)), "start-core")
@@ -294,7 +296,7 @@ class Helpers(unittest.TestCase):
                 p.write_text(json.dumps({"core_every_days": 3, "stale_days": -1, "budget_min": "x", "extra": 1}))
                 cfg = ci.schedule()
                 self.assertEqual(cfg["core_every_days"], 3)
-                self.assertEqual(cfg["stale_days"], 14); self.assertEqual(cfg["budget_min"], 300)
+                self.assertEqual(cfg["stale_days"], 45); self.assertEqual(cfg["budget_min"], 300)
                 self.assertNotIn("extra", cfg)
         real = ci.schedule()   # the repo file carries the documented defaults
         self.assertEqual({k: real[k] for k in ci.SCHEDULE_DEFAULTS}, ci.SCHEDULE_DEFAULTS)
@@ -456,13 +458,13 @@ class Peek(PlanBase):
 
     def test_stale_prices_alert(self):
         self.write("state/run.json", state("published"))
-        self.write("build/published/manifest.json", manifest(20))
+        self.write("build/published/manifest.json", manifest(50))
         with mock.patch.object(ci, "utcnow", lambda: NOW):
             o, _ = self.run_plan("--plan", "peek")
-        self.assertEqual(o["work"], "start-refresh")
+        self.assertEqual(o["work"], "start-full", "every department shares the fixed 30-day interval, so all are due at once")
         self.assertEqual(o["alert"], "stale-prices")
-        self.assertIn("20 days", o["alert_title"])
-        self.assertIn("run-1", self.body(o)); self.assertIn("14 days", self.body(o))
+        self.assertIn("50 days", o["alert_title"])
+        self.assertIn("run-1", self.body(o)); self.assertIn("45 days", self.body(o))
         self.assertTrue(o["alert_body_file"].startswith(os.environ["RUNNER_TEMP"]))
 
     def test_no_stale_alert_while_a_crawl_runs_or_when_fresh(self):
@@ -599,17 +601,22 @@ class Continue(PlanBase):
             self.assertEqual(st["plan"], "full"); self.assertEqual(st["status"], "crawling")
             self.assertEqual(len(st["departments"]), len(self.depts))
             self.assertTrue((self.root / "sizing.json").exists())            # sized before the first page
-            # a published snapshot 8 days old -> core refresh
+            # a published snapshot 8 days old -> nothing is due on the fixed 30-day cadence (2026-10-19); at 31 days every
+            # department is due at once, which is a full crawl
             self.write("state/run.json", state("published"))
             self.write("build/published/manifest.json", manifest(8))
             with mock.patch.object(ci, "utcnow", lambda: NOW):
                 o, _ = self.run_plan("--plan", "continue")
-            self.assertEqual(o["work"], "start-refresh", "8 days: the consumable departments are past their 7-day floor")
+            self.assertNotIn(o["work"], ("start-refresh", "start-full", "start-core"), "8 days: no department is due")
+            self.write("build/published/manifest.json", manifest(31))
+            with mock.patch.object(ci, "utcnow", lambda: NOW):
+                o, _ = self.run_plan("--plan", "continue")
+            self.assertEqual(o["work"], "start-full", "31 days: every department is past the 30-day interval")
             st = self.read("state/run.json")
-            self.assertEqual(st["plan"], "refresh")
+            self.assertEqual(st["plan"], "full")
             names = {d["name"] for d in st["departments"]}
-            self.assertIn("Food", names); self.assertNotIn("Home", names, "durable departments keep their 30-day floor")
-        self.assertEqual(seen, ["full", "refresh"])
+            self.assertIn("Food", names); self.assertIn("Home", names)
+        self.assertEqual(seen, ["full", "full"])
 
     def test_sizing_throttled_counts_as_a_throttled_run(self):
         from crawler.wm import Throttled

@@ -82,6 +82,28 @@ class Arithmetic(unittest.TestCase):
         self.assertEqual(p["per_min"], 6.0); self.assertEqual(p["cost_calls_per_day"], 0.0); self.assertTrue(p["fits"])
         self.assertIn("| Food |", C.markdown(p)); self.assertEqual(C.markdown(None), "")
 
+    def test_a_fixed_interval_applies_before_the_plan_is_rewritten(self):
+        # the owner sets refresh.fixed_days while state/cadence.json still holds the measured 7-day plan: 30 at once
+        stale_plan = {"departments": {"Food": {"interval_days": 7}}}
+        self.assertEqual(C.interval_for("Food", stale_plan, True, {"refresh": {"fixed_days": 30}, "core_every_days": 30, "full_every_days": 30}), 30.0)
+        self.assertEqual(C.interval_for("Food", stale_plan, True, {"refresh": {"fixed_days": 0}, "core_every_days": 30, "full_every_days": 30}), 7.0)
+
+    def test_a_fixed_interval_is_every_department_s_interval_and_always_fits(self):
+        # the owner's monthly cadence (2026-10-19): the measured drift, the floors and the quota change nothing
+        depts = ["Food", "Home", "Toys"]
+        c = C.config({"refresh": {"fixed_days": 30, "crawl_share": 0.01}})
+        self.assertEqual(c["fixed_days"], 30)
+        fast = [{"dept": "Food", "found": 100, "close": 50, "missing": 0, "age_days": 10}] * 10
+        p = C.plan(depts, C.drift_rates(fast, depts, c), {"Food": 1579, "Home": 4865, "Toys": 2560}, {"Food": 293000, "Home": 753000, "Toys": 318000},
+                   8, c, now=NOW, floors={"Food": 7, "Home": 30, "Toys": 30})
+        self.assertEqual([p["departments"][d]["interval_days"] for d in depts], [30, 30, 30])
+        self.assertEqual([p["departments"][d]["ideal_days"] for d in depts], [30, 30, 30])
+        self.assertTrue(p["fits"]); self.assertEqual(p["fixed_days"], 30)
+        self.assertGreater(p["cost_calls_per_day"], p["budget_calls_per_day"], "the cost is still reported honestly")
+        self.assertIn("fixed 30-day interval", C.markdown(p))
+        self.assertEqual(C.interval_for("Food", p, True, SCHED), 30.0)
+        self.assertEqual(C.config({"refresh": {"fixed_days": 0}})["fixed_days"], 0); self.assertEqual(C.config({})["fixed_days"], 0)
+
     def test_interval_for_prefers_the_plan_over_the_legacy_cadence(self):
         plan = {"departments": {"Food": {"interval_days": 11}, "Home": {"interval_days": 0}}}
         self.assertEqual(C.interval_for("Food", plan, True, SCHED), 11.0)

@@ -17,6 +17,20 @@ department (data/gates.json "price_sanity"), or when both the price and the pric
 comparable items (the price against the same kind of item; the per-unit price against the aisle and against the same kind): Pampers 162 ct at $0.98, melatonin 90 ct at $0.16. A low
 price alone is not enough: a single ramen cup is meant to cost less than the 12-packs around it. Placeholder listings
 (barcode only) whose own price fails the range are dropped instead: there is nothing to show for them.
+
+Since 2026-10-19 a price more than HIGH_FACTOR times the median price of the same kind of item in its category (the
+product noun of its title; at least KIND_MIN rows) is withheld as well, unless the row's per-unit price sits within
+HIGH_FACTOR of its kind's per-unit median (a large size, not an error): 24 allergy tablets at $460.58 beside tablets
+around $15. The crawl itself keeps no consumable listing above $150 (data/categories.json consumable_rules.max_price),
+so this rule covers what the ceiling leaves.
+
+Since 2026-10-19 a price is also withheld when it is more than SIBLING_FACTOR times the median price of the item's own
+in-stock siblings: the same brand, kind, weight or volume (never a count: too coarse), pack and variant words (flavours
+and colours aside), at least SIBLING_MIN of them in stock. Walmart's feed carries stale flavour listings of one product line at several times the line's price
+(a single 12 fl oz CELSIUS can at $7.69-$9.37 beside twenty flavours at $2.28-$2.57); the equivalent value is then the
+closest comparable item, in practice a sibling. Only the high side: a lower price may be a real rollback, and the
+measured spread within families is wide enough (battery sizes, razor models sharing one count) that a tighter or
+two-sided rule would overwrite real prices.
 """
 import math, statistics
 from collections import Counter, defaultdict
@@ -27,6 +41,9 @@ MATCH_MIN = 0.45
 KIND_MIN = 30          # rows of one kind of item before its median price is used
 KIND_BAND = 10         # an equivalent value within 10x of its kind's median
 LOW_FACTOR = 20        # a price and a per-unit price both this far below comparable items are withheld
+HIGH_FACTOR = 10       # a price this far above the median of the same kind of item (and its per-unit price, when it has one) is withheld
+SIBLING_FACTOR = 2.5   # a price this far above the in-stock listings of the same item (brand, kind, size, pack, variants) is withheld
+SIBLING_MIN = 3        # ... when at least this many in-stock siblings set the reference
 
 
 def kind_medians(rows):
@@ -150,6 +167,8 @@ def apply(rows, cfg, group_min=50):
     """Withhold implausible prices and attach equivalent values. rows is a dict id -> row and is changed in place.
     Returns (withheld list for the report, bounds, dropped placeholder ids)."""
     b, dropped = withhold(rows, cfg, group_min)
+    withhold_sibling_outliers(rows.values())
+    withhold_kind_outliers(rows.values())
     return attach_values(rows, b, group_min), {d: {"low": lo, "high": hi, "p99": p99} for d, (lo, hi, p99) in b.items()}, dropped
 
 
@@ -205,6 +224,80 @@ def withhold(rows, cfg, group_min=50):
     return b, dropped
 
 
+def withhold_sibling_outliers(rows):
+    """Withhold the rows priced far above their own in-stock siblings (the other flavours of one product line): stale
+    listings. Runs after process.resolve_packs, so a case whose pack count the name supports is read as a case first.
+    Returns the rows withheld."""
+    out = sibling_outliers(rows)
+    for r in out:
+        _withhold(r)
+        r["_why"] = "far above the same item's other variants"
+    return out
+
+
+def withhold_kind_outliers(rows):
+    """Withhold every price far above the same kind of item (2026-10-19): a stale or mislabelled listing, such as 24
+    allergy tablets at $460.58 beside 2,000 listings of tablets around $15, or a box of dryer sheets at $489.60. The item
+    price is judged against its kind's median and, when the row has a per-unit price and its kind a per-unit median,
+    that too, so a large size (a 34 oz salon conditioner at ten times the 8.5 oz price) is not mistaken for an error.
+    Runs after process.resolve_packs, so a case the name supports is read as a case first; durable goods (process.build
+    marks `_durable`) are left alone. Measured on the published snapshot under the $150 ceiling, bundles read as units:
+    4,269 rows (0.17%), 97% of them out of stock. rows: an iterable of rows."""
+    rows = list(rows)
+    kmed = kind_medians(rows)
+    kind_units = defaultdict(list)
+    for r in rows:
+        if r.get("_kind") and not r.get("price_withheld") and "placeholder" not in r.get("flags", []) \
+                and isinstance(r.get("unit_price"), (int, float)) and r["unit_price"] > 0:
+            kind_units[(r["cat"], r["_kind"], r["base_unit"])].append(r["unit_price"])
+    kumed = {k: statistics.median(v) for k, v in kind_units.items() if len(v) >= KIND_MIN}
+    for r in rows:
+        if r.get("price_withheld") or "placeholder" in r.get("flags", []) or not isinstance(r.get("price"), (int, float)):
+            continue
+        if r.get("_durable"):
+            continue                    # an electric toothbrush beside manual ones, a hair dryer: a model, not an error
+        km = kmed.get((r["cat"], r.get("_kind")))
+        if not km or r["price"] <= km * HIGH_FACTOR:
+            continue
+        kum = kumed.get((r["cat"], r.get("_kind"), r.get("base_unit")))
+        up = r.get("unit_price")
+        if isinstance(up, (int, float)) and up > 0 and kum and up <= kum * HIGH_FACTOR:
+            continue
+        _withhold(r)
+        r["_why"] = "far above the same kind of item"
+
+
+def _sibling_key(r):
+    # a weight or volume names the item precisely enough; a count does not (an Oral-B iO electric brush and a manual one
+    # are both "toothbrush, 1 ct": measured 2026-10-19, the count-sized families are where the rule would be wrong)
+    if not r.get("brand") or not r.get("_kind") or not r.get("base_qty") or r.get("base_unit") not in ("oz", "fl oz"):
+        return None
+    return (r["brand"].strip().lower(), r["_kind"], r["base_unit"], round(float(r["base_qty"]), 2), r.get("pack") or 1,
+            tuple(r.get("variants") or ()), r.get("dept"))
+
+
+def sibling_outliers(rows, factor=SIBLING_FACTOR, min_in_stock=SIBLING_MIN):
+    """Rows priced more than `factor` times the median of their in-stock siblings (same brand, kind, weight or volume,
+    pack and variant words; at least `min_in_stock` of them in stock, placeholders and withheld rows aside). Measured on
+    the 2026-10-13 snapshot at 2.5x: about 1,000 rows once bundle listings are read as units, stale flavour and scent
+    listings of consumer lines (a 12 fl oz CELSIUS can at $7.69-$9.37, Softsoap 7.5 fl oz at $3.18 beside $1.24)."""
+    fam = defaultdict(list)
+    for r in rows:
+        if r.get("price_withheld") or "placeholder" in (r.get("flags") or ()) or not isinstance(r.get("price"), (int, float)):
+            continue
+        k = _sibling_key(r)
+        if k:
+            fam[k].append(r)
+    out = []
+    for members in fam.values():
+        in_stock = [m["price"] for m in members if (m.get("store_stock") or m.get("stock")) == "Available"]
+        if len(in_stock) < min_in_stock:
+            continue
+        ref = statistics.median(in_stock)
+        out.extend(m for m in members if ref > 0 and m["price"] > factor * ref)
+    return out
+
+
 def _corroborated(r, peers):
     """Another listing of the same brand, kind and size (within 10%) at a similar price (within 2x): the low price is
     the brand's real price, not a feed error (Great Value Tonic Water and Diet Tonic Water, 33.8 fl oz, both $0.67)."""
@@ -237,7 +330,7 @@ def attach_values(rows, b, group_min=50):
     for r in todo:
         lo, hi, _ = b.get(r["dept"], (0.10, 5000, None))
         r["equiv"] = valuer.value(r, lo, hi)
-        why = "above range" if r["price"] > hi else "below range" if r["price"] < lo else "far below comparable items"
+        why = r.pop("_why", None) or ("above range" if r["price"] > hi else "below range" if r["price"] < lo else "far below comparable items")
         withheld.append({"id": r["id"], "upc": r.get("upc"), "name": r["name"], "dept": r["dept"], "raw_price": r["price"], "why": why,
                          "range": [lo, hi], "value": r["equiv"]["price"], "method": r["equiv"]["method"],
                          "basis": r["equiv"]["basis_name"]})
