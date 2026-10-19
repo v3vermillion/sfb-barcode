@@ -130,6 +130,7 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | U1 | The first launch after the update showed the previous page styled by the new stylesheet (run-together text, the old chips unstyled) | The page, stylesheet and script carry their build. When they disagree, the page reloads once, which brings one version, and never loops. This first takes effect from the build after this one | U1 |
 | T1 | The walkthrough text was balanced into short lines, which left a quarter of the card empty | Body text fills its measure; it only keeps a last word from standing alone | screenshots |
 | T2 | The empty-state icon peeked half-covered past the walkthrough card | Hidden while the walkthrough runs | screenshots |
+| S1 | The flashlight button stayed on screen with no camera behind it, so tapping it did nothing. Leaving the app releases the camera; on return iOS can refuse the restart, and the button kept showing | The button shows only while a camera with a light is running. It hides when the camera stops, restarts or is refused | S1 |
 
 ## Check on a real iPhone before merging
 

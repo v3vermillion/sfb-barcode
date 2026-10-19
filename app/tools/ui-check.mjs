@@ -317,6 +317,42 @@ await scenario(["U1"], "page and stylesheet from different builds", async (set) 
   check("U1", "a mismatch that persists after the reload does not loop; the app still starts", await page.evaluate(() => document.documentElement.dataset.ready === "1"));
 });
 
+// A camera with a light: the flashlight shows while it runs, and never outlives it. Leaving the app releases the camera;
+// iOS can refuse the restart on return, and the button then had no camera behind it (owner's iPhone, 2026-10-19).
+const FAKE_CAMERA = {
+  fn: () => {
+    window.__camAllow = true; window.__torch = [];
+    navigator.mediaDevices.getUserMedia = async () => {
+      if (!window.__camAllow) throw new DOMException("denied", "NotAllowedError");
+      const c = document.createElement("canvas"); c.width = 640; c.height = 480; c.getContext("2d").fillRect(0, 0, 640, 480);
+      const stream = c.captureStream(5), track = stream.getVideoTracks()[0];
+      track.getCapabilities = () => ({ torch: true });
+      const apply = track.applyConstraints.bind(track);
+      track.applyConstraints = async (k) => { const t = k?.advanced?.[0]?.torch; if (t !== undefined) { window.__torch.push(t); return; } return apply(k).catch(() => {}); };
+      return stream;
+    };
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+    window.__setHidden = (h) => { hidden = h; document.dispatchEvent(new Event("visibilitychange")); };
+  },
+};
+await scenario(["S1"], "scanner flashlight", async (set) => {
+  const env = set(await open({ init: FAKE_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
+  const shown = await page.evaluate(() => !document.getElementById("torchBtn").hidden);
+  check("S1", "the flashlight shows while a camera with a light runs", shown);
+  if (shown) {
+    await page.click("#torchBtn"); await settle(page, 200);
+    const st = await page.evaluate(() => ({ pressed: document.getElementById("torchBtn").getAttribute("aria-pressed"), calls: window.__torch }));
+    check("S1", "tapping it turns the light on", st.pressed === "true" && st.calls.at(-1) === true, JSON.stringify(st));
+  }
+  await page.evaluate(() => { window.__setHidden(true); }); await settle(page, 200);
+  await page.evaluate(() => { window.__camAllow = false; window.__setHidden(false); }); await settle(page, 800);
+  const after = await page.evaluate(() => ({ torch: !document.getElementById("torchBtn").hidden, denied: !!document.querySelector("#scanner .scan-denied") }));
+  check("S1", "back from the background with the camera refused: no flashlight without a camera", after.denied && !after.torch, JSON.stringify(after));
+});
+
 await scenario(["F13"], "home screen height", async (set) => {
   const env = set(await open({}));
   const { page } = env;

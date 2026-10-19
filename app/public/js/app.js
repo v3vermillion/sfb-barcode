@@ -1317,7 +1317,10 @@ async function openScanner({ reuseEntry = false } = {}) {
   el.scanClose.focus({ preventScroll: true });
   await startCamera(gen);
 }
+/** The flashlight button exists only while a camera that has one is running. */
+function hideTorch() { el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false"); }
 async function startCamera(gen) {
+  hideTorch();   // a restart (back from the background) shows it again only when the new camera has a light
   if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) { scanDenied("The camera requires a secure (HTTPS) connection. Enter the barcode manually."); return; }
   try {
     scannerMod ||= await import("./scanner.js");
@@ -1339,6 +1342,7 @@ async function startCamera(gen) {
   }
 }
 function scanDenied(msg) {
+  hideTorch();
   el.reticle.hidden = true; el.scanHint.textContent = "Enter the digits printed under the barcode";
   el.scanner.querySelector(".scan-denied")?.remove();
   const d = document.createElement("div"); d.className = "scan-denied"; d.innerHTML = `<p>${esc(msg)}</p>`;
@@ -1380,7 +1384,12 @@ async function onScanHit(hit) {
 }
 el.scanBtn.addEventListener("click", openScanner);
 el.scanClose.addEventListener("click", () => closeScanner());
-el.torchBtn.addEventListener("click", async () => { const on = await state.scan?.setTorch(!state.scan.torch); el.torchBtn.setAttribute("aria-pressed", String(!!on)); });
+el.torchBtn.addEventListener("click", async () => {
+  const scan = state.scan;
+  if (!scan) { hideTorch(); return; }
+  const on = await scan.setTorch(!scan.torch);
+  if (scan === state.scan) el.torchBtn.setAttribute("aria-pressed", String(!!on));
+});
 el.scanTypeBtn.addEventListener("click", showScanType);
 el.scanTypeForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1392,7 +1401,7 @@ el.scanTypeForm.addEventListener("submit", async (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     // release the camera at once; the history bookkeeping can wait for the app to come back
-    if (state.scan) { state.scan.stop(); state.scan = null; state.scanPausedByVisibility = state.scanOpen; }
+    if (state.scan) { state.scan.stop(); state.scan = null; state.scanPausedByVisibility = state.scanOpen; hideTorch(); }
   } else if (state.scanPausedByVisibility) {
     state.scanPausedByVisibility = false;
     if (state.scanOpen) startCamera(++state.scanGen);
