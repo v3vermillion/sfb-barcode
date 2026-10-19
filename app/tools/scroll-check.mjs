@@ -11,7 +11,6 @@ const BROWSER = String(args.browser || "chromium").toLowerCase();
 if (BROWSER !== "chromium" && BROWSER !== "webkit") { console.error(`scroll-check: --browser must be chromium or webkit (got ${args.browser})`); process.exit(2); }
 const URL_ = new URL(args.url || "http://127.0.0.1:8787/");
 URL_.searchParams.set("nosw", "1");
-URL_.searchParams.set("tour", "0");
 const exe = process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {};
 const browser = BROWSER === "chromium" ? await chromium.launch({ args: ["--no-sandbox"], ...exe }) : await webkit.launch();
 
@@ -19,11 +18,12 @@ let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${BROWSER} ${name}${detail ? ` — ${detail}` : ""}`); if (!ok) failed++; };
 const settle = (page, ms = 250) => page.waitForTimeout(ms);
 
-async function open(width, height) {
-  const ctx = await browser.newContext({ viewport: { width, height } });
+async function open(width, height, { touch = false, tour = "0" } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, ...(touch ? { hasTouch: true, isMobile: true } : {}) });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => check("no page errors", false, e.message));
-  await page.goto(URL_.href, { waitUntil: "domcontentloaded" });
+  const u = new URL(URL_.href); u.searchParams.set("tour", tour);
+  await page.goto(u.href, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("html[data-ready='1']", { timeout: 180000 });
   return { ctx, page };
 }
@@ -109,6 +109,30 @@ try {
     const y0 = await page.evaluate(() => scrollY);
     await page.mouse.move(180, 15); await page.mouse.wheel(0, -400); await settle(page, 300);
     check("the page behind an open sheet doesn't scroll", (await page.evaluate(() => scrollY)) === y0);
+    await ctx.close();
+  }
+  // ---------------------------------------------------------------- touch phone: the root never bounces; the walkthrough replays
+  {
+    const { ctx, page } = await open(390, 844, { touch: true, tour: "1" });
+    // the page itself never rubber-bands: on iOS a bounce of the root drags the fixed header and search bar with it.
+    // Only the root element's value reaches the viewport (body's does not propagate).
+    const ob = await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY);
+    check("the page never bounces (root overscroll-behavior)", ob === "none", ob);
+    await page.waitForSelector("#tour:not([hidden])"); await settle(page, 400);
+    await page.tap("#tourCard [data-tour=skip]"); await page.waitForSelector("#tour[hidden]", { state: "attached" }); await settle(page, 400);
+    const replay = async (label) => {
+      await page.tap("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 700);
+      await page.locator("#settings [data-act=tour]").scrollIntoViewIfNeeded(); await settle(page, 200);
+      await page.tap("#settings [data-act=tour]"); await settle(page, 1500);
+      const st = await page.evaluate(() => ({ tour: !document.getElementById("tour").hidden, settings: document.getElementById("settings").open, step: document.getElementById("tourStep")?.textContent, history: history.state }));
+      check(`Settings › Replay the walkthrough opens it (${label})`, st.tour && !st.settings && /Step 1/.test(st.step || ""), JSON.stringify(st));
+      if (st.tour) { await page.tap("#tourCard [data-tour=skip]"); await settle(page, 600); }
+      check(`the replayed walkthrough closes (${label})`, await page.evaluate(() => document.getElementById("tour").hidden));
+    };
+    await replay("home, after the first-launch walkthrough");
+    await replay("home, a second time");
+    await search(page, "peanut butter");
+    await replay("over search results");
     await ctx.close();
   }
 } catch (err) {

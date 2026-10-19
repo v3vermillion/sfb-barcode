@@ -59,7 +59,7 @@ jobs:
 
   app-ui:
     # the layout, price-status and walkthrough rules of the real app in Chromium (app/tools/ui-check.mjs), on a small
-    # fixture: every check is named by the defect it guards (docs/UI-AUDIT.md)
+    # fixture: every check is named by the defect it guards (docs/UI-AUDIT.md); scroll-check runs in Chromium and WebKit
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -73,12 +73,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json, then Chromium with its libraries
-      - name: Install Playwright and Chromium
+      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json, then Chromium and WebKit (the
+      # engine of every iPhone browser) with their libraries
+      - name: Install Playwright, Chromium and WebKit
         run: |
           set -eu
           npm install --no-audit --no-fund
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
       - name: Build a small fixture, its pack and the site
         run: |
           set -eu
@@ -97,6 +98,12 @@ jobs:
           echo "::error::the local server did not answer"; cat build/serve.log; exit 1
       - name: Layout, status and walkthrough checks
         run: node tools/ui-check.mjs --json build/ui-check.json
+      - name: Scrolling and touch checks (Chromium)
+        if: ${{ !cancelled() }}
+        run: node tools/scroll-check.mjs --browser chromium
+      - name: Scrolling and touch checks (WebKit)
+        if: ${{ !cancelled() }}
+        run: node tools/scroll-check.mjs --browser webkit
 
   report:
     # only on main: open or close the tests-failed alert
