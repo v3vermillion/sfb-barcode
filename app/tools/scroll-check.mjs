@@ -129,6 +129,19 @@ try {
       if (st.tour) { await page.tap("#tourCard [data-tour=skip]"); await settle(page, 600); }
       check(`the replayed walkthrough closes (${label})`, await page.evaluate(() => document.getElementById("tour").hidden));
     };
+    // a sheet closes by a drag on its header (the title, not only the handle); a short drag springs back
+    const drag = async (dy, ms) => {
+      const t = await page.locator("#settings .sheet-title").boundingBox();
+      await page.mouse.move(t.x + 10, t.y + 8); await page.mouse.down();
+      for (let i = 1; i <= 12; i++) { await page.mouse.move(t.x + 10, t.y + 8 + (dy * i) / 12); await page.waitForTimeout(ms); }
+      await page.mouse.up(); await settle(page, 700);
+      return page.evaluate(() => ({ open: document.getElementById("settings").open, translate: document.getElementById("settings").style.translate }));
+    };
+    await page.tap("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 700);
+    const short = await drag(40, 40);
+    check("a short drag on the Settings header springs back", short.open && !short.translate, JSON.stringify(short));
+    const long = await drag(260, 20);
+    check("a drag on the Settings header closes it", !long.open && !long.translate, JSON.stringify(long));
     await replay("home, after the first-launch walkthrough");
     await replay("home, a second time");
     await search(page, "peanut butter");

@@ -353,6 +353,50 @@ await scenario(["S1"], "scanner flashlight", async (set) => {
   check("S1", "back from the background with the camera refused: no flashlight without a camera", after.denied && !after.torch, JSON.stringify(after));
 });
 
+// Sheets close by a drag on their whole header, not only the 21px handle; a short drag springs back without moving the
+// content; a tap on the header is a tap; a re-render mid-drag (Settings refreshes its price card) is harmless.
+const touchDrag = async (cdp, page, x, y0, y1, { steps = 8, ms = 16, hold = false } = {}) => {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: y0 }] });
+  for (let i = 1; i <= steps; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y0 + ((y1 - y0) * i) / steps }] }); await page.waitForTimeout(ms); }
+  if (!hold) await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+};
+await scenario(["S4"], "dragging a sheet down by its header", async (set) => {
+  const env = set(await open({}));
+  const { page, cdp } = env;
+  const openSettings = async () => { await page.tap("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 700); };
+  const isOpen = () => page.evaluate(() => document.getElementById("settings").open);
+  await openSettings();
+  const title = await rect(page, "#settings .sheet-title"), grab = await rect(page, "#settings .grab");
+  check("S4", "the drag area is the whole header, not the handle alone", title && grab && title.t > grab.b - 1, `handle ${fmt(grab)} title ${fmt(title)}`);
+  // a slow drag from the title, past a quarter of the sheet
+  await touchDrag(cdp, page, title.l + 10, title.t + 8, title.t + 260, { steps: 20, ms: 20 }); await settle(page, 700);
+  check("S4", "a drag from the title closes Settings", !(await isOpen()));
+  check("S4", "the close leaves no history entry behind", await page.evaluate(() => history.state?.modal == null), JSON.stringify(await page.evaluate(() => history.state)));
+  // a quick flick, shorter than the distance threshold
+  await openSettings();
+  await touchDrag(cdp, page, 195, title.t + 8, title.t + 70, { steps: 3, ms: 8 }); await settle(page, 700);
+  check("S4", "a quick downward flick closes it", !(await isOpen()));
+  // a short slow drag springs back; the content keeps its scroll position
+  await openSettings();
+  await page.evaluate(() => { document.querySelector("#settings .sheet-inner").scrollTop = 200; }); await settle(page, 100);
+  const y0 = await page.evaluate(() => document.querySelector("#settings .sheet-inner").scrollTop);
+  await touchDrag(cdp, page, 195, title.t + 8, title.t + 48, { steps: 10, ms: 40 }); await settle(page, 600);
+  const back = await page.evaluate(() => ({ open: document.getElementById("settings").open, tr: document.getElementById("settings").style.translate, y: document.querySelector("#settings .sheet-inner").scrollTop }));
+  check("S4", "a short drag springs back and stays open, at the same scroll position", back.open && !back.tr && Math.abs(back.y - y0) <= 1, JSON.stringify({ ...back, before: y0 }));
+  // a tap on the header is not a drag; the close button still closes
+  await page.touchscreen.tap(title.l + 10, title.t + 8); await settle(page, 500);
+  check("S4", "a tap on the header leaves the sheet open", await isOpen());
+  // a re-render while the finger is down
+  await touchDrag(cdp, page, 195, title.t + 8, title.t + 60, { steps: 6, ms: 20, hold: true });
+  await page.evaluate(() => window.__sfb.refreshSettings());
+  for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 195, y: title.t + 60 + i * 30 }] }); await page.waitForTimeout(20); }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await settle(page, 700);
+  check("S4", "a re-render mid-drag does not strand the sheet: the drag still closes it", !(await isOpen()) && await page.evaluate(() => !document.getElementById("settings").style.translate));
+  await openSettings();
+  await page.tap("#settings .x-btn"); await settle(page, 600);
+  check("S4", "the close button still closes", !(await isOpen()));
+});
+
 await scenario(["F13"], "home screen height", async (set) => {
   const env = set(await open({}));
   const { page } = env;
