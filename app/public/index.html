@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <title>SFB Value</title>
   <meta name="description" content="Strongsville Emergency Food Bank. Scan or type a donated item to see its Walmart price. Prices are saved on the phone.">
   <meta name="color-scheme" content="light dark">
@@ -127,7 +127,7 @@
     <canvas id="overlay" class="overlay" aria-hidden="true"></canvas>
     <div class="scan-top">
       <button class="scan-ctl" id="scanClose" type="button" aria-label="Close scanner"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
-      <button class="scan-ctl" id="torchBtn" type="button" aria-pressed="false" aria-label="Flashlight" hidden><svg class="ico" aria-hidden="true"><use href="#i-torch"/></svg></button>
+      <div class="scan-ctls"><button class="scan-ctl scan-ctl--text" id="zoomBtn" type="button" aria-pressed="false" aria-label="Zoom in 2 times for a small barcode" hidden>2×</button><button class="scan-ctl" id="torchBtn" type="button" aria-pressed="false" aria-label="Flashlight" hidden><svg class="ico" aria-hidden="true"><use href="#i-torch"/></svg></button></div>
     </div>
     <div class="reticle" id="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="laser"></span></div>
     <div class="scan-bottom">

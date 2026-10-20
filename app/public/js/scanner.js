@@ -12,6 +12,10 @@ import { toGtin14, checkDigit } from "./barcode.js";
 const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "itf"];
 const ZXING_FORMATS = ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "ITF"];
 const DETECT_TIMEOUT_MS = 4000;
+// The decoder reads the frame at the camera's own resolution, up to this width (2026-10-20: it used to shrink every
+// frame to 720 px first, which left a small bottle barcode too few pixels per bar; the camera is asked for 1080p)
+const DECODE_MAX_W = 1920;
+const ZOOM_LEVEL = 2;
 const REFIRE_SUPPRESS_MS = 2500;
 
 let enginePromise = null;
@@ -63,7 +67,7 @@ function makeZxingWorker() {
         const c = new OffscreenCanvas(width, height); const g = c.getContext("2d", { willReadFrequently: true });
         g.drawImage(bitmap, 0, 0, width, height); bitmap.close?.();
         const img = g.getImageData(0, 0, width, height);
-        const res = await readBarcodes(img, { formats: ${JSON.stringify(ZXING_FORMATS)}, tryHarder: false, tryRotate: true, tryInvert: false, maxNumberOfSymbols: 1 });
+        const res = await readBarcodes(img, { formats: ${JSON.stringify(ZXING_FORMATS)}, tryHarder: true, tryRotate: true, tryInvert: false, maxNumberOfSymbols: 1 });
         postMessage({ id, results: res.filter((r) => r.isValid).map((r) => ({ rawValue: r.text, format: r.format, points: r.position ? [r.position.topLeft, r.position.topRight, r.position.bottomRight, r.position.bottomLeft] : null })) });
       } catch (err) { postMessage({ id, error: String(err && err.message || err) }); }
     };`;
@@ -92,7 +96,7 @@ export function getEngine() {
           if (broken) throw broken;
           const vw = video.videoWidth, vh = video.videoHeight;
           if (!vw) return [];
-          const scale = Math.min(1, 720 / vw);
+          const scale = Math.min(1, DECODE_MAX_W / vw);
           const width = Math.round(vw * scale), height = Math.round(vh * scale);
           // no resize options here: Safari ignores/rejects them for video sources; the worker scales when it draws
           const bitmap = await createImageBitmap(video);
@@ -135,7 +139,7 @@ function dropEngine(p) {
  * @param {(info) => void} onStatus   {engine} | {torch} | {error} | {fatal, error}
  */
 export async function startScanner(video, overlay, onHit, onStatus) {
-  const constraints = { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
+  const constraints = { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } };
   // Ask for the camera first and build the decoder alongside it. A refused or missing camera answers at once (the
   // typed path takes over without waiting for the decoder's self-test or worker), and a granted camera does not wait
   // for the decoder either: the two start together, as before.
@@ -152,11 +156,15 @@ export async function startScanner(video, overlay, onHit, onStatus) {
   const track = stream.getVideoTracks()[0];
   const caps = track.getCapabilities?.() || {};
   const hasTorch = !!caps.torch;
-  onStatus?.({ engine: engine.name, torch: hasTorch });
+  // the camera's own zoom (iOS 17+, Android): a small barcode fills more of the frame while the phone stays at a distance
+  // the lens can focus on; the app offers it as a 2x toggle
+  const zoomCap = caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5 ? caps.zoom : null;
+  const zoomLevel = zoomCap ? Math.min(ZOOM_LEVEL, zoomCap.max) : 1;
+  onStatus?.({ engine: engine.name, torch: hasTorch, zoom: !!zoomCap });
   // try to focus continuously; harmless when unsupported
   try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { /* optional */ }
 
-  let running = true, stopped = false, busy = false, torchOn = false, errors = 0;
+  let running = true, stopped = false, busy = false, torchOn = false, zoomed = false, errors = 0;
   let lastValue = null, lastCount = 0, lastT = 0;
   let acceptedValue = null, acceptedT = 0;
   const g = overlay.getContext("2d");
@@ -227,6 +235,10 @@ export async function startScanner(video, overlay, onHit, onStatus) {
     hasTorch,
     async setTorch(on) { try { await track.applyConstraints({ advanced: [{ torch: !!on }] }); torchOn = !!on; return torchOn; } catch { return torchOn; } },
     get torch() { return torchOn; },
+    hasZoom: !!zoomCap,
+    zoomLevel,
+    async setZoom(on) { if (!zoomCap) return false; try { await track.applyConstraints({ advanced: [{ zoom: on ? zoomLevel : (zoomCap.min || 1) }] }); zoomed = !!on; return zoomed; } catch { return zoomed; } },
+    get zoom() { return zoomed; },
     get running() { return running && !stopped; },
     pause() { running = false; drawPoints(null); },
     resume() { if (stopped) return; if (!running) { running = true; lastValue = null; lastCount = 0; drawPoints(null); tick(); } },

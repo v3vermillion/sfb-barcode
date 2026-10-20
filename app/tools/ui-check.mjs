@@ -308,7 +308,7 @@ await scenario(["F1", "F2", "F13"], "iPhone Home Screen app (standalone)", async
 });
 
 // A page given parts of two builds (the previous page with this stylesheet, say) reloads once, and never loops
-await scenario(["U1"], "page and stylesheet from different builds", async (set) => {
+await scenario(["U1", "F53"], "page and stylesheet from different builds", async (set) => {
   const env = set(await open({ wait: false, init: { fn: () => { try { sessionStorage.setItem("loads", String(+(sessionStorage.getItem("loads") || 0) + 1)); } catch { /* none */ } } }, routes: [["**/app.css", async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: `${await r.text()}\n:root { --shell-build: "0000000000"; }\n` }); }]] }));
   const { page } = env;
   await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 800);
@@ -340,6 +340,8 @@ await scenario(["S1"], "scanner flashlight", async (set) => {
   const env = set(await open({ init: FAKE_CAMERA }));
   const { page } = env;
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
+  const zoomHidden = await page.evaluate(() => document.getElementById("zoomBtn").hidden);
+  check("F53", "a camera without zoom shows no 2x control", zoomHidden === true);
   const shown = await page.evaluate(() => !document.getElementById("torchBtn").hidden);
   check("S1", "the flashlight shows while a camera with a light runs", shown);
   if (shown) {
@@ -523,6 +525,26 @@ await scenario(["F49", "F50", "F51"], "Recent: swipe left to remove, Clear", asy
   check("F51", "Clear empties Recent and the home screen shows its empty state", cleared.rows === 0 && cleared.hidden && cleared.empty, JSON.stringify(cleared));
   await page.click("#toasts .toast button"); await settle(page, 400);
   check("F51", "Undo brings the cleared rows back", (await page.evaluate(() => document.querySelectorAll("#recentList .row").length)) === after);
+});
+
+await scenario(["F52"], "no page zoom", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  const meta = await page.evaluate(() => document.querySelector('meta[name="viewport"]')?.content || "");
+  check("F52", "the viewport pins the scale, so rapid taps or a pinch cannot zoom the home-screen app", /maximum-scale=1/.test(meta) && /user-scalable=no/.test(meta), meta);
+  // a browser tab ignores that meta: two quick taps on plain text are swallowed before Safari can zoom
+  const swallowed = await page.evaluate(() => new Promise((res) => {
+    const h = document.querySelector("#homeEmpty h2, #homeEmpty .h1, #homeEmpty") || document.body;
+    const fire = () => { const e = new Event("touchend", { bubbles: true, cancelable: true }); h.dispatchEvent(e); return e.defaultPrevented; };
+    const first = fire(); setTimeout(() => res({ first, second: fire() }), 60);
+  }));
+  check("F52", "the second of two quick taps on plain text is swallowed; the first is not", swallowed.first === false && swallowed.second === true, JSON.stringify(swallowed));
+  const onButton = await page.evaluate(() => new Promise((res) => {
+    const b = document.getElementById("scanBtn") || document.querySelector("button");
+    const fire = () => { const e = new Event("touchend", { bubbles: true, cancelable: true }); b.dispatchEvent(e); return e.defaultPrevented; };
+    fire(); setTimeout(() => res(fire()), 60);
+  }));
+  check("F52", "quick taps on a button are never swallowed", onButton === false);
 });
 
 await scenario(["F35"], "tapping the logo", async (set) => {

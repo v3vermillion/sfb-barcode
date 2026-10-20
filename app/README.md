@@ -17,7 +17,7 @@ app/
     js/tokenize.js   shared tokenizer (same file is imported by the pack builder)
     js/barcode.js    GTIN / UPC-E / store-label / PLU mathematics
     js/resolve.js    resolution engine (exact → label → PLU → equivalent → closest)
-    js/scanner.js    camera + native BarcodeDetector (self-tested) or zxing-cpp wasm in a worker
+    js/scanner.js    camera (1080p, full-resolution decode, try-harder) + native BarcodeDetector (self-tested) or zxing-cpp wasm in a worker; 2x camera zoom where available
     js/staleness.js  how old the prices are (fresh / amber 14 d / red 45 d) in a volunteer's words
     vendor/          zxing-wasm reader (ESM + wasm, Apache-2.0)   fonts/  Geist + Geist Mono (OFL)
   tools/

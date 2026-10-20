@@ -9,7 +9,7 @@ import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.j
 
 // ------------------------------------------------------------------ setup
 const $ = (id) => document.getElementById(id);
-const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "heroEyebrow", "readyCard", "statusLive", "tallyCard", "tallyCardTotal", "tallyCardSub", "homeEmpty", "pageTitle", "installHint", "tour", "tourSpot", "tourCard"].map((k) => [k, $(k)]));
+const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "zoomBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "heroEyebrow", "readyCard", "statusLive", "tallyCard", "tallyCardTotal", "tallyCardSub", "homeEmpty", "pageTitle", "installHint", "tour", "tourSpot", "tourCard"].map((k) => [k, $(k)]));
 
 const scanShortcut = new URLSearchParams(location.search).get("scan") === "1";   // launched from the Home Screen "Scan" shortcut
 const LIVE_URL = (document.querySelector('meta[name="sfb-live-check"]')?.content || "").trim().replace(/\/$/, "");
@@ -80,6 +80,19 @@ const fmtInt = (n) => Number(n || 0).toLocaleString("en-US");
 const fmtDate = (iso, long = false) => { if (!iso) return ""; const d = new Date(`${iso}T12:00:00`); return d.toLocaleDateString(undefined, long === "mid" ? { month: "short", day: "numeric", year: "numeric" } : long ? { month: "long", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" }); };
 const fmtTime = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const icon = (name, cls = "ico") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+// No page zoom, ever: rapid taps on plain text (the empty state's heading) made iOS double-tap-zoom the whole app
+// (2026-10-20, owner's screenshot) although the body has touch-action: manipulation. The viewport meta pins the scale
+// in a home-screen app; these guards cover the browser tab, where iOS ignores the meta: a second tap within 350 ms on
+// anything that is not a control is swallowed, and the pinch gesture is refused.
+{
+  let lastTap = 0;
+  document.addEventListener("touchend", (e) => {
+    const now = Date.now();
+    if (now - lastTap < 350 && !e.target.closest("button, input, select, textarea, a, [role=button], [role=switch], [contenteditable]")) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+}
 const haptic = (ms = 12) => { if (prefs.haptics && navigator.vibrate) { try { navigator.vibrate(ms); } catch { /* ignore */ } } };
 const priceDate = () => db.manifest?.priceDate || db.manifest?.published?.slice(0, 10) || "";
 const storeLabel = () => db.manifest?.store?.label || "Strongsville Walmart";
@@ -1483,16 +1496,28 @@ async function openScanner({ reuseEntry = false } = {}) {
   el.scanner.hidden = false; el.scanner.classList.remove("is-hit");
   el.scanHint.textContent = "Center the barcode in the frame";
   el.scanTypeForm.hidden = true; el.scanTypeBtn.hidden = false; el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false");
+  hideZoom();
   el.scanner.querySelector(".scan-denied")?.remove(); el.reticle.hidden = false;
   syncInert();
   if (!reuseEntry) history.pushState({ modal: "scanner", n: (history.state?.n || 0) + 1 }, "");
   el.scanClose.focus({ preventScroll: true });
   await startCamera(gen);
 }
-/** The flashlight button exists only while a camera that has one is running. */
+/** The flashlight and 2x buttons exist only while a camera that has them is running. */
 function hideTorch() { el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false"); }
+function hideZoom() { el.zoomBtn.hidden = true; el.zoomBtn.setAttribute("aria-pressed", "false"); }
+// a barcode that will not read after a few seconds is usually a small one (a water bottle's): say what helps
+const SMALL_HINT_MS = 5000;
+let smallHintTimer = 0;
+function armSmallHint() {
+  clearTimeout(smallHintTimer);
+  smallHintTimer = setTimeout(() => {
+    if (!state.scanOpen || !state.scan?.running || !el.scanTypeForm.hidden) return;
+    el.scanHint.textContent = state.scan?.hasZoom && !state.scan.zoom ? "Small barcode? Tap 2×, or hold it 4 to 6 inches away" : "Small barcode? Hold it 4 to 6 inches away and keep it flat";
+  }, SMALL_HINT_MS);
+}
 async function startCamera(gen) {
-  hideTorch();   // a restart (back from the background) shows it again only when the new camera has a light
+  hideTorch(); hideZoom();   // a restart (back from the background) shows them again only when the new camera has them
   if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) { scanDenied("The camera requires a secure (HTTPS) connection. Enter the barcode manually."); return; }
   try {
     scannerMod ||= await import("./scanner.js");
@@ -1500,11 +1525,13 @@ async function startCamera(gen) {
       if (gen !== state.scanGen) return;
       if (info.engine) state.engine = info.engine;
       if (info.torch != null) el.torchBtn.hidden = !info.torch;
+      if (info.zoom != null) el.zoomBtn.hidden = !info.zoom;
       if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader could not start on this phone. Enter the barcode manually."); }
       else if (info.error) console.warn("scanner:", info.error);
     });
     if (gen !== state.scanGen || !state.scanOpen) { scan.stop(); return; }   // closed (or reopened) while the camera was starting
     state.scan?.stop();
+    armSmallHint();
     state.scan = scan;
     if (!el.scanTypeForm.hidden || el.sheet.open) scan.pause();
   } catch (err) {
@@ -1537,7 +1564,7 @@ function closeScanner({ fromPop = false } = {}) {
 function resumeScan() {
   if (!state.scanOpen || !state.scan) return;
   el.scanner.classList.remove("is-hit"); el.scanHint.textContent = "Center the barcode in the frame";
-  state.scan.resume();
+  state.scan.resume(); armSmallHint();
 }
 async function onScanHit(hit) {
   if (anyModalOpen()) { state.scan?.pause(); return; }   // the tally or settings is open over the camera: never stack a result on it
@@ -1557,6 +1584,12 @@ async function onScanHit(hit) {
 }
 el.scanBtn.addEventListener("click", openScanner);
 el.scanClose.addEventListener("click", () => closeScanner());
+el.zoomBtn.addEventListener("click", async () => {
+  const scan = state.scan;
+  if (!scan) { hideZoom(); return; }
+  const on = await scan.setZoom(!scan.zoom);
+  if (scan === state.scan) { el.zoomBtn.setAttribute("aria-pressed", String(!!on)); if (/^Small barcode/.test(el.scanHint.textContent)) el.scanHint.textContent = "Center the barcode in the frame"; }
+});
 el.torchBtn.addEventListener("click", async () => {
   const scan = state.scan;
   if (!scan) { hideTorch(); return; }
