@@ -308,7 +308,7 @@ await scenario(["F1", "F2", "F13"], "iPhone Home Screen app (standalone)", async
 });
 
 // A page given parts of two builds (the previous page with this stylesheet, say) reloads once, and never loops
-await scenario(["U1"], "page and stylesheet from different builds", async (set) => {
+await scenario(["U1", "F53"], "page and stylesheet from different builds", async (set) => {
   const env = set(await open({ wait: false, init: { fn: () => { try { sessionStorage.setItem("loads", String(+(sessionStorage.getItem("loads") || 0) + 1)); } catch { /* none */ } } }, routes: [["**/app.css", async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: `${await r.text()}\n:root { --shell-build: "0000000000"; }\n` }); }]] }));
   const { page } = env;
   await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 800);
@@ -340,6 +340,8 @@ await scenario(["S1"], "scanner flashlight", async (set) => {
   const env = set(await open({ init: FAKE_CAMERA }));
   const { page } = env;
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
+  const zoomHidden = await page.evaluate(() => document.getElementById("zoomBtn").hidden);
+  check("F53", "a camera without zoom shows no 2x control", zoomHidden === true);
   const shown = await page.evaluate(() => !document.getElementById("torchBtn").hidden);
   check("S1", "the flashlight shows while a camera with a light runs", shown);
   if (shown) {
