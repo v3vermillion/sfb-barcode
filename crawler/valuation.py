@@ -289,12 +289,12 @@ def _one_run_diff(a, b):
 
 def variant_families(rows, consumable_depts=None):
     """Lists of rows that are one product line: same brand, category, size and pack, names that differ in one run of
-    at most three tokens. Placeholders, withheld rows and rows priced from the store's shelf are left out; so is every
-    department outside `consumable_depts` when given."""
+    at most three tokens. Placeholders and withheld rows are left out; so is every department outside `consumable_depts`
+    when given. Rows priced from the store's shelf stay in: they are the best reference a line can have."""
     groups = defaultdict(list)
     for r in rows:
         flags = r.get("flags") or []
-        if "placeholder" in flags or "store_price" in flags or r.get("price_withheld"):
+        if "placeholder" in flags or r.get("price_withheld"):
             continue
         if not r.get("brand") or not r.get("base_qty") or not isinstance(r.get("price"), (int, float)) or r["price"] <= 0:
             continue
@@ -324,6 +324,11 @@ def variant_families(rows, consumable_depts=None):
     return fams
 
 
+def _current(r):
+    """A price that is current: Walmart.com has the listing in stock, or the store's shelf does (storeprice.apply)."""
+    return r.get("stock") == "Available" or "store_price" in (r.get("flags") or ())
+
+
 def apply_family_prices(rows, consumable_depts=None):
     """Give every out-of-stock member of a product line the price its in-stock members agree on (owner's case,
     2026-10-20: 32 CELSIUS flavours, every in-stock one at $2.57, the out-of-stock ones at $2.28 and $4.40-$9.37).
@@ -331,11 +336,12 @@ def apply_family_prices(rows, consumable_depts=None):
     70% of the time, in-stock members 37%, and flagged rollbacks explain 3 of 7,000; an out-of-stock listing's price is
     simply old. The line's price is the most common price among in-stock members when at least FAMILY_MIN_AGREE of
     them, and half or more, share it; in-stock members keep their own price (it is current, and may be a real rollback).
-    The listing's own price stays in `family_price_from`; the row is flagged `family_price`. Returns (rows changed,
-    families used)."""
+    A member is in stock when Walmart.com has it or the store's shelf does (`store_price`, storeprice.apply: 15,580 rows
+    out of stock online carried a shelf price on 2026-10-20). The listing's own price stays in `family_price_from`; the
+    row is flagged `family_price`. Returns (rows changed, families used)."""
     changed = used = 0
     for fam in variant_families(rows, consumable_depts):
-        ins = [r for r in fam if r.get("stock") == "Available"]
+        ins = [r for r in fam if _current(r)]
         if len(ins) < FAMILY_MIN_AGREE:
             continue
         mode, n = Counter(r["price"] for r in ins).most_common(1)[0]
@@ -343,7 +349,7 @@ def apply_family_prices(rows, consumable_depts=None):
             continue
         used += 1
         for r in fam:
-            if r.get("stock") == "Available" or abs(r["price"] - mode) / mode <= FAMILY_TOL:
+            if _current(r) or abs(r["price"] - mode) / mode <= FAMILY_TOL:
                 continue
             r["family_price_from"] = r["price"]
             r["price"] = mode

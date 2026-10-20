@@ -54,9 +54,9 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Store price label | barcode starting with 2 (scale labels: meat, deli, bakery) | price decoded from the barcode, GS1 verifier checked |
 | Produce code | 4-digit PLU (and 9xxxx organic) | produce name, price per lb or each, weight stepper |
 | Equivalent value | barcode Walmart doesn't sell, present in the equivalents table | estimated price, confidence, the Walmart basis item (tappable) |
-| Closest match | the search had to drop a word to find anything; or it named another chain's store brand (Walmart's own brand shown as the equivalent); or a remembered match (a barcode this phone matched by name before, "Not this item? Search by name" to correct it) | nearest item, the ignored word or the brand named |
+| Closest match | the search had to drop a word to find anything; or it named another chain's store brand (Walmart's own brand shown as the equivalent); or a remembered match (a barcode this phone, or another volunteer's, matched by name before, "Not this item? Search by name" to correct it) | nearest item, the ignored word or the brand named |
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
-| Not in database | unknown barcode, nothing online | "Search by name" (search focused; a barcode under a listed store's prefix is named by its store and the brand is typed in) — never a silent blank; the item added from that search is remembered for the barcode on this phone (`sfb.learned.v1`, 500 most recent) |
+| Not in database | unknown barcode, nothing online | "Search by name" (search focused; a barcode under a listed store's prefix is named by its store and the brand is typed in) — never a silent blank; the item added from that search is remembered for the barcode on this phone (`sfb.learned.v1`, 500 most recent) and shared with the other phones through the Worker's `/v1/learned` (fetched at start, when online again and when the app returns to the foreground, at most every 15 minutes; a shared match never overrides one made on this phone) |
 
 Recent rows: swipe left to uncover Remove (an Undo toast follows); the Remove button precedes the row in the document and reveals it on keyboard focus. Clear, at the section's edge, empties Recent with Undo.
 

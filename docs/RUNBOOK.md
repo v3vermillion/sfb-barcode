@@ -22,6 +22,9 @@ Public key format accepted by the portal: base64 body only (no BEGIN/END lines).
      missing or has expired. Without it the watchdog does nothing.
    WM_KEY_VERSION=1, GH_REPO, GH_BRANCH and WATCHDOG_GAP_MIN are set in wrangler.toml.
 4. Redeploy (or push any commit) so secrets apply. `/watchdog?token=<ADMIN_TOKEN>&dry=1` shows what the watchdog sees.
+5. Nothing else to create: the Durable Object behind /v1/learned comes from the migration in wrangler.toml on the first
+   deploy that carries it (2026-10-20). `/health` should show `LEARNED: true` and `STORE_ID: "2266"` (until 2026-10-20 the
+   store id sat under `[triggers]`, where wrangler ignores it, so the live check answered with Walmart.com's price).
 
 ## Endpoints
 - GET /v1/price/<gtin> — PUBLIC (no token): live Walmart price for the app, the Strongsville store's own price
@@ -31,7 +34,13 @@ Public key format accepted by the portal: base64 body only (no BEGIN/END lines).
   Returns `{ok:true, price, name, brand, upc, stock, listings[], checkedAt}` or `{ok:false, reason}`;
   429 when limited, 503 (`retry-after`) when Walmart throttles/fails or the bindings are missing.
   Local dev without bindings: set `ALLOW_UNLIMITED_DEV=1` in `.dev.vars` (never in production).
-- GET /health?token=ADMIN_TOKEN — config check, never prints secret values
+- GET|POST /v1/learned — PUBLIC (no token): the volunteers' shared remembered matches (a barcode nothing knew, matched to a
+  Walmart item by a search by name on one phone). GET returns `{ok, count, learned:[{gtin, upc, title, n, at}]}` (newest
+  first, at most 5,000); POST `{gtin, upc, title}` adds a vote for the match (`forget: true` takes one back: the app's
+  Undo), rate limited 30/min per IP (PRICE_LIMITER). The table lives in the SQLite-backed Durable Object `Learned`
+  (`[[durable_objects.bindings]]` + `[[migrations]]` in wrangler.toml, created on deploy; the Free plan allows SQLite-backed
+  objects). Without the binding the route answers 503 and every phone keeps only its own matches.
+- GET /health?token=ADMIN_TOKEN — config check, never prints secret values (shows STORE_ID and whether LEARNED is bound)
 - GET /taxonomy?token=ADMIN_TOKEN — signed Walmart Taxonomy call; top-level departments
 - GET /taxonomy/<id>?token=ADMIN_TOKEN — children of one category node
 - GET /items/<id>?token=ADMIN_TOKEN&pages=N&raw=1 — test pull of product catalog for a node (read-only)

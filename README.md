@@ -90,7 +90,8 @@ Food Facts data is ODbL.
 ## Acknowledgements
 
 Prices from the [Walmart I/O Affiliate API](https://walmart.io/). Barcodes Walmart does not sell are identified through
-[Open Food Facts](https://world.openfoodfacts.org/), [Open Beauty Facts](https://world.openbeautyfacts.org/) and
+[USDA FoodData Central](https://fdc.nal.usda.gov/) Branded Foods (U.S. Department of Agriculture, Agricultural Research
+Service; public domain), [Open Food Facts](https://world.openfoodfacts.org/), [Open Beauty Facts](https://world.openbeautyfacts.org/) and
 [Open Products Facts](https://world.openproductsfacts.org/) (ODbL). The scanner uses
 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (Apache-2.0) where the browser has no barcode detector of its own; the
 typeface is [Geist](https://vercel.com/font) (OFL). Built for and with the Strongsville Emergency Food Bank.

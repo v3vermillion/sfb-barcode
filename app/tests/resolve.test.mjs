@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand } from "../public/js/resolve.js";
+import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand, mergeLearned } from "../public/js/resolve.js";
 
 const corn = { rank: 0, id: 1, brand: "Great Value", name: "Great Value Golden Sweet Whole Kernel Corn, Canned Corn, 15.25 oz Can", priceCents: 87, size: 15.25, unit: "oz", pack: 1, basis: "each", cat: 6, catName: "Canned & Jarred", upc: "00078742054261", retired: false, primary: true, storeBrand: true };
 const retired = { ...corn, rank: 1, id: 2, retired: true, primary: false };
@@ -229,4 +229,26 @@ test("a live price above the list's ceiling is implausible; online stock is not 
   assert.equal(livePlausible(46058, null), "ok");                           // no ceiling stated: the $10,000 line
   assert.ok(!notesFor(fromItem({ ...corn, unavailable: true })).some((n) => /stock/i.test(n.text)));
   assert.ok(notesFor(fromItem({ ...corn, unavailable: true, storePrice: true })).some((n) => /store's shelf/.test(n.text)));
+});
+
+test("shared matches fill in behind this phone's own, are labelled as a volunteer's, and leave when the list drops them", async () => {
+  const own = { "00096619261574": { key: 78742054261, title: "Great Value Golden Sweet Whole Kernel Corn", at: 5 },
+    "00096619000010": { key: 1, title: "old shared", at: 1, shared: true } };
+  const shared = [
+    { gtin: "00096619261574", upc: "00012345678905", title: "another item", n: 3, at: 9 },      // this phone's own match wins
+    { gtin: "00096619000027", upc: "0078742054261", title: "Great Value Golden Sweet Whole Kernel Corn", n: 1, at: 7 },
+    { gtin: "0096619000027", upc: "0078742054261", title: "bad gtin", n: 1, at: 7 },
+    { gtin: "00096619000034", upc: "x", title: "bad upc", n: 1, at: 7 },
+  ];
+  const merged = mergeLearned(own, shared);
+  assert.deepEqual(Object.keys(merged).sort(), ["00096619000027", "00096619261574"]);
+  assert.equal(merged["00096619261574"].key, 78742054261); assert.equal(merged["00096619261574"].shared, undefined);
+  assert.deepEqual(merged["00096619000027"], { key: 78742054261, title: "Great Value Golden Sweet Whole Kernel Corn", at: 7, shared: true });
+  assert.deepEqual(mergeLearned(merged, []), { "00096619261574": own["00096619261574"] });
+  assert.deepEqual(mergeLearned(null, "nonsense"), {});
+  const db = mkDb();
+  const r = await resolveCode(db, "096619000027", undefined, { learned: (g) => merged[g] || null });
+  assert.equal(r.kind, "closest"); assert.equal(r.item.id, 1);
+  const note = notesFor(r).map((n) => n.text).join(" ");
+  assert.match(note, /matched to this Walmart item by a volunteer on/); assert.doesNotMatch(note, /on this phone/);
 });

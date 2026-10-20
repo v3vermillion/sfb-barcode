@@ -187,6 +187,12 @@ class Apply(unittest.TestCase):
         # outside the consumable departments the rule does nothing
         rows2 = {i: can(i, f"Flavour {i}", 2.57 if i < 8005 else 9.0, stock="Available" if i < 8005 else "Not available", dept="Home") for i in range(8000, 8007)}
         self.assertEqual(V.apply_family_prices(rows2.values(), {"Food"}), (0, 0))
+        # a line Walmart.com has none of in stock but the store's shelf has (store_price rows): the shelf is the reference,
+        # and the shelf-priced rows themselves never change
+        rows3 = {i: can(i, f"Shelf {i}", 2.19, stock="Not available", flags=["store_price"]) for i in range(9000, 9003)}
+        rows3[9010] = can(9010, "Stale One", 9.37, stock="Not available")
+        self.assertEqual(V.apply_family_prices(rows3.values(), {"Food"}), (1, 1))
+        self.assertEqual(rows3[9010]["price"], 2.19); self.assertEqual([rows3[i]["price"] for i in range(9000, 9003)], [2.19] * 3)
 
     def test_a_low_price_two_same_size_listings_agree_on_is_kept(self):
         rows = snapshot([])

@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -47,6 +47,29 @@ function rememberMatch(gtin, item) {
   const keys = Object.keys(learned);
   if (keys.length > LEARNED_MAX) for (const k of keys.sort((a, b) => (learned[a].at || 0) - (learned[b].at || 0)).slice(0, keys.length - LEARNED_MAX)) delete learned[k];
   writeJson(LEARNED_KEY, learned);
+  shareMatch(gtin, item);
+}
+// Shared between phones through the pipeline Worker (/v1/learned, pipeline/src/index.js): a match one volunteer makes is
+// posted, and every phone fetches the list when it starts, comes online or returns to the foreground (at most every
+// LEARNED_SYNC_MS). Offline, or without a live-check URL, this phone's own matches work as before.
+const LEARNED_SYNC_MS = 15 * 60 * 1000;
+let learnedSyncedAt = 0;
+function shareMatch(gtin, item, forget = false) {
+  if (!LIVE_URL || !navigator.onLine || !gtin || !item?.upc) return;
+  fetch(`${LIVE_URL}/v1/learned`, { method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
+    body: JSON.stringify({ gtin, upc: String(item.upc), title: titleOf(item), ...(forget ? { forget: true } : {}) }) }).catch(() => {});
+}
+async function syncLearned(force = false) {
+  if (!LIVE_URL || !navigator.onLine || (!force && Date.now() - learnedSyncedAt < LEARNED_SYNC_MS)) return;
+  learnedSyncedAt = Date.now();
+  try {
+    const r = await fetch(`${LIVE_URL}/v1/learned`, { headers: { accept: "application/json" }, cache: "no-store" });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!Array.isArray(d?.learned)) return;
+    learned = mergeLearned(learned, d.learned);
+    writeJson(LEARNED_KEY, learned);
+  } catch { /* the Worker is unreachable: this phone's own matches still work */ }
 }
 
 const perf = { boot: { start: performance.now() }, keystrokes: [], scans: [], opens: [] };
@@ -481,7 +504,9 @@ window.addEventListener("online", () => {
   if (state.unsupported) return;   // nothing can be unpacked on this browser: keep saying so
   state.morePaused = false;
   (db.version ? db.checkForUpdate() : db.start()).catch(() => {});
+  syncLearned();
 });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncLearned(); });
 window.addEventListener("offline", () => { renderStatus(); renderStale(); toast("Offline. Scanning and search continue to work.", { iconName: "wifi-off" }); });
 // an installed app (Android's "Add to Home screen") is what makes Chrome grant persistent storage: ask again right then
 window.addEventListener("appinstalled", () => { db.requestPersistence({ force: true }).catch(() => {}); hideInstallHint(); });
@@ -1024,7 +1049,7 @@ function addToTally(res) {
   if (lf && Date.now() - lf.at < LEARN_WINDOW_MS && res.item?.upc && (res.kind === "exact" || res.kind === "closest" || res.kind === "equivalent") && res.gtin !== lf.gtin) {
     const before = learned[lf.gtin] || null;
     rememberMatch(lf.gtin, res.item);
-    toast(`Remembered barcode ${formatGtin(lf.gtin)} as this item`, { action: "Undo", onAction: () => { if (before) learned[lf.gtin] = before; else delete learned[lf.gtin]; writeJson(LEARNED_KEY, learned); }, ms: 7000, page: true });
+    toast(`Remembered barcode ${formatGtin(lf.gtin)} as this item`, { action: "Undo", onAction: () => { if (before) learned[lf.gtin] = before; else delete learned[lf.gtin]; writeJson(LEARNED_KEY, learned); shareMatch(lf.gtin, res.item, true); }, ms: 7000, page: true });
   }
   haptic(15);
   // an accidental add is undone in one tap
@@ -1252,7 +1277,7 @@ function settingsHtml() {
     <details class="about">
       <summary><span>About</span>${icon("back", "ico chev")}</summary>
       <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
-      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL). Barcode reading by zxing-cpp (Apache-2.0).</p>
+      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0).</p>
       <p class="fine verse-full">“We love because he first loved us.” — 1 John 4:19</p>
       <p class="fine mono">Version ${esc(BUILD)}${m ? `<br>Price list ${esc(m.version)}` : ""}</p>
     </details>
@@ -1670,5 +1695,6 @@ if (typeof DecompressionStream === "undefined") {
   db.state = "error";
 } else db.start();
 renderStatus();
+syncLearned();
 if (tourWanted()) requestAnimationFrame(openTour);
 perf.boot.scriptMs = Math.round(performance.now());

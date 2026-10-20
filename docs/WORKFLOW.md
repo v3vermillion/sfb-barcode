@@ -34,8 +34,10 @@ this order of priority:
    (docs/HISTORY.md); the newest three publishes are kept as GitHub Releases for rollback. The app deploys itself next.
 6. **Audit** the published prices against Walmart every week, per department; the measured drift sets each department's
    refresh interval (`crawler/cadence.py`) within the Walmart quota.
-7. **Identify** barcodes Walmart does not sell (`crawler/identify.py`, monthly) from Open Food, Beauty and Products Facts,
-   matched to the closest Walmart item for an equivalent value with a confidence level.
+7. **Identify** barcodes Walmart does not sell (`crawler/identify.py`, monthly) from USDA FoodData Central's Branded Foods
+   (the other chains' brands in `data/brands.json`: label data from the barcode registry) and Open Food, Beauty and Products
+   Facts (everything else), matched to the closest Walmart item for an equivalent value with a confidence level; what both
+   miss, volunteers teach the app by a search by name, shared between phones through the Worker (`/v1/learned`).
 8. **Store prices** (`crawler/storeprice.py`): the Strongsville Supercenter's own shelf price and stock for consumable
    rows, on the tiers in `data/store.json`.
 
