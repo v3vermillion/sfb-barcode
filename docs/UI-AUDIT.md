@@ -75,7 +75,8 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | F50 | Removing a Recent row is irreversible | Remove shows an Undo toast for five seconds | F50 | Done |
 | F51 | No way to clear Recent at once | A Clear text button at the section's edge, with Undo | F51 | Done |
 | F52 | Rapid taps zoomed the whole app (iOS double-tap zoom on plain text) | The viewport pins the scale; a second quick tap on non-controls and the pinch gesture are swallowed | F52 | Fixed |
-| F53 | A small bottle barcode would not read | 1080p camera, full-resolution decode, try-harder row scanning, a 2× camera-zoom control where the camera has one, a hint after 5 s | F53 | Fixed |
+| F53 | A small bottle barcode would not read | UPC-E accepted in every form the detectors report it; 1080p camera, full-resolution decode, try-harder row scanning; after 4 s without a read the camera zooms in by itself where it can, and the hint says what helps | F53 | Fixed |
+| F54 | A long press on the camera view highlighted the reticle and parts of the frame | No text selection or system callout anywhere in the scanner; the typed number still selects | F54 | Fixed |
 | F35 | Logo reloaded the app | Returns home | F35 | Fixed |
 | F36 | Announcement repeated, stuck, missed offline | One sentence per change of meaning | F36 | Fixed |
 | F37 | Headline grew with Recent | Headline removed | — | Fixed |
