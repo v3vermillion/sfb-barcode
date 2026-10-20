@@ -6,7 +6,7 @@
 // code that was just accepted is ignored for a couple of seconds so the item still in frame after
 // "Add to tally" does not fire again.
 
-import { toGtin14, checkDigit } from "./barcode.js";
+import { toGtin14, checkDigit, upcEToUpcA } from "./barcode.js";
 
 // Retail symbologies only: anything else (Code 128 shipping labels, QR) is not a product code.
 const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "itf"];
@@ -79,7 +79,8 @@ export function getEngine() {
   if (!enginePromise) {
     enginePromise = (async () => {
       if (await nativeWorks()) {
-        const det = new window.BarcodeDetector({ formats: FORMATS });
+        const supported = await window.BarcodeDetector.getSupportedFormats?.().catch(() => null);
+        const det = new window.BarcodeDetector({ formats: FORMATS.filter((f) => !supported || supported.includes(f)) });
         return { name: "native", detect: async (source) => (await det.detect(source)).map((r) => ({ rawValue: r.rawValue, format: r.format, points: r.cornerPoints })) };
       }
       const w = makeZxingWorker();
@@ -119,7 +120,11 @@ function productDigits(r) {
   if (!/^\d+$/.test(v)) return null;
   const f = String(r.format || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   if (f === "ean13" || f === "upca") return v.length === 12 || v.length === 13 ? v : null;
-  if (f === "ean8" || f === "upce") return v.length === 8 ? v : null;
+  if (f === "ean8") return v.length === 8 ? v : null;
+  // UPC-E (the short 8-digit code on a water bottle) comes back as 8 digits from zxing, as the expanded 12-digit UPC-A
+  // from some native detectors, and as the 6 or 7 inner digits from others (2026-10-20: a Pure Life bottle never read
+  // because only the 8-digit form was accepted); every form becomes the product's barcode
+  if (f === "upce") return v.length === 8 || v.length === 12 ? v : v.length === 6 || v.length === 7 ? upcEToUpcA(v) : null;
   if (f === "itf") return v.length === 14 ? v : null;
   return [8, 12, 13, 14].includes(v.length) ? v : null;
 }

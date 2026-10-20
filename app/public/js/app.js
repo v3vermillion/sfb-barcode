@@ -9,7 +9,7 @@ import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.j
 
 // ------------------------------------------------------------------ setup
 const $ = (id) => document.getElementById(id);
-const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "zoomBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "heroEyebrow", "readyCard", "statusLive", "tallyCard", "tallyCardTotal", "tallyCardSub", "homeEmpty", "pageTitle", "installHint", "tour", "tourSpot", "tourCard"].map((k) => [k, $(k)]));
+const el = Object.fromEntries(["top", "main", "dock", "status", "statusText", "tallyBtn", "tallyCount", "tallyTotal", "settingsBtn", "progress", "progressBar", "stale", "home", "results", "list", "resultsMeta", "recent", "recentList", "q", "clearBtn", "scanBtn", "searchForm", "sheet", "tallySheet", "settings", "scanner", "video", "overlay", "scanClose", "torchBtn", "reticle", "scanHint", "scanTypeForm", "scanTypeInput", "scanTypeBtn", "toasts", "heroEyebrow", "readyCard", "statusLive", "tallyCard", "tallyCardTotal", "tallyCardSub", "homeEmpty", "pageTitle", "installHint", "tour", "tourSpot", "tourCard"].map((k) => [k, $(k)]));
 
 const scanShortcut = new URLSearchParams(location.search).get("scan") === "1";   // launched from the Home Screen "Scan" shortcut
 const LIVE_URL = (document.querySelector('meta[name="sfb-live-check"]')?.content || "").trim().replace(/\/$/, "");
@@ -1496,28 +1496,30 @@ async function openScanner({ reuseEntry = false } = {}) {
   el.scanner.hidden = false; el.scanner.classList.remove("is-hit");
   el.scanHint.textContent = "Center the barcode in the frame";
   el.scanTypeForm.hidden = true; el.scanTypeBtn.hidden = false; el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false");
-  hideZoom();
   el.scanner.querySelector(".scan-denied")?.remove(); el.reticle.hidden = false;
   syncInert();
   if (!reuseEntry) history.pushState({ modal: "scanner", n: (history.state?.n || 0) + 1 }, "");
   el.scanClose.focus({ preventScroll: true });
   await startCamera(gen);
 }
-/** The flashlight and 2x buttons exist only while a camera that has them is running. */
+/** The flashlight button exists only while a camera that has one is running. */
 function hideTorch() { el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false"); }
-function hideZoom() { el.zoomBtn.hidden = true; el.zoomBtn.setAttribute("aria-pressed", "false"); }
-// a barcode that will not read after a few seconds is usually a small one (a water bottle's): say what helps
-const SMALL_HINT_MS = 5000;
-let smallHintTimer = 0;
-function armSmallHint() {
-  clearTimeout(smallHintTimer);
-  smallHintTimer = setTimeout(() => {
-    if (!state.scanOpen || !state.scan?.running || !el.scanTypeForm.hidden) return;
-    el.scanHint.textContent = state.scan?.hasZoom && !state.scan.zoom ? "Small barcode? Tap 2×, or hold it 4 to 6 inches away" : "Small barcode? Hold it 4 to 6 inches away and keep it flat";
-  }, SMALL_HINT_MS);
+// A barcode that has not read after a few seconds is usually a small one (a water bottle's): the camera zooms in by
+// itself where it can (nothing for the volunteer to find or tap; owner's call, 2026-10-20), and the hint says what helps.
+// The zoom resets whenever scanning resumes, so the next item starts at the full view.
+const SMALL_HELP_MS = 4000;
+let smallHelpTimer = 0;
+function armSmallHelp() {
+  clearTimeout(smallHelpTimer);
+  smallHelpTimer = setTimeout(async () => {
+    const scan = state.scan;
+    if (!state.scanOpen || !scan?.running || !el.scanTypeForm.hidden) return;
+    if (scan.hasZoom && !scan.zoom && await scan.setZoom(true) && scan === state.scan && scan.running) el.scanHint.textContent = "Zoomed in for a small barcode. Hold it 4 to 6 inches away";
+    else if (scan === state.scan && scan.running) el.scanHint.textContent = "Small barcode? Hold it 4 to 6 inches away and keep it flat";
+  }, SMALL_HELP_MS);
 }
 async function startCamera(gen) {
-  hideTorch(); hideZoom();   // a restart (back from the background) shows them again only when the new camera has them
+  hideTorch();   // a restart (back from the background) shows it again only when the new camera has a light
   if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) { scanDenied("The camera requires a secure (HTTPS) connection. Enter the barcode manually."); return; }
   try {
     scannerMod ||= await import("./scanner.js");
@@ -1525,13 +1527,12 @@ async function startCamera(gen) {
       if (gen !== state.scanGen) return;
       if (info.engine) state.engine = info.engine;
       if (info.torch != null) el.torchBtn.hidden = !info.torch;
-      if (info.zoom != null) el.zoomBtn.hidden = !info.zoom;
       if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader could not start on this phone. Enter the barcode manually."); }
       else if (info.error) console.warn("scanner:", info.error);
     });
     if (gen !== state.scanGen || !state.scanOpen) { scan.stop(); return; }   // closed (or reopened) while the camera was starting
     state.scan?.stop();
-    armSmallHint();
+    armSmallHelp();
     state.scan = scan;
     if (!el.scanTypeForm.hidden || el.sheet.open) scan.pause();
   } catch (err) {
@@ -1564,7 +1565,8 @@ function closeScanner({ fromPop = false } = {}) {
 function resumeScan() {
   if (!state.scanOpen || !state.scan) return;
   el.scanner.classList.remove("is-hit"); el.scanHint.textContent = "Center the barcode in the frame";
-  state.scan.resume(); armSmallHint();
+  if (state.scan.zoom) state.scan.setZoom(false).catch(() => {});
+  state.scan.resume(); armSmallHelp();
 }
 async function onScanHit(hit) {
   if (anyModalOpen()) { state.scan?.pause(); return; }   // the tally or settings is open over the camera: never stack a result on it
@@ -1584,12 +1586,7 @@ async function onScanHit(hit) {
 }
 el.scanBtn.addEventListener("click", openScanner);
 el.scanClose.addEventListener("click", () => closeScanner());
-el.zoomBtn.addEventListener("click", async () => {
-  const scan = state.scan;
-  if (!scan) { hideZoom(); return; }
-  const on = await scan.setZoom(!scan.zoom);
-  if (scan === state.scan) { el.zoomBtn.setAttribute("aria-pressed", String(!!on)); if (/^Small barcode/.test(el.scanHint.textContent)) el.scanHint.textContent = "Center the barcode in the frame"; }
-});
+el.scanner.addEventListener("contextmenu", (e) => e.preventDefault());   // a long press on the camera view is not a menu
 el.torchBtn.addEventListener("click", async () => {
   const scan = state.scan;
   if (!scan) { hideTorch(); return; }

@@ -308,7 +308,7 @@ await scenario(["F1", "F2", "F13"], "iPhone Home Screen app (standalone)", async
 });
 
 // A page given parts of two builds (the previous page with this stylesheet, say) reloads once, and never loops
-await scenario(["U1", "F53"], "page and stylesheet from different builds", async (set) => {
+await scenario(["U1"], "page and stylesheet from different builds", async (set) => {
   const env = set(await open({ wait: false, init: { fn: () => { try { sessionStorage.setItem("loads", String(+(sessionStorage.getItem("loads") || 0) + 1)); } catch { /* none */ } } }, routes: [["**/app.css", async (route) => { const r = await route.fetch(); route.fulfill({ response: r, body: `${await r.text()}\n:root { --shell-build: "0000000000"; }\n` }); }]] }));
   const { page } = env;
   await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 800);
@@ -326,9 +326,10 @@ const FAKE_CAMERA = {
       if (!window.__camAllow) throw new DOMException("denied", "NotAllowedError");
       const c = document.createElement("canvas"); c.width = 640; c.height = 480; c.getContext("2d").fillRect(0, 0, 640, 480);
       const stream = c.captureStream(5), track = stream.getVideoTracks()[0];
-      track.getCapabilities = () => ({ torch: true });
+      track.getCapabilities = () => ({ torch: true, zoom: { min: 1, max: 3, step: 0.1 } });
       const apply = track.applyConstraints.bind(track);
-      track.applyConstraints = async (k) => { const t = k?.advanced?.[0]?.torch; if (t !== undefined) { window.__torch.push(t); return; } return apply(k).catch(() => {}); };
+      window.__zoom = [];
+      track.applyConstraints = async (k) => { const t = k?.advanced?.[0]?.torch, z = k?.advanced?.[0]?.zoom; if (t !== undefined) { window.__torch.push(t); return; } if (z !== undefined) { window.__zoom.push(z); return; } return apply(k).catch(() => {}); };
       return stream;
     };
     let hidden = false;
@@ -336,12 +337,23 @@ const FAKE_CAMERA = {
     window.__setHidden = (h) => { hidden = h; document.dispatchEvent(new Event("visibilitychange")); };
   },
 };
+await scenario(["F53", "F54"], "scanner: automatic zoom for a small barcode; no selection on a long press", async (set) => {
+  const env = set(await open({ init: FAKE_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
+  const early = await page.evaluate(() => ({ zoom: window.__zoom.slice(), ctl: !!document.getElementById("zoomBtn") }));
+  check("F53", "nothing zooms while a read may still come, and there is no 2x control to find", early.zoom.length === 0 && !early.ctl, JSON.stringify(early));
+  await settle(page, 3200);
+  const late = await page.evaluate(() => ({ zoom: window.__zoom.slice(), hint: document.getElementById("scanHint").textContent }));
+  check("F53", "after four seconds without a read the camera zooms in by itself and the hint says so", late.zoom[0] === 2 && /Zoomed in for a small barcode/.test(late.hint), JSON.stringify(late));
+  const sel = await page.evaluate(() => ({ view: getComputedStyle(document.getElementById("overlay")).userSelect, hint: getComputedStyle(document.getElementById("scanHint")).userSelect, input: getComputedStyle(document.getElementById("scanTypeInput")).userSelect }));
+  check("F54", "a long press on the camera view selects nothing; the typed number still can be", sel.view === "none" && sel.hint === "none" && sel.input === "text", JSON.stringify(sel));
+});
+
 await scenario(["S1"], "scanner flashlight", async (set) => {
   const env = set(await open({ init: FAKE_CAMERA }));
   const { page } = env;
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
-  const zoomHidden = await page.evaluate(() => document.getElementById("zoomBtn").hidden);
-  check("F53", "a camera without zoom shows no 2x control", zoomHidden === true);
   const shown = await page.evaluate(() => !document.getElementById("torchBtn").hidden);
   check("S1", "the flashlight shows while a camera with a light runs", shown);
   if (shown) {
