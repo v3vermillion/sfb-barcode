@@ -8,7 +8,7 @@ A full-size synthetic fixture stands in for it in tests and local builds; the ap
 ```
 app/
   public/            the app as served (no bundler; plain ES modules)
-    index.html       one screen: header, home, results, dock (search + Scan), sheets, scanner, toasts
+    index.html       one screen: header, home, results, dock (search + Scan), sheets, scanner, toasts;  privacy.html  the privacy page (linked from About; the Play listing's privacy policy)
     app.css          design tokens + components (light/dark, reduced motion, high contrast)
     sw.js            app-shell service worker (precache list + build hash stamped at build time)
     js/app.js        UI controller
@@ -18,7 +18,7 @@ app/
     js/barcode.js    GTIN / UPC-E / store-label / PLU mathematics
     js/resolve.js    resolution engine (exact → label → PLU → equivalent → closest)
     js/scanner.js    camera (1080p, full-resolution decode, try-harder) + native BarcodeDetector (self-tested) or zxing-cpp wasm in a worker; zooms in by itself after 4 s without a read where the camera can; UPC-E in every form a detector reports it
-    js/staleness.js  how old the prices are (fresh / amber 14 d / red 45 d) in a volunteer's words
+    js/staleness.js  how old the prices are (fresh / amber from 40 days / red from 60) in a volunteer's words
     vendor/          zxing-wasm reader (ESM + wasm, Apache-2.0)   fonts/  Geist + Geist Mono (OFL)
   tools/
     make_fixture.py  760k-row synthetic snapshot in the crawler's row format (through crawler/normalize.py); its
@@ -65,7 +65,8 @@ name with 1 John 4:19, a **status card** only when there is something to know or
 departments on the way, no prices yet, storage full, server unavailable, a browser too old; tapping it opens Settings),
 the **donation tally** card (total and item count; opens the tally), the Home Screen card in the browser, then Recent
 (newest first, re-priced when a new price list opens) or a "Scan a barcode to begin" prompt. The header pill carries the
-date of the price list ("Updated Oct 13"); on the results screen the header also shows the tally total. One function,
+date of the price list ("Prices Oct 13": the app updates on every deploy, the prices only when the pipeline publishes a list);
+on the results screen the header also shows the tally total. One function,
 `priceStatus()`, feeds the pill, the card, the dot and the screen-reader announcement, so they always agree. On the first
 launch a four-step **walkthrough** runs over the real screen (find the item, add it to the tally, review and share, saved
 on this phone): the card sits beside its subject, flips or centres when there is no room, and the spotlit Scan button and
@@ -93,8 +94,9 @@ on the sheet; `prefers-reduced-motion` turns it off and `prefers-contrast: more`
 per department (Pharmacy rides with Health and Medicine, Premium Beauty with Beauty; a department past 600k items
 is split into interleaved parts). Each shard is a small v2-style pack with its own rank order, and every file is
 **content-addressed**: `/db/files/<sha20>.bin.gz`, immutable, shared by every version that has the same bytes. A weekly
-snapshot that only changed Food prices therefore downloads one file (Food's columns), not the whole pack. The real
-crawl of 2026-10-09 (2.1M items) is 114 MB over the wire, 63 MB of it in the *core* tier.
+snapshot that only changed Food prices therefore downloads one file (Food's columns), not the whole pack. The published
+list of 2026-10-13 (2.57M items, 2.45M barcodes, 118k equivalents) is 152 MB over the wire, 69 MB of it in the *core* tier
+(`totalGzBytes`, `coreGzBytes` in the live manifest).
 
 | file | contents |
 |---|---|
@@ -182,8 +184,8 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 
 ## Offline and updates
 
-- First open online: shell precached (~1.2 MB), pack downloaded (~32 MB) with a progress bar; "Add to Home
-  Screen" keeps iOS from evicting storage.
+- First open online: shell precached (~1.2 MB), the core tier downloaded (69 MB for the real list, 32 MB on the test
+  fixture) with a progress bar, the rest in the background; "Add to Home Screen" keeps iOS from evicting storage.
 - Every later open: shell from the service worker, pack from Cache Storage, interactive in well under a second,
   no network needed. `navigator.storage.persist()` is requested after every successful load (and again when the
   app is installed to the Home Screen, which is what makes Chrome on Android grant it); when `navigator.storage.persisted()`
@@ -196,7 +198,7 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 - Sample → real: tally lines and recents made on the synthetic fixture carry `sample: true`; the first load of a real
   snapshot drops them and says so once, so sample prices never mix into a real tally.
 - Online: `current.json` is checked; a new snapshot is fetched in the background and applied when idle.
-- Price list date: the header pill ("Updated Oct 13") and every sheet carry the snapshot's date. From 40 days a banner
+- Price list date: the header pill ("Prices Oct 13") and every sheet carry the snapshot's date. From 40 days a banner
   under the header says "Price list is N days old" (amber), from 60 days "Price list may be out of date" (red; the list is rebuilt monthly), with an **Update now**
   button that checks, downloads and applies the newest snapshot (`js/staleness.js`; thresholds pinned by
   `tests/staleness.test.mjs`). It is re-evaluated on every database state change, when the app returns to the
@@ -211,6 +213,30 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 - Live check: when online, a scanned/typed barcode is also sent to the pipeline Worker's public
   `/v1/price/<gtin>` route (rate limited, cached, no token); a differing live price is shown with the delta and
   can be used for the tally with one tap. Unknown barcodes that Walmart does sell become a "Live Walmart price".
+
+## Phones and browsers
+
+The app is one code path on both platforms; what differs is named in one place (`isIOS`, `isAndroid`, `UPDATE_WHAT` in
+app.js) and checked by `tools/ui-check.mjs` F55/F56 with an Android user agent.
+
+| | iPhone | Android |
+|---|---|---|
+| Browser floor | iOS 16.4 (March 2023; iPhone 8, X and newer). Every iPhone browser is the system's WebKit, so the floor is iOS itself | Chrome 111 (March 2023; updates from the Play Store on Android 8 and newer), Samsung Internet 23, Firefox 121. The floor is the browser app, not Android |
+| Below the floor | "Software update required: update to iOS 16.4 or later"; nothing is downloaded | "Update Chrome (or the phone's browser) from the Play Store"; nothing is downloaded. The gate tests `DecompressionStream`, `OffscreenCanvas`, `oklch`, `dvh` and `:has()` |
+| Install | Share › Add to Home Screen (the hint on the home screen says so); keeps storage from the 7-day eviction | Chrome and Samsung Internet raise their install prompt (the hint shows an **Install** button); a browser without one (Firefox) is told the menu steps. Installed, Chrome grants persistent storage |
+| Barcode engine | iOS 17+ `BarcodeDetector` when its self-test passes (iOS 18 shipped one that detects nothing), else zxing-cpp wasm | `BarcodeDetector` (ML Kit, through Google Play services) when present and self-tested, else zxing-cpp wasm (phones without Play services, Firefox) |
+| Camera extras | Torch and zoom where iOS exposes them (iOS 17+) | Torch and zoom from the track's capabilities, which Chrome fills in a moment after the camera starts (read twice) |
+| Camera refused | Settings › Apps › Safari › Camera (or the installed app's own entry) | The site's permissions in the browser, or Settings › Apps › SFB Value › Permissions when installed |
+| Vibration on scan | Not available (Safari has no `vibrate`), so the setting is not shown | `navigator.vibrate`, with the setting |
+| Keyboard | Safari pans the page: the fixed bars follow the visual viewport (`keyboardInset`) | Chrome resizes the layout viewport (`interactive-widget=resizes-content`), so nothing moves |
+| Back | The sheet's own close and swipe | The system Back closes the top layer (every sheet and the scanner push a history entry) |
+| Orientation | Rotates with the phone | Rotates with the phone (manifest `orientation: any`, like iOS) |
+| Status bar | `black-translucent`, content under it with safe-area insets | Coloured by `theme-color` per colour scheme |
+
+**Google Play.** The same PWA can be listed on Google Play as a Trusted Web Activity (an Android app that opens the site
+full screen): docs/RUNBOOK.md "Google Play" has the steps. The site's half is in place: the manifest, the privacy page
+(`privacy.html`), and `build-site.mjs` writes `/.well-known/assetlinks.json` from the repository variable
+`ANDROID_ASSET_LINKS` once the Play signing key exists.
 
 ## Accessibility
 

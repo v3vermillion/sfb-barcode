@@ -24,8 +24,10 @@ stock); a store-printed price label is decoded on the spot; a produce sticker gi
 does not sell is valued at the closest Walmart equivalent and labelled as such; a typed search that has to drop a word says
 which one. When the phone is online, an unknown barcode is also checked live. Every result shows the date of its price.
 
-It is a progressive web app: volunteers open it once, add it to the Home Screen, and it then works offline on the phone
-already in their hand. There is nothing to install from an app store and nothing to pay for.
+It is a progressive web app: volunteers open it once, add it to the Home Screen (iPhone: Share › Add to Home Screen;
+Android: the browser's Install button), and it then works offline on the phone already in their hand, iPhone (iOS 16.4 or
+later) or Android (Chrome 111 or later). There is nothing to install from an app store and nothing to pay for; a Google
+Play listing of the same app is possible (docs/RUNBOOK.md "Google Play").
 
 ## What is inside
 

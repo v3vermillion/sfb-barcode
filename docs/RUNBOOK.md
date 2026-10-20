@@ -192,6 +192,25 @@ Run manually: Actions tab → pipeline → Run workflow → plan (continue | cor
 Working data: branch `data-store` (state/, raw/, build/, identify/, history/, audit/, sizing.json). Report for the latest build:
 `data-store:build/candidate/report.md`. Published snapshot: `data-store:build/published/`.
 
+## Google Play (optional: the same app as an Android listing)
+The PWA installs from Chrome on Android today (the Install hint on the home screen). A Google Play listing wraps the same
+site in a Trusted Web Activity (TWA): an Android app that opens the site full screen, no browser bar, updating with every
+deploy. Owner actions, all from a phone or a browser:
+1. A Google Play developer account (one-time fee, identity check) and a package name, e.g. `org.strongsvillefoodbank.sfbvalue`.
+2. Package the app with PWABuilder (pwabuilder.com → the app's URL → Android → "Generate"): it reads the manifest (name, icons,
+   `orientation: any`, colours) and produces the signed .aab plus the signing key's SHA-256 fingerprint and an
+   `assetlinks.json`. Keep the signing key in the password manager.
+3. Set the repository variable `ANDROID_ASSET_LINKS` to that `assetlinks.json` content (a JSON array naming the package and
+   fingerprint). The next deploy writes it to `APP_URL/.well-known/assetlinks.json`; without it the TWA shows a browser bar.
+   When Play's own signing replaces the upload key, add Play Console's fingerprint to the same array.
+4. Upload the .aab in Play Console. Listing needs: the privacy policy URL `APP_URL/privacy.html` (the app stores everything
+   on the phone; only the barcode leaves it, for the live check and the shared matches), the camera permission declared as
+   "barcode scanning", icons (`app/public/icons/`) and screenshots (`docs/screens/`). Data safety: no personal data collected.
+5. Volunteers who installed from Chrome keep working; the Play app and the browser install share nothing (separate storage),
+   so a phone should use one or the other.
+The app's own address must be final first (moving the site to the food bank's domain invalidates the asset links and the
+offline data alike; READINESS step 24).
+
 ## App (Cloudflare Workers static assets, deployed by GitHub Actions)
 Code: `app/`. Workflow: `.github/workflows/deploy-app.yml` (runs on app changes, after every pipeline run, or manually).
 Every build carries a build key in `$APP_URL/build.json` (a hash of the app code, the repo's build inputs, the published

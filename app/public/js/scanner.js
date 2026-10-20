@@ -159,13 +159,19 @@ export async function startScanner(video, overlay, onHit, onStatus) {
   video.srcObject = stream;
   await video.play().catch(() => {});
   const track = stream.getVideoTracks()[0];
-  const caps = track.getCapabilities?.() || {};
-  const hasTorch = !!caps.torch;
+  let hasTorch = false, zoomCap = null, zoomLevel = 1;
   // the camera's own zoom (iOS 17+, Android): a small barcode fills more of the frame while the phone stays at a distance
-  // the lens can focus on; the app offers it as a 2x toggle
-  const zoomCap = caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5 ? caps.zoom : null;
-  const zoomLevel = zoomCap ? Math.min(ZOOM_LEVEL, zoomCap.max) : 1;
-  onStatus?.({ engine: engine.name, torch: hasTorch, zoom: !!zoomCap });
+  // the lens can focus on; the app zooms in by itself after a few seconds without a read
+  const readCaps = () => {
+    const caps = track.getCapabilities?.() || {};
+    hasTorch = hasTorch || !!caps.torch;
+    if (!zoomCap && caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5) { zoomCap = caps.zoom; zoomLevel = Math.min(ZOOM_LEVEL, zoomCap.max); }
+    onStatus?.({ engine: engine.name, torch: hasTorch, zoom: !!zoomCap });
+  };
+  readCaps();
+  // Chrome on Android reports torch and zoom only once the track has run for a moment: read them again shortly, without
+  // holding the first frames back
+  setTimeout(() => { if (!stopped && (!hasTorch || !zoomCap)) readCaps(); }, 900);
   // try to focus continuously; harmless when unsupported
   try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { /* optional */ }
 
@@ -237,11 +243,11 @@ export async function startScanner(video, overlay, onHit, onStatus) {
 
   return {
     engine: engine.name,
-    hasTorch,
+    get hasTorch() { return hasTorch; },
     async setTorch(on) { try { await track.applyConstraints({ advanced: [{ torch: !!on }] }); torchOn = !!on; return torchOn; } catch { return torchOn; } },
     get torch() { return torchOn; },
-    hasZoom: !!zoomCap,
-    zoomLevel,
+    get hasZoom() { return !!zoomCap; },
+    get zoomLevel() { return zoomLevel; },
     async setZoom(on) { if (!zoomCap) return false; try { await track.applyConstraints({ advanced: [{ zoom: on ? zoomLevel : (zoomCap.min || 1) }] }); zoomed = !!on; return zoomed; } catch { return zoomed; } },
     get zoom() { return zoomed; },
     get running() { return running && !stopped; },

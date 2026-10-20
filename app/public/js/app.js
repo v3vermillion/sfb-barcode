@@ -191,6 +191,10 @@ const vv = window.visualViewport;
 const rootStyle = document.documentElement.style;
 const standalone = () => navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isAndroid = !isIOS && /Android/i.test(navigator.userAgent);
+// What to update when the browser is too old (the feature gate at the end of this file): iPhone browsers are all the
+// system's WebKit, so it is iOS itself; on Android it is the browser app, which updates from the Play Store on its own.
+const UPDATE_WHAT = isIOS ? "Update to iOS 16.4 or later" : isAndroid ? "Update Chrome (or the phone's browser) from the Play Store" : "Update this browser";
 /** True while a text field has the focus: the only time a phone keyboard can be on screen. */
 const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"); };
 /** The system's top safe-area inset in px (status bar / sensor housing), read from a probe styled with env(). */
@@ -377,7 +381,7 @@ function priceStatus() {
   const online = navigator.onLine;
   if (state.unsupported) {
     return { state: "error", long: "Update required", short: "Update", live: "Software update required to keep prices on this phone.",
-      card: { tone: "problem", icon: "info", title: "Software update required", sub: isIOS ? "Update to iOS 16.4 or later to keep prices on this phone." : "Update this browser to keep prices on this phone." } };
+      card: { tone: "problem", icon: "info", title: "Software update required", sub: `${UPDATE_WHAT} to keep prices on this phone.` } };
   }
   if (!db.version) {
     const err = state.dbErr;
@@ -513,17 +517,20 @@ window.addEventListener("appinstalled", () => { db.requestPersistence({ force: t
 
 // ------------------------------------------------------------------ "Add to Home Screen" (first runs, in the browser)
 // Safari deletes a website's saved data after about a week without a visit; an app on the Home Screen keeps its prices.
-// Android's Chrome offers its own install prompt, kept here and shown as a button.
+// Android's Chrome (and Samsung Internet) offers its own install prompt, kept here and shown as a button; an Android
+// browser that offers none (Firefox; Chrome before it has decided the page is installable) gets the menu steps instead.
+// Any other browser (a laptop) is told nothing.
 const INSTALL_KEY = "sfb.installHint";
 let installPrompt = null;
 function hideInstallHint() { const h = $("installHint"); if (h) { h.hidden = true; h.innerHTML = ""; } }
 function showInstallHint() {
   const h = $("installHint");
   if (!h || standalone() || readJson(INSTALL_KEY, null)?.dismissed) return;
-  if (!isIOS && !installPrompt) return;
+  if (!isIOS && !isAndroid && !installPrompt) return;
   const how = isIOS
     ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. It opens full screen and keeps the prices saved.`
-    : "It opens full screen and keeps the prices saved on this phone.";
+    : installPrompt ? "It opens full screen and keeps the prices saved on this phone."
+    : "Open the browser menu (⋮) and choose <b>Install app</b> or <b>Add to Home screen</b>. It opens full screen and keeps the prices saved.";
   h.innerHTML = `<span class="sc-ico">${icon(isIOS ? "share" : "plus")}</span><div><b>${isIOS ? "Add to Home Screen" : "Install the app"}</b><span class="sub">${how}</span></div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
   h.hidden = false;
 }
@@ -583,7 +590,7 @@ setInterval(renderStale, 3600_000);
 
 /** Settings' "Check for new prices" and the banner's "Update now" share one path: check, download, apply, say what happened. */
 async function checkNow(btn = null) {
-  if (state.unsupported) { toast(isIOS ? "Update to iOS 16.4 or later to download prices." : "Update this browser to download prices.", { iconName: "info" }); return; }
+  if (state.unsupported) { toast(`${UPDATE_WHAT} to download prices.`, { iconName: "info" }); return; }
   if (!navigator.onLine) { toast("Offline. Connect to the internet to check for new prices.", { iconName: "wifi-off" }); return; }
   if (state.staleBusy) { toast("A check is already in progress"); return; }
   const wasStale = state.stale !== "fresh";
@@ -1277,7 +1284,7 @@ function settingsHtml() {
     <details class="about">
       <summary><span>About</span>${icon("back", "ico chev")}</summary>
       <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
-      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0).</p>
+      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0). Runs on iPhone (iOS 16.4 or later) and Android (Chrome 111 or later, Samsung Internet, Firefox); nothing leaves the phone except the live price check and the shared barcode matches (<a href="./privacy.html" target="_blank" rel="noopener">privacy</a>).</p>
       <p class="fine verse-full">“We love because he first loved us.” — 1 John 4:19</p>
       <p class="fine mono">Version ${esc(BUILD)}${m ? `<br>Price list ${esc(m.version)}` : ""}</p>
     </details>
@@ -1563,7 +1570,13 @@ async function startCamera(gen) {
   } catch (err) {
     if (gen !== state.scanGen) return;
     console.warn("camera", err);
-    scanDenied(err?.name === "NotAllowedError" ? (isIOS ? "Camera access is turned off. Allow it in the iPhone's Settings › Apps › Safari › Camera, or enter the barcode manually." : "Camera access is turned off for this site. Allow it in the browser's site settings, or enter the barcode manually.") : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually." : "The camera could not start. Enter the barcode manually.");
+    const where = isIOS ? (standalone() ? "the iPhone's Settings › Apps › SFB Value › Camera" : "the iPhone's Settings › Apps › Safari › Camera")
+      : isAndroid ? (standalone() ? "the phone's Settings › Apps › SFB Value › Permissions › Camera" : "the browser's site settings (the lock icon by the address, then Permissions › Camera)")
+      : "the browser's site settings";
+    scanDenied(err?.name === "NotAllowedError" ? `Camera access is turned off. Allow it in ${where}, or enter the barcode manually.`
+      : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually."
+      : err?.name === "NotReadableError" ? "The camera is in use by another app. Close it and try again, or enter the barcode manually."
+      : "The camera could not start. Enter the barcode manually.");
   }
 }
 function scanDenied(msg) {
@@ -1685,13 +1698,19 @@ if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("n
 
 keyboardInset();
 showInstallHint();
-if (typeof DecompressionStream === "undefined") {
-  // the price database is unpacked with DecompressionStream: Safari 16.4 (iOS 16.4, March 2023) and Chrome 80 or newer.
-  // Nothing is downloaded on this browser, now or when the connection comes back (the online handler checks this flag).
+// The browser floor is one date on both platforms, March 2023: Safari 16.4 (every iPhone browser is the system's WebKit;
+// iPhone 8 and X and newer reach it) and Chrome 111 on Android (Chrome updates from the Play Store on Android 8 and newer;
+// Samsung Internet 23, Firefox 121). Below it the price database cannot be unpacked (DecompressionStream) or the layout
+// cannot be drawn (oklch colours, dvh units), so nothing is downloaded, now or when the connection comes back (the online
+// handler checks this flag), and the status card says what to update.
+const tooOld = typeof DecompressionStream === "undefined" || typeof OffscreenCanvas === "undefined"
+  || !(window.CSS?.supports?.("color", "oklch(50% 0 0)") && CSS.supports("height", "100dvh") && CSS.supports("selector(:has(a))"));
+if (tooOld) {
   state.unsupported = true;
   state.dbErrorPlain = true;
   state.dbError = isIOS ? "This iPhone's software is too old to keep prices offline. Update to iOS 16.4 or later (Settings › General › Software Update), then open the app again."
-    : "This browser is too old to keep prices offline. Update Chrome or the phone's browser, then open the app again.";
+    : isAndroid ? "This browser is too old to keep prices offline. Update Chrome (or the phone's browser) from the Play Store, then open the app again."
+    : "This browser is too old to keep prices offline. Update it, then open the app again.";
   db.state = "error";
 } else db.start();
 renderStatus();

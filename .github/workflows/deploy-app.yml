@@ -14,7 +14,8 @@ name: deploy-app
 #
 # Required repository secrets: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit), CLOUDFLARE_ACCOUNT_ID.
 # Optional repository variables: LIVE_CHECK_URL (the pipeline Worker URL, e.g. https://sfb-valuation.<acct>.workers.dev),
-# APP_URL (where the app is served; default https://sfb-value.forgetraining.workers.dev).
+# APP_URL (where the app is served; default https://sfb-value.forgetraining.workers.dev),
+# ANDROID_ASSET_LINKS (the Digital Asset Links JSON for the Google Play listing; written to /.well-known/assetlinks.json).
 
 on:
   workflow_dispatch:
@@ -71,12 +72,13 @@ jobs:
         id: code
         env:
           LIVE_CHECK_URL: ${{ vars.LIVE_CHECK_URL }}
+          ANDROID_ASSET_LINKS: ${{ vars.ANDROID_ASSET_LINKS }}
         run: |
           set -eu
           cd "$GITHUB_WORKSPACE"
           code="$( { git rev-parse HEAD:app HEAD:.github/workflows/deploy-app.yml HEAD:crawler/normalize.py \
                        HEAD:crawler/identify.py HEAD:data/categories.json HEAD:data/sentinels.json HEAD:requirements.txt
-                     printf 'live=%s\n' "${LIVE_CHECK_URL:-}"; } | sha256sum | cut -c1-16)"
+                     printf 'live=%s\nandroid=%s\n' "${LIVE_CHECK_URL:-}" "${ANDROID_ASSET_LINKS:-}"; } | sha256sum | cut -c1-16)"
           echo "code=${code}" >> "$GITHUB_OUTPUT"
 
       # Pipeline runs happen every 30 minutes and most change nothing the app serves: compare the build key this
@@ -195,6 +197,7 @@ jobs:
         if: steps.peek.outputs.skip != 'true'
         env:
           LIVE_CHECK_URL: ${{ vars.LIVE_CHECK_URL }}
+          ANDROID_ASSET_LINKS: ${{ vars.ANDROID_ASSET_LINKS }}
         run: node tools/build-site.mjs
 
       # The data half of the build key comes from the checkout actually built (the same tree hashes the peek reads).
