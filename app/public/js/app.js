@@ -1124,10 +1124,64 @@ function refreshRecent() {
 function renderRecent() {
   el.recent.hidden = recent.length === 0;
   el.homeEmpty.hidden = recent.length > 0;
-  el.recentList.innerHTML = recent.slice(0, 4).map((r, i) => `<li><button class="row" type="button" data-recent="${i}"><span class="name">${esc(r.title)}</span><span class="price">${money(r.priceCents)}${r.unit === "lb" ? "<small>per lb</small>" : ""}</span><span class="meta"><span class="tag">${esc(kindLabel({ kind: r.kind }))}</span></span></button></li>`).join("");
+  // each row slides left to uncover Remove (a swipe, or the keyboard: the button sits before the row and reveals it on focus)
+  el.recentList.innerHTML = recent.slice(0, 4).map((r, i) => `<li class="swipe"><button class="swipe-remove" type="button" data-recent-remove="${i}" aria-label="Remove ${esc(r.title)} from Recent">${icon("trash")}<span>Remove</span></button><div class="swipe-face"><button class="row" type="button" data-recent="${i}"><span class="name">${esc(r.title)}</span><span class="price">${money(r.priceCents)}${r.unit === "lb" ? "<small>per lb</small>" : ""}</span><span class="meta"><span class="tag">${esc(kindLabel({ kind: r.kind }))}</span></span></button></div></li>`).join("");
 }
+// ---- swipe left on a Recent row to uncover Remove (volunteers' ask, 2026-10-19); a tap on an open row closes it again
+const SWIPE_W = 96, SWIPE_OPEN = 40, SWIPE_START = 8;
+let swipe = null;              // the gesture in progress: { li, row, x0, y0, dx, moved, startOpen }
+let swipeClickBlock = false;   // the click that follows a swipe is not a tap on the row
+const swipeOpenRows = () => [...el.recentList.querySelectorAll(".swipe[data-open]")];
+function swipeSet(li, dx, animate = true) { const face = li.querySelector(".swipe-face"); face.style.transition = animate ? "" : "none"; face.style.transform = dx ? `translateX(${dx}px)` : ""; }
+function swipeClose(li) { if (!li) return; delete li.dataset.open; swipeSet(li, 0); }
+// Clear takes every Recent row off the home screen at once; low stakes, so an Undo toast rather than a confirmation
+document.getElementById("recentClear").addEventListener("click", () => {
+  if (!recent.length) return;
+  const kept = recent; recent = []; writeJson(RECENT_KEY, recent); renderRecent(); haptic(5);
+  toast(`Cleared Recent (${itemsText(kept.length)})`, { action: "Undo", onAction: () => { recent = kept; writeJson(RECENT_KEY, recent); renderRecent(); }, ms: 5000, iconName: "trash", page: true });
+});
+el.recentList.addEventListener("pointerdown", (e) => {
+  const row = e.target.closest(".row"); const li = row?.closest(".swipe");
+  if (!li || e.button !== 0) return;
+  swipe = { li, row, x0: e.clientX, y0: e.clientY, dx: 0, moved: false, startOpen: li.dataset.open === "1" };
+});
+el.recentList.addEventListener("pointermove", (e) => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x0, dy = e.clientY - swipe.y0;
+  if (!swipe.moved) {
+    if (Math.abs(dx) < SWIPE_START || Math.abs(dx) < Math.abs(dy)) return;      // a scroll, or not yet a swipe
+    swipe.moved = true; swipe.li.dataset.swiping = "1"; try { swipe.row.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    for (const other of swipeOpenRows()) if (other !== swipe.li) swipeClose(other);
+  }
+  e.preventDefault();
+  const base = swipe.startOpen ? -SWIPE_W : 0;
+  swipe.dx = Math.max(-SWIPE_W, Math.min(0, base + dx));
+  swipeSet(swipe.li, swipe.dx, false);
+});
+function swipeEnd(e) {
+  if (!swipe) return;
+  const { li, row, dx, moved } = swipe; swipe = null;
+  delete li.dataset.swiping;
+  if (!moved) return;
+  swipeClickBlock = true; setTimeout(() => { swipeClickBlock = false; }, 350);
+  try { row.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  if (dx <= -SWIPE_OPEN) { li.dataset.open = "1"; swipeSet(li, -SWIPE_W); haptic(5); }
+  else swipeClose(li);
+}
+el.recentList.addEventListener("pointerup", swipeEnd);
+el.recentList.addEventListener("pointercancel", swipeEnd);
 el.recentList.addEventListener("click", async (e) => {
+  const rm = e.target.closest("[data-recent-remove]");
+  if (rm) {
+    const i = Number(rm.dataset.recentRemove); const r = recent[i]; if (!r) return;
+    recent.splice(i, 1); writeJson(RECENT_KEY, recent); renderRecent(); haptic(5);
+    toast(`Removed ${r.title} from Recent`, { action: "Undo", onAction: () => { recent.splice(Math.min(i, recent.length), 0, r); writeJson(RECENT_KEY, recent); renderRecent(); }, ms: 5000, iconName: "trash", page: true });
+    return;
+  }
   const b = e.target.closest("[data-recent]"); if (!b) return;
+  if (swipeClickBlock) return;                                               // the end of a swipe, not a tap
+  const open = swipeOpenRows();
+  if (open.length) { for (const li of open) swipeClose(li); return; }        // a tap anywhere first closes an open row
   const r = recent[Number(b.dataset.recent)]; if (!r) return;
   if (r.kind === "live" && r.code) {
     // the saved database never knew this one: show what Walmart said, then refresh it live when online

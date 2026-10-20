@@ -58,6 +58,8 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 | Live Walmart price | unknown barcode, phone online, Walmart has it | live price and name from the Worker route |
 | Not in database | unknown barcode, nothing online | "Search by name" (search focused; a barcode under a listed store's prefix is named by its store and the brand is typed in) — never a silent blank; the item added from that search is remembered for the barcode on this phone (`sfb.learned.v1`, 500 most recent) |
 
+Recent rows: swipe left to uncover Remove (an Undo toast follows); the Remove button precedes the row in the document and reveals it on keyboard focus. Clear, at the section's edge, empties Recent with Undo.
+
 Also: the home screen reads top-down and fills exactly the screen between the header and the dock: the food bank's
 name with 1 John 4:19, a **status card** only when there is something to know or do (downloading with progress, more
 departments on the way, no prices yet, storage full, server unavailable, a browser too old; tapping it opens Settings),

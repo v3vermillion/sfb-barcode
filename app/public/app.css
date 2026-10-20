@@ -283,6 +283,10 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 
 /* Recent: newest first, top-down */
 .recent .h2 { margin: 8px 0; }
+.recent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* a text button at the section's edge, the way Recent sections clear in Safari, Maps and the App Store */
+.link-btn { border: 0; background: none; color: var(--accent); font: inherit; font-size: 15px; font-weight: 600; min-height: 44px; padding: 0 4px; cursor: pointer; border-radius: 8px; }
+.link-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .recent .list { flex-direction: column; }
 
 /* nothing looked up yet: one quiet prompt, centred in the room above the dock */
@@ -328,6 +332,14 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .row .price small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-3); letter-spacing: .02em; }
 .row.is-retired .name { color: var(--ink-2); }
 .list--compact .row { min-height: 56px; padding: 9px 12px; }
+/* Recent: the row slides left over a Remove button (a swipe; or the keyboard, which reaches the button first and reveals it) */
+.swipe { position: relative; border-radius: var(--r-m); }
+.swipe-face { position: relative; z-index: 1; touch-action: pan-y; transition: transform .2s var(--ease-out); }   /* the row keeps its own entry animation */
+.swipe[data-swiping] .swipe-face { transition: none; }
+.swipe-remove { position: absolute; inset: 0 0 0 auto; width: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; border-radius: var(--r-m); background: oklch(53% 0.2 25); color: #fff; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.swipe-remove .ico { width: 20px; height: 20px; }
+.swipe[data-open] .swipe-face, .swipe-remove:focus-visible + .swipe-face { transform: translateX(-96px); }
+.swipe-remove:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; }
 .row--code { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
 .row--code .name { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; -webkit-line-clamp: unset; }
 .row--code .code-title { font-weight: 500; }
