@@ -80,6 +80,19 @@ const fmtInt = (n) => Number(n || 0).toLocaleString("en-US");
 const fmtDate = (iso, long = false) => { if (!iso) return ""; const d = new Date(`${iso}T12:00:00`); return d.toLocaleDateString(undefined, long === "mid" ? { month: "short", day: "numeric", year: "numeric" } : long ? { month: "long", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" }); };
 const fmtTime = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const icon = (name, cls = "ico") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+// No page zoom, ever: rapid taps on plain text (the empty state's heading) made iOS double-tap-zoom the whole app
+// (2026-10-20, owner's screenshot) although the body has touch-action: manipulation. The viewport meta pins the scale
+// in a home-screen app; these guards cover the browser tab, where iOS ignores the meta: a second tap within 350 ms on
+// anything that is not a control is swallowed, and the pinch gesture is refused.
+{
+  let lastTap = 0;
+  document.addEventListener("touchend", (e) => {
+    const now = Date.now();
+    if (now - lastTap < 350 && !e.target.closest("button, input, select, textarea, a, [role=button], [role=switch], [contenteditable]")) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+}
 const haptic = (ms = 12) => { if (prefs.haptics && navigator.vibrate) { try { navigator.vibrate(ms); } catch { /* ignore */ } } };
 const priceDate = () => db.manifest?.priceDate || db.manifest?.published?.slice(0, 10) || "";
 const storeLabel = () => db.manifest?.store?.label || "Strongsville Walmart";

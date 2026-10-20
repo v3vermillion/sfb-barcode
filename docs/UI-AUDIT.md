@@ -74,6 +74,7 @@ but the iOS behaviour itself can only be seen on a device). The check column giv
 | F49 | No way to take a row off Recent | Swipe left uncovers Remove (keyboard: the button precedes the row and reveals it on focus) | F49 | Done |
 | F50 | Removing a Recent row is irreversible | Remove shows an Undo toast for five seconds | F50 | Done |
 | F51 | No way to clear Recent at once | A Clear text button at the section's edge, with Undo | F51 | Done |
+| F52 | Rapid taps zoomed the whole app (iOS double-tap zoom on plain text) | The viewport pins the scale; a second quick tap on non-controls and the pinch gesture are swallowed | F52 | Fixed |
 | F35 | Logo reloaded the app | Returns home | F35 | Fixed |
 | F36 | Announcement repeated, stuck, missed offline | One sentence per change of meaning | F36 | Fixed |
 | F37 | Headline grew with Recent | Headline removed | — | Fixed |

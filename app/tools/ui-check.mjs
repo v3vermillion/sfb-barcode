@@ -525,6 +525,26 @@ await scenario(["F49", "F50", "F51"], "Recent: swipe left to remove, Clear", asy
   check("F51", "Undo brings the cleared rows back", (await page.evaluate(() => document.querySelectorAll("#recentList .row").length)) === after);
 });
 
+await scenario(["F52"], "no page zoom", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  const meta = await page.evaluate(() => document.querySelector('meta[name="viewport"]')?.content || "");
+  check("F52", "the viewport pins the scale, so rapid taps or a pinch cannot zoom the home-screen app", /maximum-scale=1/.test(meta) && /user-scalable=no/.test(meta), meta);
+  // a browser tab ignores that meta: two quick taps on plain text are swallowed before Safari can zoom
+  const swallowed = await page.evaluate(() => new Promise((res) => {
+    const h = document.querySelector("#homeEmpty h2, #homeEmpty .h1, #homeEmpty") || document.body;
+    const fire = () => { const e = new Event("touchend", { bubbles: true, cancelable: true }); h.dispatchEvent(e); return e.defaultPrevented; };
+    const first = fire(); setTimeout(() => res({ first, second: fire() }), 60);
+  }));
+  check("F52", "the second of two quick taps on plain text is swallowed; the first is not", swallowed.first === false && swallowed.second === true, JSON.stringify(swallowed));
+  const onButton = await page.evaluate(() => new Promise((res) => {
+    const b = document.getElementById("scanBtn") || document.querySelector("button");
+    const fire = () => { const e = new Event("touchend", { bubbles: true, cancelable: true }); b.dispatchEvent(e); return e.defaultPrevented; };
+    fire(); setTimeout(() => res(fire()), 60);
+  }));
+  check("F52", "quick taps on a button are never swallowed", onButton === false);
+});
+
 await scenario(["F35"], "tapping the logo", async (set) => {
   const env = set(await open({}));
   const { page } = env;
