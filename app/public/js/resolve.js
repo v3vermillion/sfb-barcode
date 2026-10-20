@@ -197,6 +197,20 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
   };
 }
 
+/** This phone's remembered matches merged with the shared list (the Worker's /v1/learned): a match made on this phone
+ *  stays as it is; a shared one fills every other barcode, marked `shared`, and leaves again when the list drops it.
+ *  gtin14 -> {key, title, at, shared?}. */
+export function mergeLearned(local, shared) {
+  const out = {};
+  for (const [g, m] of Object.entries(local || {})) if (m && m.key && !m.shared) out[g] = m;
+  for (const e of Array.isArray(shared) ? shared : []) {
+    const gtin = String(e?.gtin || ""), upc = String(e?.upc || "");
+    if (!/^\d{14}$/.test(gtin) || !/^\d{8,14}$/.test(upc) || out[gtin]) continue;
+    out[gtin] = { key: Number(upc), title: String(e.title || "").slice(0, 120), at: Number(e.at) || 0, shared: true };
+  }
+  return out;
+}
+
 /** Human notes that explain the price's provenance; shown under the title. */
 export function notesFor(res, ctx = {}) {
   const notes = [];
@@ -205,7 +219,8 @@ export function notesFor(res, ctx = {}) {
     notes.push({ tone: "equiv", text: `${res.otherBrand.brand} is ${whoseBrand(res.otherBrand)}, which Walmart does not sell. This Walmart item is its equivalent, and Walmart's own brand is the same price tier.` });
   }
   if (res.learned) {
-    notes.push({ tone: "equiv", text: `This barcode is not in the price list. It was matched to this Walmart item on this phone${res.learned.at ? ` on ${new Date(res.learned.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""} by a search by name. Not the right item? Search by name again.` });
+    const who = res.learned.shared ? "by a volunteer" : "on this phone";
+    notes.push({ tone: "equiv", text: `This barcode is not in the price list. It was matched to this Walmart item ${who}${res.learned.at ? ` on ${new Date(res.learned.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""} by a search by name. Not the right item? Search by name again.` });
   }
   if (res.kind === "closest" && !res.learned && (res.dropped?.length || !res.otherBrand)) {
     notes.push({ tone: "warn", text: `No item matched every word of “${res.query}”${res.dropped?.length ? `; “${res.dropped.join(" ")}” was ignored` : ""}. Check the type and size against the donated item.` });
@@ -217,6 +232,7 @@ export function notesFor(res, ctx = {}) {
   } else if (res.kind === "equivalent") {
     const e = res.equiv;
     notes.push({ tone: "equiv", text: `Not sold at Walmart. Valued at the price of the closest Walmart equivalent by type and size (${e.confidence === "high" ? "close match" : e.confidence === "medium" ? "fair match" : e.confidence === "rough" ? "rough estimate" : "rough match"}).` });
+    if (e.storeTier) notes.push({ tone: "equiv", text: "A store brand: valued at about half the comparable national brand's price, the way Walmart's own brands are priced." });
     if (!e.basis) notes.push({ tone: "warn", text: "The Walmart item this estimate was based on is no longer listed, so the value is approximate." });
   }
   if (res.kind === "store-label") {

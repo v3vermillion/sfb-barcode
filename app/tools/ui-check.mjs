@@ -15,6 +15,7 @@ const ONLY = args.only ? new Set(String(args.only).split(",").map((s) => s.trim(
 const exe = process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {};
 const browser = await chromium.launch({ args: ["--no-sandbox"], ...exe });
 const IPHONE_UA = devices["iPhone 14"]?.userAgent || "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+const ANDROID_UA = devices["Pixel 7"]?.userAgent || "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
 const results = [];
 const check = (id, name, ok, detail = "") => {
@@ -28,9 +29,9 @@ const LANDSCAPE_SAFE = { top: 0, bottom: 21, left: 47, right: 47 };
 const DAY = 86_400_000;
 
 /** A fresh context and page (empty storage, so the pack downloads), with optional safe areas, screen size, clock and routes. */
-async function open({ w = 390, h = 844, safe = undefined, scheme = "light", query = "tour=0", init = null, routes = null, wait = true, clock = null, ios = false, screen = null, offline = false } = {}) {
+async function open({ w = 390, h = 844, safe = undefined, scheme = "light", query = "tour=0", init = null, routes = null, wait = true, clock = null, ios = false, android = false, screen = null, offline = false } = {}) {
   const phone = Math.min(w, h) < 600;
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: phone, hasTouch: true, colorScheme: scheme, ...(ios ? { userAgent: IPHONE_UA } : {}) });
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: phone, hasTouch: true, colorScheme: scheme, ...(ios ? { userAgent: IPHONE_UA } : android ? { userAgent: ANDROID_UA } : {}) });
   await ctx.addInitScript(() => addEventListener("unhandledrejection", (e) => console.error(`Unhandled promise rejection: ${e.reason?.message || e.reason}`)));
   if (init) await ctx.addInitScript(init.fn, init.arg);
   const page = await ctx.newPage();
@@ -499,6 +500,47 @@ await scenario(["F32"], "browser too old for offline prices", async (set) => {
   check("F32", "coming back online keeps “Update required”", /update required/i.test(pill) && fetched === 0, `pill "${pill}" current.json fetched ${fetched}x`);
 });
 
+// ---------------------------------------------------------------- Android: the same app, in its own words
+// Every iPhone browser is WebKit and every Android browser that matters is Chromium (the engine these checks run in), so the
+// layout is the same; what differs is the wording that names the platform (install steps, camera permission, what to update).
+const IOS_WORDS = /iPhone|iOS|Safari|Add to Home Screen/;
+await scenario(["F55"], "Android phone: no iPhone words, the install steps for its browser, the vibration setting", async (set) => {
+  const env = set(await open({ w: 360, h: 780, android: true }));
+  const { page } = env;
+  const body = await visibleText(page, "body");
+  check("F55", "nothing on the home screen speaks of an iPhone or Safari", !IOS_WORDS.test(body), body.match(IOS_WORDS)?.[0] || "");
+  const hint = await visibleText(page, "#installHint");
+  check("F55", "an Android browser without an install prompt is told the menu steps", /Install the app/.test(hint) && /menu/.test(hint) && /Add to Home screen/.test(hint), hint.slice(0, 120));
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 600);
+  await page.evaluate(() => { document.querySelector("#settings details.about").open = true; }); await settle(page, 200);
+  const settings = await visibleText(page, "#settings");
+  check("F55", "Settings offers the vibration switch where the browser can vibrate", /Vibrate on scan/.test(settings) === (await page.evaluate(() => typeof navigator.vibrate === "function")));
+  check("F55", "About names both platforms", /iPhone \(iOS 16\.4 or later\) and Android/.test(settings));
+});
+await scenario(["F56"], "Android phone on a browser too old for the app", async (set) => {
+  const env = set(await open({ w: 360, h: 780, android: true, init: { fn: () => { delete window.DecompressionStream; } }, wait: false }));
+  const { page } = env;
+  await settle(page, 800);
+  const card = await visibleText(page, "#readyCard");
+  check("F56", "the status card tells an Android phone to update its browser from the Play Store, not iOS", /Update Chrome/.test(card) && /Play Store/.test(card) && !IOS_WORDS.test(card), card.slice(0, 160));
+  const pill = await visibleText(page, "#status");
+  check("F56", "the pill says Update required", /update required/i.test(pill), pill);
+});
+await scenario(["F56"], "iPhone on a browser too old for the app", async (set) => {
+  const env = set(await open({ ios: true, init: { fn: () => { delete window.DecompressionStream; } }, wait: false }));
+  const { page } = env;
+  await settle(page, 800);
+  const card = await visibleText(page, "#readyCard");
+  check("F56", "the status card tells an iPhone to update iOS", /iOS 16\.4/.test(card) && !/Play Store/.test(card), card.slice(0, 160));
+});
+await scenario(["F56"], "a browser that unpacks the database but cannot draw the layout is told to update too", async (set) => {
+  const env = set(await open({ android: true, init: { fn: () => { const sup = CSS.supports.bind(CSS); CSS.supports = (a, b) => (/oklch/.test(String(a) + String(b)) ? false : sup(a, b)); } }, wait: false }));
+  const { page } = env;
+  await settle(page, 800);
+  const pill = await visibleText(page, "#status");
+  check("F56", "no oklch colours: Update required, nothing downloaded", /update required/i.test(pill), pill);
+});
+
 await scenario(["F33", "F34"], "Recent", async (set) => {
   const env = set(await open({}));
   const { page } = env;
@@ -594,7 +636,7 @@ for (const [w, h] of [[320, 568], [360, 780], [390, 844]]) {
     check("F14", `${w}: the price date appears once`, shown === 1, `${shown} lines carry the date`);
     check("F39", `${w}: no name on an unnamed container`, await page.evaluate(() => ![...document.querySelectorAll("div[aria-labelledby], span[aria-labelledby]")].some((e) => !e.getAttribute("role"))));
     const pill = await visibleText(page, "#statusText");
-    if (w >= 360) check("F41", `${w}: the pill says when the price list was updated`, /^Updated /.test(pill), pill);
+    if (w >= 360) check("F41", `${w}: the pill says the price list's date`, /^Prices /.test(pill), pill);
     const text = await visibleText(page, "#home");
     const casual = ["even offline", "works offline", "common items", "tally is empty", "one moment", "here, even"].filter((p) => text.toLowerCase().includes(p));
     check("C1", `${w}: no sample shortcuts or casual wording on the home screen`, casual.length === 0 && !(await page.evaluate(() => document.getElementById("quick"))), casual.join(", "));

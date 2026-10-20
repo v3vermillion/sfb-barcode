@@ -155,6 +155,9 @@ def build():
     # $3e21 listing is not a parsing problem); the equivalent value is attached once per-unit prices are final
     from .qa import unit_outlier_stats, gates_config
     group_min = int(gates_config().get("unit_outlier_group_min") or 50)
+    # a stale out-of-stock variant takes the price its in-stock siblings agree on, before any price is judged
+    consumable_depts = {d["name"] for d in cfg["departments"] if d.get("consumable")}
+    family_rows, family_lines = valuation.apply_family_prices(rows.values(), consumable_depts)
     bounds, dropped_placeholders = valuation.withhold(rows, gates_config(), group_min)
     for _, dept_name, why in dropped_placeholders:
         rejects[dept_name][why] += 1
@@ -215,6 +218,8 @@ def build():
         "unit_outliers_raw": unit_outliers_raw,
         "price_bounds": price_bounds, "price_withheld": withheld,
         "store_prices": {"rows": store_priced, "store": (storeprice.config() or {}).get("name")},
+        "family_prices": {"rows": family_rows, "lines": family_lines,
+                          "rule": "an out-of-stock variant takes the price at least 3 in-stock variants of its line agree on"},
         "placeholders": {"count": sum(1 for r in rows.values() if "placeholder" in r["flags"]), "names_filled": names_filled,
                          "examples": [{"id": r["id"], "upc": r.get("upc"), "name": r["name"], "listed_name": r.get("listed_name"),
                                        "name_src": r.get("name_src"), "dept": r["dept"],

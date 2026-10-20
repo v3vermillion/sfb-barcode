@@ -22,6 +22,9 @@ Public key format accepted by the portal: base64 body only (no BEGIN/END lines).
      missing or has expired. Without it the watchdog does nothing.
    WM_KEY_VERSION=1, GH_REPO, GH_BRANCH and WATCHDOG_GAP_MIN are set in wrangler.toml.
 4. Redeploy (or push any commit) so secrets apply. `/watchdog?token=<ADMIN_TOKEN>&dry=1` shows what the watchdog sees.
+5. Nothing else to create: the Durable Object behind /v1/learned comes from the migration in wrangler.toml on the first
+   deploy that carries it (2026-10-20). `/health` should show `LEARNED: true` and `STORE_ID: "2266"` (until 2026-10-20 the
+   store id sat under `[triggers]`, where wrangler ignores it, so the live check answered with Walmart.com's price).
 
 ## Endpoints
 - GET /v1/price/<gtin> — PUBLIC (no token): live Walmart price for the app, the Strongsville store's own price
@@ -31,7 +34,13 @@ Public key format accepted by the portal: base64 body only (no BEGIN/END lines).
   Returns `{ok:true, price, name, brand, upc, stock, listings[], checkedAt}` or `{ok:false, reason}`;
   429 when limited, 503 (`retry-after`) when Walmart throttles/fails or the bindings are missing.
   Local dev without bindings: set `ALLOW_UNLIMITED_DEV=1` in `.dev.vars` (never in production).
-- GET /health?token=ADMIN_TOKEN — config check, never prints secret values
+- GET|POST /v1/learned — PUBLIC (no token): the volunteers' shared remembered matches (a barcode nothing knew, matched to a
+  Walmart item by a search by name on one phone). GET returns `{ok, count, learned:[{gtin, upc, title, n, at}]}` (newest
+  first, at most 5,000); POST `{gtin, upc, title}` adds a vote for the match (`forget: true` takes one back: the app's
+  Undo), rate limited 30/min per IP (PRICE_LIMITER). The table lives in the SQLite-backed Durable Object `Learned`
+  (`[[durable_objects.bindings]]` + `[[migrations]]` in wrangler.toml, created on deploy; the Free plan allows SQLite-backed
+  objects). Without the binding the route answers 503 and every phone keeps only its own matches.
+- GET /health?token=ADMIN_TOKEN — config check, never prints secret values (shows STORE_ID and whether LEARNED is bound)
 - GET /taxonomy?token=ADMIN_TOKEN — signed Walmart Taxonomy call; top-level departments
 - GET /taxonomy/<id>?token=ADMIN_TOKEN — children of one category node
 - GET /items/<id>?token=ADMIN_TOKEN&pages=N&raw=1 — test pull of product catalog for a node (read-only)
@@ -182,6 +191,25 @@ at page 1,830 of 31,781): an end with many hits left is retried from the next cu
 Run manually: Actions tab → pipeline → Run workflow → plan (continue | core | full | approve | identify | audit | size | status | rollback | store).
 Working data: branch `data-store` (state/, raw/, build/, identify/, history/, audit/, sizing.json). Report for the latest build:
 `data-store:build/candidate/report.md`. Published snapshot: `data-store:build/published/`.
+
+## Google Play (optional: the same app as an Android listing)
+The PWA installs from Chrome on Android today (the Install hint on the home screen). A Google Play listing wraps the same
+site in a Trusted Web Activity (TWA): an Android app that opens the site full screen, no browser bar, updating with every
+deploy. Owner actions, all from a phone or a browser:
+1. A Google Play developer account (one-time fee, identity check) and a package name, e.g. `org.strongsvillefoodbank.sfbvalue`.
+2. Package the app with PWABuilder (pwabuilder.com → the app's URL → Android → "Generate"): it reads the manifest (name, icons,
+   `orientation: any`, colours) and produces the signed .aab plus the signing key's SHA-256 fingerprint and an
+   `assetlinks.json`. Keep the signing key in the password manager.
+3. Set the repository variable `ANDROID_ASSET_LINKS` to that `assetlinks.json` content (a JSON array naming the package and
+   fingerprint). The next deploy writes it to `APP_URL/.well-known/assetlinks.json`; without it the TWA shows a browser bar.
+   When Play's own signing replaces the upload key, add Play Console's fingerprint to the same array.
+4. Upload the .aab in Play Console. Listing needs: the privacy policy URL `APP_URL/privacy.html` (the app stores everything
+   on the phone; only the barcode leaves it, for the live check and the shared matches), the camera permission declared as
+   "barcode scanning", icons (`app/public/icons/`) and screenshots (`docs/screens/`). Data safety: no personal data collected.
+5. Volunteers who installed from Chrome keep working; the Play app and the browser install share nothing (separate storage),
+   so a phone should use one or the other.
+The app's own address must be final first (moving the site to the food bank's domain invalidates the asset links and the
+offline data alike; READINESS step 24).
 
 ## App (Cloudflare Workers static assets, deployed by GitHub Actions)
 Code: `app/`. Workflow: `.github/workflows/deploy-app.yml` (runs on app changes, after every pipeline run, or manually).

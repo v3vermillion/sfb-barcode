@@ -22,7 +22,7 @@ question: does this sample show a *class* of bad rows that the deterministic che
 - Flags explain oddities: `promo_price` (a clearance or deal price), `kept_normal_price` (the deal
   price was replaced by the last normal price), `retired_upc` (an old barcode kept on purpose because
   donations include old stock), `carried_over` (not re-crawled this run), `size_conflict`,
-  `upc_check_digit`, `pack_listing` (Walmart listed the item only as a "(N pack)" bundle; the row is one unit of it, priced
+  `upc_check_digit`, `family_price` (an out-of-stock variant priced as its in-stock siblings), `pack_listing` (Walmart listed the item only as a "(N pack)" bundle; the row is one unit of it, priced
   at the bundle's `listing_price` / `listing_pack`). These are expected and are not junk.
 
 ## What is NOT a valid row (junk)

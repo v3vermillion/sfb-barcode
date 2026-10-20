@@ -32,7 +32,7 @@ closest comparable item, in practice a sibling. Only the high side: a lower pric
 measured spread within families is wide enough (battery sizes, razor models sharing one count) that a tighter or
 two-sided rule would overwrite real prices.
 """
-import math, statistics
+import math, re, statistics
 from collections import Counter, defaultdict
 
 from .identify import tokens as name_tokens, WALMART_STORE_BRANDS
@@ -265,6 +265,101 @@ def withhold_kind_outliers(rows):
             continue
         _withhold(r)
         r["_why"] = "far above the same kind of item"
+
+
+# ---- variant families (2026-10-20): the flavours, scents and colours of one product line
+FAMILY_MAX_GROUP = 400     # brand+size groups larger than this are a catalogue, not a line (and the pairing is quadratic)
+FAMILY_MIN_AGREE = 3       # in-stock members that must share one price before it is the line's price
+FAMILY_TOL = 0.02          # a member within this of the line's price is at the line's price
+_TOK = re.compile(r"[a-z0-9]+")
+
+
+def _one_run_diff(a, b):
+    """Two token lists that are equal except for one contiguous run of at most three tokens on each side (a flavour,
+    a scent, a colour), with at least three tokens shared around it."""
+    i = 0
+    while i < len(a) and i < len(b) and a[i] == b[i]:
+        i += 1
+    j = 0
+    while j < len(a) - i and j < len(b) - i and a[-1 - j] == b[-1 - j]:
+        j += 1
+    ra, rb = len(a) - i - j, len(b) - i - j
+    return 0 <= ra <= 3 and 0 <= rb <= 3 and (ra or rb) and (i + j) >= 3
+
+
+def variant_families(rows, consumable_depts=None):
+    """Lists of rows that are one product line: same brand, category, size and pack, names that differ in one run of
+    at most three tokens. Placeholders and withheld rows are left out; so is every department outside `consumable_depts`
+    when given. Rows priced from the store's shelf stay in: they are the best reference a line can have."""
+    groups = defaultdict(list)
+    for r in rows:
+        flags = r.get("flags") or []
+        if "placeholder" in flags or r.get("price_withheld"):
+            continue
+        if not r.get("brand") or not r.get("base_qty") or not isinstance(r.get("price"), (int, float)) or r["price"] <= 0:
+            continue
+        if consumable_depts is not None and r.get("dept") not in consumable_depts:
+            continue
+        groups[(r["brand"].strip().lower(), r.get("cat"), r.get("base_unit"), round(r["base_qty"], 2), r.get("pack") or 1)].append(r)
+    fams = []
+    for rs in groups.values():
+        if len(rs) < FAMILY_MIN_AGREE or len(rs) > FAMILY_MAX_GROUP:
+            continue
+        toks = [_TOK.findall((r.get("name") or "").lower()) for r in rs]
+        parent = list(range(len(rs)))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        for i in range(len(rs)):
+            for j in range(i + 1, len(rs)):
+                if _one_run_diff(toks[i], toks[j]):
+                    parent[find(i)] = find(j)
+        by = defaultdict(list)
+        for i in range(len(rs)):
+            by[find(i)].append(rs[i])
+        fams.extend(v for v in by.values() if len(v) >= FAMILY_MIN_AGREE)
+    return fams
+
+
+def _current(r):
+    """A price that is current: Walmart.com has the listing in stock, or the store's shelf does (storeprice.apply)."""
+    return r.get("stock") == "Available" or "store_price" in (r.get("flags") or ())
+
+
+def apply_family_prices(rows, consumable_depts=None):
+    """Give every out-of-stock member of a product line the price its in-stock members agree on (owner's case,
+    2026-10-20: 32 CELSIUS flavours, every in-stock one at $2.57, the out-of-stock ones at $2.28 and $4.40-$9.37).
+    Measured on the published snapshot: across true variant families, out-of-stock members sit off the line's price
+    70% of the time, in-stock members 37%, and flagged rollbacks explain 3 of 7,000; an out-of-stock listing's price is
+    simply old. The line's price is the most common price among in-stock members when at least FAMILY_MIN_AGREE of
+    them, and half or more, share it; in-stock members keep their own price (it is current, and may be a real rollback).
+    A member is in stock when Walmart.com has it or the store's shelf does (`store_price`, storeprice.apply: 15,580 rows
+    out of stock online carried a shelf price on 2026-10-20). The listing's own price stays in `family_price_from`; the
+    row is flagged `family_price`. Returns (rows changed, families used)."""
+    changed = used = 0
+    for fam in variant_families(rows, consumable_depts):
+        ins = [r for r in fam if _current(r)]
+        if len(ins) < FAMILY_MIN_AGREE:
+            continue
+        mode, n = Counter(r["price"] for r in ins).most_common(1)[0]
+        if n < FAMILY_MIN_AGREE or n * 2 < len(ins):
+            continue
+        used += 1
+        for r in fam:
+            if _current(r) or abs(r["price"] - mode) / mode <= FAMILY_TOL:
+                continue
+            r["family_price_from"] = r["price"]
+            r["price"] = mode
+            if isinstance(r.get("unit_price"), (int, float)) and r.get("base_qty"):
+                r["unit_price"] = round(mode / (r["base_qty"] * (r.get("pack") or 1)), 4)
+            if "pack_listing" in r.get("flags", []) and r.get("listing_pack"):
+                r["listing_price"] = round(mode * r["listing_pack"], 2)      # the bundle's price follows its unit
+            r["flags"].append("family_price")
+            changed += 1
+    return changed, used
 
 
 def _sibling_key(r):

@@ -1,5 +1,5 @@
 {
-  "note": "Store brands a Strongsville food bank receives that Walmart does not sell, and the GS1 company prefixes their barcodes start with (the 7 leading digits of the 13-digit form, measured on Open Facts 2026-10-19). One file for the pipeline (crawler/identify.py: a listed brand is matched to Walmart's own brands, the same price tier) and the app (the pack manifest: a typed brand name ranks Walmart's own-brand items first and the sheet says why; a scanned barcode under a listed prefix is named by its store even when nothing else is known about it). Brand names are matched whole, case-insensitively, apostrophes aside. Add a store or brand here; the next pack build and identify refresh pick it up. A brand that is also an ordinary word or a brand Walmart sells (Presto cookware, Boulder Canyon chips, Beneful Healthy Radiance, Summit, Elevation, Belmont, Brookdale, Stonemill Kitchens) is left out on purpose: in a typed query it would be taken for the store brand (measured 2026-10-19). Member's Mark is Walmart-owned (Sam's Club) and Walmart.com sells it, so it is a Walmart store brand (crawler/normalize.py STORE_BRANDS), not listed here.",
+  "note": "Store brands a Strongsville food bank receives that Walmart does not sell, and the GS1 company prefixes their barcodes start with (the 7 leading digits of the 13-digit form, measured on Open Facts 2026-10-19). One file for the pipeline (crawler/identify.py: a listed brand is matched to Walmart's own brands, the same price tier) and the app (the pack manifest: a typed brand name ranks Walmart's own-brand items first and the sheet says why; a scanned barcode under a listed prefix is named by its store even when nothing else is known about it). Brand names are matched whole, case-insensitively, apostrophes aside. Add a store or brand here; the next pack build and identify refresh pick it up. A brand that is also an ordinary word or a brand Walmart sells (Presto cookware, Boulder Canyon chips, Beneful Healthy Radiance, Summit, Elevation, Belmont, Brookdale, Stonemill Kitchens) is left out on purpose: in a typed query it would be taken for the store brand (measured 2026-10-19). Member's Mark is Walmart-owned (Sam's Club) and Walmart.com sells it, so it is a Walmart store brand (crawler/normalize.py STORE_BRANDS), not listed here. `owners`: words of the chain's company name as USDA FoodData Central lists the brand owner (crawler/identify.py keeps the branded foods of these owners, their listed brands and their barcode prefixes).",
   "stores": {
     "Costco": {
       "brands": [
@@ -8,6 +8,9 @@
       ],
       "prefixes": [
         "0096619"
+      ],
+      "owners": [
+        "costco"
       ]
     },
     "Aldi": {
@@ -77,6 +80,9 @@
       "prefixes": [
         "0041498",
         "4099100"
+      ],
+      "owners": [
+        "aldi"
       ]
     },
     "Giant Eagle": {
@@ -87,6 +93,9 @@
       ],
       "prefixes": [
         "0030034"
+      ],
+      "owners": [
+        "giant eagle"
       ]
     },
     "Heinen's": {
@@ -96,6 +105,9 @@
       ],
       "prefixes": [
         "0020601"
+      ],
+      "owners": [
+        "heinen"
       ]
     },
     "Marc's": {
@@ -103,7 +115,10 @@
         "marc's",
         "marcs"
       ],
-      "prefixes": []
+      "prefixes": [],
+      "owners": [
+        "marc glassman"
+      ]
     },
     "Amazon": {
       "brands": [
@@ -121,6 +136,9 @@
       "prefixes": [
         "0842379",
         "0195515"
+      ],
+      "owners": [
+        "amazon"
       ]
     },
     "Trader Joe's": {
@@ -128,14 +146,20 @@
         "trader joe's",
         "trader joes"
       ],
-      "prefixes": []
+      "prefixes": [],
+      "owners": [
+        "trader joe"
+      ]
     },
     "BJ's": {
       "brands": [
         "wellsley farms",
         "berkley jensen"
       ],
-      "prefixes": []
+      "prefixes": [],
+      "owners": [
+        "bj's wholesale"
+      ]
     },
     "Meijer": {
       "brands": [
@@ -145,6 +169,9 @@
       ],
       "prefixes": [
         "0041250"
+      ],
+      "owners": [
+        "meijer"
       ]
     },
     "Kroger": {
@@ -156,6 +183,9 @@
       ],
       "prefixes": [
         "0011110"
+      ],
+      "owners": [
+        "kroger"
       ]
     },
     "Target": {
@@ -167,13 +197,20 @@
       ],
       "prefixes": [
         "0085239"
+      ],
+      "owners": [
+        "target"
       ]
     },
     "Dollar General": {
       "brands": [
         "clover valley"
       ],
-      "prefixes": []
+      "prefixes": [],
+      "owners": [
+        "dolgencorp",
+        "dollar general"
+      ]
     },
     "Whole Foods Market": {
       "brands": [
@@ -184,6 +221,9 @@
       ],
       "prefixes": [
         "0099482"
+      ],
+      "owners": [
+        "whole foods"
       ]
     },
     "another grocer": {
@@ -193,7 +233,12 @@
         "shurfine",
         "coburn farms"
       ],
-      "prefixes": []
+      "prefixes": [],
+      "owners": [
+        "topco",
+        "associated wholesale grocers",
+        "western family"
+      ]
     }
   }
 }

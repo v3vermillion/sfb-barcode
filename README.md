@@ -24,8 +24,10 @@ stock); a store-printed price label is decoded on the spot; a produce sticker gi
 does not sell is valued at the closest Walmart equivalent and labelled as such; a typed search that has to drop a word says
 which one. When the phone is online, an unknown barcode is also checked live. Every result shows the date of its price.
 
-It is a progressive web app: volunteers open it once, add it to the Home Screen, and it then works offline on the phone
-already in their hand. There is nothing to install from an app store and nothing to pay for.
+It is a progressive web app: volunteers open it once, add it to the Home Screen (iPhone: Share › Add to Home Screen;
+Android: the browser's Install button), and it then works offline on the phone already in their hand, iPhone (iOS 16.4 or
+later) or Android (Chrome 111 or later). There is nothing to install from an app store and nothing to pay for; a Google
+Play listing of the same app is possible (docs/RUNBOOK.md "Google Play").
 
 ## What is inside
 
@@ -90,7 +92,8 @@ Food Facts data is ODbL.
 ## Acknowledgements
 
 Prices from the [Walmart I/O Affiliate API](https://walmart.io/). Barcodes Walmart does not sell are identified through
-[Open Food Facts](https://world.openfoodfacts.org/), [Open Beauty Facts](https://world.openbeautyfacts.org/) and
+[USDA FoodData Central](https://fdc.nal.usda.gov/) Branded Foods (U.S. Department of Agriculture, Agricultural Research
+Service; public domain), [Open Food Facts](https://world.openfoodfacts.org/), [Open Beauty Facts](https://world.openbeautyfacts.org/) and
 [Open Products Facts](https://world.openproductsfacts.org/) (ODbL). The scanner uses
 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (Apache-2.0) where the browser has no barcode detector of its own; the
 typeface is [Geist](https://vercel.com/font) (OFL). Built for and with the Strongsville Emergency Food Bank.

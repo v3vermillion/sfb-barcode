@@ -78,8 +78,8 @@ const PRICE_TTL_SECONDS = 6 * 60 * 60;
 const THROTTLE_TTL_SECONDS = 60;          // how long a Walmart 429/5xx answer is remembered so the shared key is not hammered
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
-  "access-control-allow-headers": "accept",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "accept, content-type",
   "access-control-max-age": "86400",
   "vary": "origin",
 };
@@ -194,6 +194,76 @@ async function livePrice(req, env, ctx, gtinRaw) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Shared remembered matches: GET/POST /v1/learned. A barcode nothing knew that a volunteer matched to a Walmart item by a
+// search by name (the app's remembered matches) reaches every phone: the app posts the match, and fetches the list when it
+// starts or comes online. One SQLite-backed Durable Object holds the table (created by the migration in wrangler.toml on
+// deploy; nothing to set up); a match is a vote: the same match again strengthens it, a different match for the barcode
+// weakens it and replaces it once it is outvoted, Undo takes a vote back. Public, like the price check: strict barcode
+// validation, titles clipped, per-caller rate limit (PRICE_LIMITER, no Walmart call involved), at most LEARNED_MAX rows.
+// The class uses the plain Durable Object interface (constructor + fetch), so this module also loads in Node for the tests.
+
+const LEARNED_MAX = 5000, LEARNED_TITLE_MAX = 120;
+
+export class Learned {
+  constructor(state, env) {
+    this.sql = state.storage.sql;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS learned (gtin TEXT PRIMARY KEY, upc TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL DEFAULT 1, at INTEGER NOT NULL)");
+  }
+  // GET -> every row; POST {op: "remember"|"forget", gtin, upc, title, at} -> the barcode's row after the vote (or null)
+  async fetch(req) {
+    if (req.method === "GET") return Response.json(this.list());
+    const b = await req.json();
+    return Response.json(b.op === "forget" ? this.forget(b) : this.remember(b));
+  }
+  list() {
+    return this.sql.exec(`SELECT gtin, upc, title, n, at FROM learned ORDER BY at DESC LIMIT ${LEARNED_MAX}`).toArray();
+  }
+  one(gtin) {
+    return this.sql.exec("SELECT gtin, upc, title, n, at FROM learned WHERE gtin = ?", gtin).toArray()[0] || null;
+  }
+  remember({ gtin, upc, title, at }) {
+    const cur = this.one(gtin);
+    if (!cur) this.sql.exec("INSERT INTO learned (gtin, upc, title, n, at) VALUES (?, ?, ?, 1, ?)", gtin, upc, title, at);
+    else if (cur.upc === upc) this.sql.exec("UPDATE learned SET n = n + 1, title = ?, at = ? WHERE gtin = ?", title, at, gtin);
+    else if (cur.n <= 1) this.sql.exec("UPDATE learned SET upc = ?, title = ?, n = 1, at = ? WHERE gtin = ?", upc, title, at, gtin);   // outvoted: the newer match stands
+    else this.sql.exec("UPDATE learned SET n = n - 1 WHERE gtin = ?", gtin);                                                       // a dissenting vote weakens it
+    this.sql.exec(`DELETE FROM learned WHERE gtin IN (SELECT gtin FROM learned ORDER BY at DESC LIMIT -1 OFFSET ${LEARNED_MAX})`);
+    return this.one(gtin);
+  }
+  forget({ gtin, upc }) {
+    const cur = this.one(gtin);
+    if (!cur || cur.upc !== upc) return cur;
+    if (cur.n <= 1) this.sql.exec("DELETE FROM learned WHERE gtin = ?", gtin);
+    else this.sql.exec("UPDATE learned SET n = n - 1 WHERE gtin = ?", gtin);
+    return this.one(gtin);
+  }
+}
+
+async function learnedRoute(req, env) {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (!env.LEARNED) return pub({ ok: false, reason: "not configured" }, 503, { "retry-after": "300" });
+  const stub = env.LEARNED.get(env.LEARNED.idFromName("volunteers"));
+  const call = async (init) => (await stub.fetch(new Request("https://learned.sfb-valuation.internal/", init))).json();
+  if (req.method === "GET") {
+    const rows = await call({ method: "GET" });
+    return pub({ ok: true, count: rows.length, learned: rows });
+  }
+  if (req.method !== "POST") return pub({ ok: false, reason: "method" }, 405);
+  let body;
+  try { body = await req.json(); } catch { return pub({ ok: false, reason: "bad json" }, 400); }
+  const gtin = parseGtin(body?.gtin);
+  const upc = String(body?.upc || "").replace(/\D/g, "");
+  if (!gtin || !/^\d{8,14}$/.test(upc) || upc.padStart(14, "0") === gtin) return pub({ ok: false, reason: "not a product barcode" }, 400);
+  if (env.PRICE_LIMITER) {           // charged for a write that will be made, like the price check's Walmart call
+    const per = await env.PRICE_LIMITER.limit({ key: req.headers.get("cf-connecting-ip") || "unknown" });
+    if (!per.success) return pub({ ok: false, reason: "rate limited" }, 429, { "retry-after": "60" });
+  }
+  const title = String(body?.title || "").replace(/\s+/g, " ").trim().slice(0, LEARNED_TITLE_MAX);
+  const row = await call({ method: "POST", body: JSON.stringify({ op: body?.forget ? "forget" : "remember", gtin, upc, title, at: Date.now() }) });
+  return pub({ ok: true, gtin, learned: row });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Schedule watchdog. GitHub fires the pipeline's cron hours late or not at all (runs 58-61 on 2026-10-14 came five hours
 // apart, and nothing fired for 3.5 h after a failed run, which does not chain). Cloudflare's cron is reliable, so this
 // Worker dispatches a `continue` run through the GitHub API whenever the pipeline is idle for WATCHDOG_GAP_MIN minutes.
@@ -260,6 +330,7 @@ export default {
     // Public, token-free, rate-limited route used by the offline app's live check.
     const mp = url.pathname.match(/^\/v1\/price\/([0-9]{8,14})$/);
     if (mp) return livePrice(req, env, ctx, mp[1]);
+    if (url.pathname === "/v1/learned") return learnedRoute(req, env);
 
     if (!env.ADMIN_TOKEN || url.searchParams.get("token") !== env.ADMIN_TOKEN) {
       return json({ error: "unauthorized" }, 401);
@@ -272,6 +343,8 @@ export default {
         WM_KEY_VERSION: env.WM_KEY_VERSION || null,
         PRICE_LIMITER: Boolean(env.PRICE_LIMITER),
         PRICE_GLOBAL_LIMITER: Boolean(env.PRICE_GLOBAL_LIMITER),
+        LEARNED: Boolean(env.LEARNED),
+        STORE_ID: env.STORE_ID || null,
         GH_DISPATCH_TOKEN: Boolean(env.GH_DISPATCH_TOKEN),
         GH_REPO: env.GH_REPO || null,
       });
@@ -377,6 +450,6 @@ export default {
       return json({ query: q, totalResults: d.totalResults ?? null, items: (d.items || []).map(summarizeItem) });
     }
 
-    return json({ error: "not found", routes: ["/health", "/watchdog?dry=1", "/taxonomy", "/taxonomy/<id>", "/items/<id>?pages=N", "/search?q=", "public: /v1/price/<gtin>"] }, 404);
+    return json({ error: "not found", routes: ["/health", "/watchdog?dry=1", "/taxonomy", "/taxonomy/<id>", "/items/<id>?pages=N", "/search?q=", "public: /v1/price/<gtin>", "public: /v1/learned"] }, 404);
   },
 };

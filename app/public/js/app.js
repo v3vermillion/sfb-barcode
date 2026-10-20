@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -47,6 +47,29 @@ function rememberMatch(gtin, item) {
   const keys = Object.keys(learned);
   if (keys.length > LEARNED_MAX) for (const k of keys.sort((a, b) => (learned[a].at || 0) - (learned[b].at || 0)).slice(0, keys.length - LEARNED_MAX)) delete learned[k];
   writeJson(LEARNED_KEY, learned);
+  shareMatch(gtin, item);
+}
+// Shared between phones through the pipeline Worker (/v1/learned, pipeline/src/index.js): a match one volunteer makes is
+// posted, and every phone fetches the list when it starts, comes online or returns to the foreground (at most every
+// LEARNED_SYNC_MS). Offline, or without a live-check URL, this phone's own matches work as before.
+const LEARNED_SYNC_MS = 15 * 60 * 1000;
+let learnedSyncedAt = 0;
+function shareMatch(gtin, item, forget = false) {
+  if (!LIVE_URL || !navigator.onLine || !gtin || !item?.upc) return;
+  fetch(`${LIVE_URL}/v1/learned`, { method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
+    body: JSON.stringify({ gtin, upc: String(item.upc), title: titleOf(item), ...(forget ? { forget: true } : {}) }) }).catch(() => {});
+}
+async function syncLearned(force = false) {
+  if (!LIVE_URL || !navigator.onLine || (!force && Date.now() - learnedSyncedAt < LEARNED_SYNC_MS)) return;
+  learnedSyncedAt = Date.now();
+  try {
+    const r = await fetch(`${LIVE_URL}/v1/learned`, { headers: { accept: "application/json" }, cache: "no-store" });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!Array.isArray(d?.learned)) return;
+    learned = mergeLearned(learned, d.learned);
+    writeJson(LEARNED_KEY, learned);
+  } catch { /* the Worker is unreachable: this phone's own matches still work */ }
 }
 
 const perf = { boot: { start: performance.now() }, keystrokes: [], scans: [], opens: [] };
@@ -168,6 +191,10 @@ const vv = window.visualViewport;
 const rootStyle = document.documentElement.style;
 const standalone = () => navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isAndroid = !isIOS && /Android/i.test(navigator.userAgent);
+// What to update when the browser is too old (the feature gate at the end of this file): iPhone browsers are all the
+// system's WebKit, so it is iOS itself; on Android it is the browser app, which updates from the Play Store on its own.
+const UPDATE_WHAT = isIOS ? "Update to iOS 16.4 or later" : isAndroid ? "Update Chrome (or the phone's browser) from the Play Store" : "Update this browser";
 /** True while a text field has the focus: the only time a phone keyboard can be on screen. */
 const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"); };
 /** The system's top safe-area inset in px (status bar / sensor housing), read from a probe styled with env(). */
@@ -354,7 +381,7 @@ function priceStatus() {
   const online = navigator.onLine;
   if (state.unsupported) {
     return { state: "error", long: "Update required", short: "Update", live: "Software update required to keep prices on this phone.",
-      card: { tone: "problem", icon: "info", title: "Software update required", sub: isIOS ? "Update to iOS 16.4 or later to keep prices on this phone." : "Update this browser to keep prices on this phone." } };
+      card: { tone: "problem", icon: "info", title: "Software update required", sub: `${UPDATE_WHAT} to keep prices on this phone.` } };
   }
   if (!db.version) {
     const err = state.dbErr;
@@ -373,7 +400,7 @@ function priceStatus() {
   }
   const date = fmtDate(priceDate()), dateLong = fmtDate(priceDate(), true);
   const out = online
-    ? { state: "ready", long: `Updated ${date}`, short: date, live: `Price list updated ${dateLong}.`, card: null }
+    ? { state: "ready", long: `Prices ${date}`, short: date, live: `Price list updated ${dateLong}.`, card: null }
     : { state: "ready", long: `Offline · ${date}`, short: "Offline", live: "Offline. Saved prices remain available.", card: null };
   if (db.storageFull) { out.card = { tone: "problem", icon: "info", title: "Phone storage is full", sub: `Free about ${db.storageFull.needMB} MB to finish downloading prices.` }; out.live = `Phone storage is full. Free about ${db.storageFull.needMB} MB to finish downloading prices.`; }
   else if (db.more) {
@@ -481,24 +508,29 @@ window.addEventListener("online", () => {
   if (state.unsupported) return;   // nothing can be unpacked on this browser: keep saying so
   state.morePaused = false;
   (db.version ? db.checkForUpdate() : db.start()).catch(() => {});
+  syncLearned();
 });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncLearned(); });
 window.addEventListener("offline", () => { renderStatus(); renderStale(); toast("Offline. Scanning and search continue to work.", { iconName: "wifi-off" }); });
 // an installed app (Android's "Add to Home screen") is what makes Chrome grant persistent storage: ask again right then
 window.addEventListener("appinstalled", () => { db.requestPersistence({ force: true }).catch(() => {}); hideInstallHint(); });
 
 // ------------------------------------------------------------------ "Add to Home Screen" (first runs, in the browser)
 // Safari deletes a website's saved data after about a week without a visit; an app on the Home Screen keeps its prices.
-// Android's Chrome offers its own install prompt, kept here and shown as a button.
+// Android's Chrome (and Samsung Internet) offers its own install prompt, kept here and shown as a button; an Android
+// browser that offers none (Firefox; Chrome before it has decided the page is installable) gets the menu steps instead.
+// Any other browser (a laptop) is told nothing.
 const INSTALL_KEY = "sfb.installHint";
 let installPrompt = null;
 function hideInstallHint() { const h = $("installHint"); if (h) { h.hidden = true; h.innerHTML = ""; } }
 function showInstallHint() {
   const h = $("installHint");
   if (!h || standalone() || readJson(INSTALL_KEY, null)?.dismissed) return;
-  if (!isIOS && !installPrompt) return;
+  if (!isIOS && !isAndroid && !installPrompt) return;
   const how = isIOS
     ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. It opens full screen and keeps the prices saved.`
-    : "It opens full screen and keeps the prices saved on this phone.";
+    : installPrompt ? "It opens full screen and keeps the prices saved on this phone."
+    : "Open the browser menu (⋮) and choose <b>Install app</b> or <b>Add to Home screen</b>. It opens full screen and keeps the prices saved.";
   h.innerHTML = `<span class="sc-ico">${icon(isIOS ? "share" : "plus")}</span><div><b>${isIOS ? "Add to Home Screen" : "Install the app"}</b><span class="sub">${how}</span></div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
   h.hidden = false;
 }
@@ -540,7 +572,7 @@ function renderStale() {
   // only what changed is written (the text is a live region: a rewrite would be announced again)
   const set = (node, prop, v) => { if (node[prop] !== v) node[prop] = v; };
   set(el.stale.querySelector(".stale-text b"), "textContent", stalenessText(level, days));
-  set(el.stale.querySelector(".stale-text span"), "innerHTML", `Updated <span class="nw">${esc(fmtDate(date, "mid"))}</span>${level === "red" ? ` · <span class="nw">${esc(ageText(days))}</span>` : ""}${navigator.onLine ? "" : ". Connect to the internet to update."}`);
+  set(el.stale.querySelector(".stale-text span"), "innerHTML", `Prices from <span class="nw">${esc(fmtDate(date, "mid"))}</span>${level === "red" ? ` · <span class="nw">${esc(ageText(days))}</span>` : ""}${navigator.onLine ? "" : ". Connect to the internet to update."}`);
   const btn = el.stale.querySelector("[data-act=update]");
   // aria-disabled, not disabled: a disabled button drops the keyboard focus (checkNow ignores a second tap itself)
   if (btn.getAttribute("aria-disabled") !== String(!!state.staleBusy)) btn.setAttribute("aria-disabled", String(!!state.staleBusy));
@@ -558,7 +590,7 @@ setInterval(renderStale, 3600_000);
 
 /** Settings' "Check for new prices" and the banner's "Update now" share one path: check, download, apply, say what happened. */
 async function checkNow(btn = null) {
-  if (state.unsupported) { toast(isIOS ? "Update to iOS 16.4 or later to download prices." : "Update this browser to download prices.", { iconName: "info" }); return; }
+  if (state.unsupported) { toast(`${UPDATE_WHAT} to download prices.`, { iconName: "info" }); return; }
   if (!navigator.onLine) { toast("Offline. Connect to the internet to check for new prices.", { iconName: "wifi-off" }); return; }
   if (state.staleBusy) { toast("A check is already in progress"); return; }
   const wasStale = state.stale !== "fresh";
@@ -1024,7 +1056,7 @@ function addToTally(res) {
   if (lf && Date.now() - lf.at < LEARN_WINDOW_MS && res.item?.upc && (res.kind === "exact" || res.kind === "closest" || res.kind === "equivalent") && res.gtin !== lf.gtin) {
     const before = learned[lf.gtin] || null;
     rememberMatch(lf.gtin, res.item);
-    toast(`Remembered barcode ${formatGtin(lf.gtin)} as this item`, { action: "Undo", onAction: () => { if (before) learned[lf.gtin] = before; else delete learned[lf.gtin]; writeJson(LEARNED_KEY, learned); }, ms: 7000, page: true });
+    toast(`Remembered barcode ${formatGtin(lf.gtin)} as this item`, { action: "Undo", onAction: () => { if (before) learned[lf.gtin] = before; else delete learned[lf.gtin]; writeJson(LEARNED_KEY, learned); shareMatch(lf.gtin, res.item, true); }, ms: 7000, page: true });
   }
   haptic(15);
   // an accidental add is undone in one tap
@@ -1225,7 +1257,7 @@ function settingsHtml() {
   const problem = state.dbErrorPlain ? state.dbError
     : [st.card?.sub === "Open Settings for details." ? "" : st.card?.sub, state.dbError && !state.dbErr?.storage ? `Details: ${state.dbError}` : ""].filter(Boolean).join(" ");
   const card = m && !state.workerError
-    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Updated ${esc(fmtDate(priceDate(), "mid"))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} saved on this phone</p></div></div>`
+    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Prices from ${esc(fmtDate(priceDate(), "mid"))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} saved on this phone</p></div></div>`
     : `<div class="data-head data-head--warn">${icon("info", "ico data-ico")}<div><h3 class="data-title">${esc(st.card?.title || "Loading the price list")}</h3><p class="data-sub">${esc(problem)}</p></div></div>`;
   const legend = [["exact", "Exact item", "Found in the Walmart price list by barcode or name"], ["store-label", "Store price label", "A store scale label (meat, deli, bakery) that carries its own price"],
     ["plu", "Produce code", "The four-digit sticker on produce, priced by the pound or each"], ["equivalent", "Equivalent value", "Not sold at Walmart, so priced at the closest Walmart item"],
@@ -1252,7 +1284,7 @@ function settingsHtml() {
     <details class="about">
       <summary><span>About</span>${icon("back", "ico chev")}</summary>
       <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
-      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL). Barcode reading by zxing-cpp (Apache-2.0).</p>
+      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0). Runs on iPhone (iOS 16.4 or later) and Android (Chrome 111 or later, Samsung Internet, Firefox); nothing leaves the phone except the live price check and the shared barcode matches (<a href="./privacy.html" target="_blank" rel="noopener">privacy</a>).</p>
       <p class="fine verse-full">“We love because he first loved us.” — 1 John 4:19</p>
       <p class="fine mono">Version ${esc(BUILD)}${m ? `<br>Price list ${esc(m.version)}` : ""}</p>
     </details>
@@ -1538,7 +1570,13 @@ async function startCamera(gen) {
   } catch (err) {
     if (gen !== state.scanGen) return;
     console.warn("camera", err);
-    scanDenied(err?.name === "NotAllowedError" ? (isIOS ? "Camera access is turned off. Allow it in the iPhone's Settings › Apps › Safari › Camera, or enter the barcode manually." : "Camera access is turned off for this site. Allow it in the browser's site settings, or enter the barcode manually.") : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually." : "The camera could not start. Enter the barcode manually.");
+    const where = isIOS ? (standalone() ? "the iPhone's Settings › Apps › SFB Value › Camera" : "the iPhone's Settings › Apps › Safari › Camera")
+      : isAndroid ? (standalone() ? "the phone's Settings › Apps › SFB Value › Permissions › Camera" : "the browser's site settings (the lock icon by the address, then Permissions › Camera)")
+      : "the browser's site settings";
+    scanDenied(err?.name === "NotAllowedError" ? `Camera access is turned off. Allow it in ${where}, or enter the barcode manually.`
+      : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually."
+      : err?.name === "NotReadableError" ? "The camera is in use by another app. Close it and try again, or enter the barcode manually."
+      : "The camera could not start. Enter the barcode manually.");
   }
 }
 function scanDenied(msg) {
@@ -1660,15 +1698,22 @@ if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("n
 
 keyboardInset();
 showInstallHint();
-if (typeof DecompressionStream === "undefined") {
-  // the price database is unpacked with DecompressionStream: Safari 16.4 (iOS 16.4, March 2023) and Chrome 80 or newer.
-  // Nothing is downloaded on this browser, now or when the connection comes back (the online handler checks this flag).
+// The browser floor is one date on both platforms, March 2023: Safari 16.4 (every iPhone browser is the system's WebKit;
+// iPhone 8 and X and newer reach it) and Chrome 111 on Android (Chrome updates from the Play Store on Android 8 and newer;
+// Samsung Internet 23, Firefox 121). Below it the price database cannot be unpacked (DecompressionStream) or the layout
+// cannot be drawn (oklch colours, dvh units), so nothing is downloaded, now or when the connection comes back (the online
+// handler checks this flag), and the status card says what to update.
+const tooOld = typeof DecompressionStream === "undefined" || typeof OffscreenCanvas === "undefined"
+  || !(window.CSS?.supports?.("color", "oklch(50% 0 0)") && CSS.supports("height", "100dvh") && CSS.supports("selector(:has(a))"));
+if (tooOld) {
   state.unsupported = true;
   state.dbErrorPlain = true;
   state.dbError = isIOS ? "This iPhone's software is too old to keep prices offline. Update to iOS 16.4 or later (Settings › General › Software Update), then open the app again."
-    : "This browser is too old to keep prices offline. Update Chrome or the phone's browser, then open the app again.";
+    : isAndroid ? "This browser is too old to keep prices offline. Update Chrome (or the phone's browser) from the Play Store, then open the app again."
+    : "This browser is too old to keep prices offline. Update it, then open the app again.";
   db.state = "error";
 } else db.start();
 renderStatus();
+syncLearned();
 if (tourWanted()) requestAnimationFrame(openTour);
 perf.boot.scriptMs = Math.round(performance.now());

@@ -73,6 +73,22 @@ fs.writeFileSync(path.join(OUT, "_headers"), `/*
   Cache-Control: public, max-age=31536000, immutable
 `);
 
+// Google Play (RUNBOOK "Google Play"): a Trusted Web Activity shows the app without a browser bar only when the site vouches
+// for the Android app in /.well-known/assetlinks.json. The statement is the repository variable ANDROID_ASSET_LINKS (the
+// JSON array Play Console or PWABuilder gives, with the signing key's SHA-256); without it nothing is written.
+const links = (process.env.ANDROID_ASSET_LINKS || "").trim();
+if (links) {
+  let parsed;
+  try { parsed = JSON.parse(links); } catch (e) { throw new Error(`ANDROID_ASSET_LINKS is not JSON: ${e.message}`); }
+  if (!Array.isArray(parsed) || !parsed.every((x) => x && x.target && x.target.package_name)) throw new Error("ANDROID_ASSET_LINKS must be an array of asset-link statements");
+  fs.mkdirSync(path.join(OUT, ".well-known"), { recursive: true });
+  fs.writeFileSync(path.join(OUT, ".well-known", "assetlinks.json"), JSON.stringify(parsed, null, 2) + "\n");
+  fs.appendFileSync(path.join(OUT, "_headers"), `/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: no-cache
+`);
+}
+
 const shellBytes = files.filter((f) => f !== "sw.js").reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
 const hasDb = fs.existsSync(path.join(OUT, "db", "current.json"));
-console.log(`site: ${files.length} shell files, ${(shellBytes / 1024).toFixed(0)} KB (incl. ${(fs.statSync(path.join(OUT, "vendor", "zxing_reader.wasm")).size / 1024).toFixed(0)} KB wasm), build ${BUILD}, live-check ${LIVE || "(off)"}, db ${hasDb ? "present" : "MISSING — run build:db"} -> ${path.relative(APP, OUT)}`);
+console.log(`site: ${files.length} shell files, ${(shellBytes / 1024).toFixed(0)} KB (incl. ${(fs.statSync(path.join(OUT, "vendor", "zxing_reader.wasm")).size / 1024).toFixed(0)} KB wasm), build ${BUILD}, live-check ${LIVE || "(off)"}, asset links ${links ? "written" : "(off)"}, db ${hasDb ? "present" : "MISSING — run build:db"} -> ${path.relative(APP, OUT)}`);

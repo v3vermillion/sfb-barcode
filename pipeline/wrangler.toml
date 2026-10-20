@@ -12,11 +12,23 @@ WM_KEY_VERSION = "1"
 GH_REPO = "v3vermillion/sfb-valuation"
 GH_BRANCH = "main"
 WATCHDOG_GAP_MIN = "40"
+# Strongsville Supercenter (8585 Pearl Rd): live prices are this store's shelf prices, like the app's (data/store.json).
+# (Until 2026-10-20 this line sat under [triggers], where wrangler ignores it, so the live check answered with
+# Walmart.com's price and priceSource "online"; /health shows STORE_ID.)
+STORE_ID = "2266"
 
 [triggers]
 crons = ["*/20 * * * *"]
-# Strongsville Supercenter (8585 Pearl Rd): live prices are this store's shelf prices, like the app's (data/store.json)
-STORE_ID = "2266"
+
+# Shared remembered matches (GET/POST /v1/learned, src/index.js class Learned): one SQLite-backed Durable Object, created
+# by the migration on deploy, no dashboard step; SQLite-backed objects are the kind the Workers Free plan allows.
+[[durable_objects.bindings]]
+name = "LEARNED"
+class_name = "Learned"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Learned"]
 
 # Public live price check (GET /v1/price/<gtin>). Two limits, both charged only when a Walmart call is made:
 # 30 per caller (IP) per minute, and 20 Walmart calls per minute in total (counted per Cloudflare location) so the
