@@ -249,7 +249,8 @@ function lookupEquivalent(key) {
   const basis = b === NO_RANK ? null : db.v2 ? item(b) : item(gidOf(b >>> 24, b & 0xFFFFFF));
   return {
     brand, name, quantity, estCents: db.eqEst[i], baseQty: db.eqBase[i], pack: db.eqPack[i], unit: UNIT_NAME[db.eqUnit[i]],
-    confidence: ["low", "medium", "high"][db.eqConf[i]] || "low", basis,
+    confidence: ["low", "medium", "high"][db.eqConf[i] & 3] || "low", basis,
+    storeTier: !!(db.eqConf[i] & 4),     // another chain's store brand, valued at Walmart's store-brand tier (about half a national brand)
   };
 }
 

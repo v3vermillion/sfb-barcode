@@ -69,6 +69,9 @@ test("equivalent value is labeled and carries its basis item; a missing basis is
   const r = await resolveCode(db, "4099100000000");
   assert.equal(r.kind, "equivalent"); assert.equal(r.priceCents, 198); assert.equal(r.equiv.basis.id, 1);
   assert.match(notesFor(r).map((n) => n.text).join(" "), /closest Walmart equivalent/);
+  const tier = fromItem ? { ...r, equiv: { ...r.equiv, storeTier: true } } : r;
+  assert.match(notesFor(tier).map((n) => n.text).join(" "), /store brand: valued at about half/);
+  assert.doesNotMatch(notesFor(r).map((n) => n.text).join(" "), /about half/);
   const nb = await resolveCode(db, "4099100000017");
   assert.equal(nb.kind, "equivalent"); assert.equal(nb.equiv.basis, null);
   assert.match(notesFor(nb).map((n) => n.text).join(" "), /no longer listed/);

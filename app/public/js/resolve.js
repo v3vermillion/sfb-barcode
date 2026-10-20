@@ -217,6 +217,7 @@ export function notesFor(res, ctx = {}) {
   } else if (res.kind === "equivalent") {
     const e = res.equiv;
     notes.push({ tone: "equiv", text: `Not sold at Walmart. Valued at the price of the closest Walmart equivalent by type and size (${e.confidence === "high" ? "close match" : e.confidence === "medium" ? "fair match" : e.confidence === "rough" ? "rough estimate" : "rough match"}).` });
+    if (e.storeTier) notes.push({ tone: "equiv", text: "A store brand: valued at about half the comparable national brand's price, the way Walmart's own brands are priced." });
     if (!e.basis) notes.push({ tone: "warn", text: "The Walmart item this estimate was based on is no longer listed, so the value is approximate." });
   }
   if (res.kind === "store-label") {

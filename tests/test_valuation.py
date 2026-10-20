@@ -156,6 +156,38 @@ class Apply(unittest.TestCase):
         V.apply(rows2, cfg)
         self.assertFalse(rows2[6100].get("price_withheld"))
 
+    def test_an_out_of_stock_variant_takes_the_price_its_in_stock_siblings_agree_on(self):
+        # owner's case, 2026-10-20: CELSIUS flavours; every in-stock one at $2.57, the out-of-stock ones stale
+        def can(i, flavour, price, stock="Available", **kw):
+            r = row(i, f"CELSIUS Sparkling {flavour}, Functional Energy Drink 12 fl oz", price, cat="10", qty=12.0, unit="fl oz", brand="CELSIUS", dept="Food")
+            r["stock"] = stock; r.update(kw); return r
+        rows = {}
+        for i, fl in enumerate(["Orange", "Kiwi Guava", "Cherry Cola", "Playa Vibe", "Pink Lemonade"]):
+            rows[7000 + i] = can(7000 + i, fl, 2.57)
+        rows[7010] = can(7010, "Grape Rush", 2.28, stock="Not available")
+        rows[7011] = can(7011, "Astro Vibe", 9.37, stock="Not available")
+        rows[7012] = can(7012, "Wild Berry", 2.57, stock="Not available")                  # already at the line's price
+        rows[7013] = can(7013, "Strawberry Passionfruit", 7.69)                             # in stock: its own price stays (the sibling rule judges it)
+        rows[7014] = can(7014, "Tropical Vibe", 2.19, stock="Not available", flags=["store_price"])   # the store's shelf price is current
+        rows[7015] = can(7015, "Peach Vibe", 2.28, stock="Not available", flags=["pack_listing"], listing_price=27.36, listing_pack=12)
+        # a different line of the same brand and size: 12-packs are their own family (pack differs), and two in stock agree on nothing
+        rows[7020] = can(7020, "Original Variety Pack", 21.47, pack=12); rows[7021] = can(7021, "Vibe Variety Pack", 21.47, pack=12); rows[7022] = can(7022, "Space Variety Pack", 19.98, stock="Not available", pack=12)
+        changed, used = V.apply_family_prices(rows.values(), {"Food"})
+        self.assertEqual((changed, used), (3, 1))
+        for i in (7010, 7011, 7015):
+            self.assertEqual(rows[i]["price"], 2.57); self.assertIn("family_price", rows[i]["flags"]); self.assertAlmostEqual(rows[i]["unit_price"], round(2.57 / 12, 4))
+        self.assertEqual(rows[7010]["family_price_from"], 2.28); self.assertEqual(rows[7011]["family_price_from"], 9.37)
+        self.assertEqual(rows[7015]["listing_price"], 30.84, "a bundle's price follows its unit")
+        for i in (7012, 7013, 7014, 7022):
+            self.assertNotIn("family_price", rows[i]["flags"])
+        self.assertEqual(rows[7013]["price"], 7.69); self.assertEqual(rows[7014]["price"], 2.19); self.assertEqual(rows[7022]["price"], 19.98)
+        # names that differ in more than a flavour are not one line: Lash Blast Fusion and Lash Blast Volume mascaras
+        self.assertFalse(V._one_run_diff("covergirl lash blast fusion waterproof mascara 895 black brown".split(), "covergirl lash blast volume waterproof mascara 835 black brown".split()))
+        self.assertTrue(V._one_run_diff("celsius sparkling grape rush functional energy drink".split(), "celsius sparkling orange functional energy drink".split()))
+        # outside the consumable departments the rule does nothing
+        rows2 = {i: can(i, f"Flavour {i}", 2.57 if i < 8005 else 9.0, stock="Available" if i < 8005 else "Not available", dept="Home") for i in range(8000, 8007)}
+        self.assertEqual(V.apply_family_prices(rows2.values(), {"Food"}), (0, 0))
+
     def test_a_low_price_two_same_size_listings_agree_on_is_kept(self):
         rows = snapshot([])
         for r in rows.values():

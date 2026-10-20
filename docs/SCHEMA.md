@@ -28,6 +28,7 @@ Walmart listing, written by `crawler/process.py` from `crawler/normalize.py`. Th
 | `price_withheld` | true when `price` is outside the department's plausible range (data/gates.json price_sanity), far below comparable items, more than 2.5x the item's own in-stock siblings, or more than 10x the median of the same kind of item (crawler/valuation.py; the report's `why` names which) |
 | `listed_name`, `name_src` | barcode-only rows: the feed's placeholder text, and where `name` came from (`walmart_listing`, `open_facts`, or `none` for "(name not provided)") |
 | `equiv` | for a withheld price: `{price, method, confidence, basis_id, basis_name}`, the value the app shows |
+| `family_price_from` | rows flagged `family_price`: the listing's own (stale, out-of-stock) price; `price` is the one its in-stock variants agree on (crawler/valuation.apply_family_prices) |
 | `listing_price`, `listing_pack` | rows flagged `pack_listing`: Walmart's listing was a "(N pack)" bundle; these are its own price and N, and `price` is one unit (`listing_price` / `listing_pack`) |
 | `flags` | see below |
 
@@ -35,7 +36,7 @@ Flags: `no_size`, `sold_each` (priced per piece; sized by its basis), `size_conf
 `promo_price`, `kept_normal_price`, `carried_over` (department not re-crawled this run), `pack_resolved`,
 `unit_price_suspect` (per-unit price more than 10x off comparable items; dropped), `placeholder` (name identifies no
 product: barcode lookup only, never in typed search, not in the size-parse rate), `discontinued` (Walmart marks it so),
-`price_withheld`, `name_filled` (a barcode-only row named from another listing or Open Facts), `pack_listing` (one unit of a
+`price_withheld`, `family_price` (an out-of-stock variant priced as its in-stock siblings), `name_filled` (a barcode-only row named from another listing or Open Facts), `pack_listing` (one unit of a
 "(N pack)" bundle listing: the wrapper is stripped from `name`, `price` is 1/N of the listing's; docs/DECISIONS.md 2026-10-19).
 
 Not carried at all (rejected with a reason in `stats.json` `rejects_by_department`): `apparel`, `footwear`, `pet_bed`,

@@ -594,7 +594,7 @@ for (const [w, h] of [[320, 568], [360, 780], [390, 844]]) {
     check("F14", `${w}: the price date appears once`, shown === 1, `${shown} lines carry the date`);
     check("F39", `${w}: no name on an unnamed container`, await page.evaluate(() => ![...document.querySelectorAll("div[aria-labelledby], span[aria-labelledby]")].some((e) => !e.getAttribute("role"))));
     const pill = await visibleText(page, "#statusText");
-    if (w >= 360) check("F41", `${w}: the pill says when the price list was updated`, /^Updated /.test(pill), pill);
+    if (w >= 360) check("F41", `${w}: the pill says the price list's date`, /^Prices /.test(pill), pill);
     const text = await visibleText(page, "#home");
     const casual = ["even offline", "works offline", "common items", "tally is empty", "one moment", "here, even"].filter((p) => text.toLowerCase().includes(p));
     check("C1", `${w}: no sample shortcuts or casual wording on the home screen`, casual.length === 0 && !(await page.evaluate(() => document.getElementById("quick"))), casual.join(", "));

@@ -114,6 +114,30 @@ def same_measure(a, b):
     return a == b or (a in LOOSE_UNITS and b in LOOSE_UNITS)
 
 
+# Walmart's own brands against national brands of the same kind and unit, measured on the published snapshot
+# 2026-10-20 across 28 kinds: median unit-price ratio 0.49 (quartiles 0.34 and 0.74). Another chain's store brand
+# valued from national-brand comparables alone would be about twice its real price (a Kirkland energy drink at a
+# Monster can's price), so the value is scaled by the ratio measured in the item's category, else the default.
+STORE_TIER_DEFAULT = 0.5
+STORE_TIER_MIN, STORE_TIER_MAX = 0.3, 0.9
+
+
+def store_tier_factors(wm):
+    """{(cat, base_unit): median store-brand unit price / median national-brand unit price}, where both sides have
+    enough rows (10 and 20), clipped to [STORE_TIER_MIN, STORE_TIER_MAX]."""
+    import statistics
+    sb, nb = defaultdict(list), defaultdict(list)
+    for r in wm:
+        key = (r.get("cat"), r.get("base_unit"))
+        ((sb if (r.get("brand") or "").strip().lower() in WALMART_STORE_BRANDS else nb)[key]).append(r["unit_price"])
+    out = {}
+    for key, s in sb.items():
+        n = nb.get(key) or []
+        if len(s) >= 10 and len(n) >= 20:
+            out[key] = round(min(STORE_TIER_MAX, max(STORE_TIER_MIN, statistics.median(s) / statistics.median(n))), 2)
+    return out
+
+
 def group_value(scored, base, pack):
     """The equivalent price from the best-scoring comparable items: the median per-unit price of the top group (every
     candidate within GROUP_MARGIN of the best score, at most GROUP_MAX, same-pack listings first), times the item's
@@ -125,7 +149,8 @@ def group_value(scored, base, pack):
     ups = sorted(r["unit_price"] for r in group)
     med = ups[len(ups) // 2] if len(ups) % 2 else (ups[len(ups) // 2 - 1] + ups[len(ups) // 2]) / 2
     basis = min(group, key=lambda r: (abs(r["unit_price"] - med), r.get("pack") != pack, str(r["id"])))
-    return round(med * base * pack, 2), basis, len(group)
+    has_store_brand = any((r.get("brand") or "").strip().lower() in WALMART_STORE_BRANDS for r in group)
+    return round(med * base * pack, 2), basis, len(group), has_store_brand
 
 
 def match():
@@ -146,6 +171,7 @@ def match():
 
     out, stats = [], Counter()
     others = other_store_brands()
+    tiers = store_tier_factors(wm)
     for p in store.iter_jsonl_gz(OUT / "products_us.jsonl.gz"):
         if p["upc"] in wm_upcs:
             stats["exact_in_walmart"] += 1; continue
@@ -177,14 +203,19 @@ def match():
                 scored.append((j, r))
         if not scored:
             stats["no_equivalent"] += 1; continue
-        price, best, n_group = group_value(scored, base, pack or 1)
+        price, best, n_group, has_store_brand = group_value(scored, base, pack or 1)
+        factor = None
+        if other_store and not has_store_brand:
+            factor = tiers.get((best.get("cat"), best.get("base_unit")), STORE_TIER_DEFAULT)
+            price = round(price * factor, 2)
+            stats["store_tier_applied"] += 1
         best_score = scored[0][0]
         conf = "high" if best_score >= 0.7 else "medium" if best_score >= 0.55 else "low"
         stats[f"matched_{conf}"] += 1
         out.append({"upc": p["upc"], "name": p["name"], "brand": p["brand"], "quantity": p["quantity"],
                     "base_qty": base, "base_unit": dim, "pack": pack or 1, "est_price": price,
                     "basis_id": best["id"], "basis_name": best["name"], "basis_price": best["price"], "basis_count": n_group,
-                    "confidence": conf, "score": round(best_score, 3)})
+                    "store_brand_factor": factor, "confidence": conf, "score": round(best_score, 3)})
     n = store.write_jsonl_gz(OUT / "equivalents.jsonl.gz", out)
     store.write_json(OUT / "equivalents_stats.json", dict(stats))
     print(f"equivalents: {n}  {dict(stats)}")

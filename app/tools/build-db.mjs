@@ -322,7 +322,7 @@ const versionFiles = {};
       const key = gtinNumber(e.upc);
       if (!key || !(e.est_price > 0)) continue;
       rows.push({ key, est: Math.round(e.est_price * 100), basis: gid(where.get(Number(e.basis_id))),
-        baseQty: Number(e.base_qty) || 0, pack: Math.min(65535, Number(e.pack) || 1), unit: UNIT[e.base_unit] || 0, conf: CONF[e.confidence] ?? 0,
+        baseQty: Number(e.base_qty) || 0, pack: Math.min(65535, Number(e.pack) || 1), unit: UNIT[e.base_unit] || 0, conf: (CONF[e.confidence] ?? 0) | (Number(e.store_brand_factor) > 0 ? 4 : 0),
         str: Buffer.from(`${e.brand || ""}\x1F${e.name || ""}\x1F${e.quantity || ""}`, "utf8") });
     }
   }

@@ -41,6 +41,11 @@ before(async () => {
   fs.mkdirSync(pub, { recursive: true });
   fs.writeFileSync(path.join(pub, "items.jsonl.gz"), zlib.gzipSync(ROWS.map((r) => JSON.stringify(r)).join("\n") + "\n"));
   fs.writeFileSync(path.join(pub, "manifest.json"), JSON.stringify({ version: "test-1", published: "2026-10-09T00:00:00Z" }));
+  // two equivalents (barcodes Walmart does not sell): one valued at the store-brand tier
+  const idn = path.join(tmp, "store", "identify"); fs.mkdirSync(idn, { recursive: true });
+  const eqs = [{ upc: "00196633831439", name: "Energy Drink", brand: "Kirkland", quantity: "12 oz", base_qty: 12, base_unit: "fl oz", pack: 1, est_price: 1.3, basis_id: ROWS[0].id, basis_name: ROWS[0].name, basis_price: ROWS[0].price, basis_count: 6, store_brand_factor: 0.5, confidence: "high", score: 1.1 },
+               { upc: "00012345678905", name: "Sparkling Water", brand: "LaCroix", quantity: "12 fl oz", base_qty: 12, base_unit: "fl oz", pack: 1, est_price: 0.8, basis_id: ROWS[0].id, basis_name: ROWS[0].name, basis_price: ROWS[0].price, basis_count: 4, store_brand_factor: null, confidence: "medium", score: 0.8 }];
+  fs.writeFileSync(path.join(idn, "equivalents.jsonl.gz"), zlib.gzipSync(eqs.map((e) => JSON.stringify(e)).join("\n") + "\n"));
   execFileSync(process.execPath, [path.join(APP, "tools", "build-db.mjs"), "--store", path.join(tmp, "store"), "--out", path.join(tmp, "db")], { stdio: "ignore" });
   db = await openPack(path.join(tmp, "db"));
 });
@@ -96,6 +101,12 @@ test("a query naming another store's brand ranks Walmart's own brand first and s
   const plain = top("chicken noodle soup");                   // without a brand the usual ranking holds (store brand +0.3 only)
   assert.equal(plain.otherBrand, null);
   assert.equal(top("kirkland").otherBrand, null, "a brand alone is still searched for as typed");
+});
+
+test("an equivalent valued at the store-brand tier says so through the pack", () => {
+  const k = db.lookupEquivalent(196633831439), l = db.lookupEquivalent(12345678905);
+  assert.equal(k.storeTier, true); assert.equal(k.confidence, "high"); assert.equal(k.estCents, 130);
+  assert.equal(l.storeTier, false); assert.equal(l.confidence, "medium");
 });
 
 test("the pack manifest carries the brands, the barcode prefixes and the price ceiling", () => {

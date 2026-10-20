@@ -373,7 +373,7 @@ function priceStatus() {
   }
   const date = fmtDate(priceDate()), dateLong = fmtDate(priceDate(), true);
   const out = online
-    ? { state: "ready", long: `Updated ${date}`, short: date, live: `Price list updated ${dateLong}.`, card: null }
+    ? { state: "ready", long: `Prices ${date}`, short: date, live: `Price list updated ${dateLong}.`, card: null }
     : { state: "ready", long: `Offline · ${date}`, short: "Offline", live: "Offline. Saved prices remain available.", card: null };
   if (db.storageFull) { out.card = { tone: "problem", icon: "info", title: "Phone storage is full", sub: `Free about ${db.storageFull.needMB} MB to finish downloading prices.` }; out.live = `Phone storage is full. Free about ${db.storageFull.needMB} MB to finish downloading prices.`; }
   else if (db.more) {
@@ -540,7 +540,7 @@ function renderStale() {
   // only what changed is written (the text is a live region: a rewrite would be announced again)
   const set = (node, prop, v) => { if (node[prop] !== v) node[prop] = v; };
   set(el.stale.querySelector(".stale-text b"), "textContent", stalenessText(level, days));
-  set(el.stale.querySelector(".stale-text span"), "innerHTML", `Updated <span class="nw">${esc(fmtDate(date, "mid"))}</span>${level === "red" ? ` · <span class="nw">${esc(ageText(days))}</span>` : ""}${navigator.onLine ? "" : ". Connect to the internet to update."}`);
+  set(el.stale.querySelector(".stale-text span"), "innerHTML", `Prices from <span class="nw">${esc(fmtDate(date, "mid"))}</span>${level === "red" ? ` · <span class="nw">${esc(ageText(days))}</span>` : ""}${navigator.onLine ? "" : ". Connect to the internet to update."}`);
   const btn = el.stale.querySelector("[data-act=update]");
   // aria-disabled, not disabled: a disabled button drops the keyboard focus (checkNow ignores a second tap itself)
   if (btn.getAttribute("aria-disabled") !== String(!!state.staleBusy)) btn.setAttribute("aria-disabled", String(!!state.staleBusy));
@@ -1225,7 +1225,7 @@ function settingsHtml() {
   const problem = state.dbErrorPlain ? state.dbError
     : [st.card?.sub === "Open Settings for details." ? "" : st.card?.sub, state.dbError && !state.dbErr?.storage ? `Details: ${state.dbError}` : ""].filter(Boolean).join(" ");
   const card = m && !state.workerError
-    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Updated ${esc(fmtDate(priceDate(), "mid"))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} saved on this phone</p></div></div>`
+    ? `<div class="data-head">${icon("check", "ico data-ico")}<div><h3 class="data-title">Prices from ${esc(fmtDate(priceDate(), "mid"))}</h3><p class="data-sub">${esc(sourceText())} · ${mb(db.installedBytes() || m.totalGzBytes)} saved on this phone</p></div></div>`
     : `<div class="data-head data-head--warn">${icon("info", "ico data-ico")}<div><h3 class="data-title">${esc(st.card?.title || "Loading the price list")}</h3><p class="data-sub">${esc(problem)}</p></div></div>`;
   const legend = [["exact", "Exact item", "Found in the Walmart price list by barcode or name"], ["store-label", "Store price label", "A store scale label (meat, deli, bakery) that carries its own price"],
     ["plu", "Produce code", "The four-digit sticker on produce, priced by the pound or each"], ["equivalent", "Equivalent value", "Not sold at Walmart, so priced at the closest Walmart item"],
