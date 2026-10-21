@@ -445,7 +445,10 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     const lastG = groups.length - 1;
     const covers = (g, gi, b) => g.some((a) => a === b || (gi === lastG && b.startsWith(a)) || (b.length > 3 && a === b + "s"));
     const namesBrand = (g) => brandToks.some((b) => covers(g, 0, b)) || brandJoined.some((j) => covers(g, 0, j));
-    if (brandToks.length && groups.length && namesBrand(groups[0])
+    // after another chain's brand is set aside the rest names a product, never a brand ("sweet harvest peach slices" is
+    // canned peaches, not the skin-care brand Peach Slices)
+    if (ownBrandFirst) { /* no brand credit */ }
+    else if (brandToks.length && groups.length && namesBrand(groups[0])
         && (brandToks.every((b) => groups.some((g, gi) => covers(g, gi, b))) || brandJoined.some((j) => groups.some((g, gi) => covers(g, gi, j))))) s += 1.5;
     // a product line named without its maker: "oven fry" is the brand Kraft Oven Fry, the words after the company name
     else if (brandToks.length >= 3 && groups.length >= 2 && covers(groups[0], 0, brandToks[1])
@@ -594,6 +597,9 @@ function search(q, limit = 40) {
     // a long description ("swanson sipping bone broth beef") keeps its brand: one word too many there is a flavour or
     // variant the brand does not make, and the brand's nearest product is the better match
     if (pick < 0 && live.length <= 4) { pick = best((i) => !isNumber(i) && brandShare(i) >= 0.35); asBrand = pick >= 0; }
+    // the last word typed is usually what the item is ("gia russa spaghetti sauce" is a sauce, "martins apple chips" are
+    // chips): it goes last
+    if (pick < 0 && live.length <= 4) pick = best((i) => i !== live.length - 1);
     if (pick < 0) pick = best(() => true);
     // no single word frees a result: drop a brand word first (an unknown brand such as "mission pride fruit mix" or
     // "mothers maid apple sauce" shares a word with brands Walmart has), else the most common word, and go on
