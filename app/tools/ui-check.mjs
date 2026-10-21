@@ -541,6 +541,25 @@ await scenario(["F56"], "a browser that unpacks the database but cannot draw the
   check("F56", "no oklch colours: Update required, nothing downloaded", /update required/i.test(pill), pill);
 });
 
+// ---------------------------------------------------------------- a first open that stalls is never an endless spinner
+await scenario(["F57"], "download that stops making progress: the card says so, offers a retry, and the page retries itself once", async (set) => {
+  const env = set(await open({ wait: false, clock: Date.now(), routes: [["**/db/files/**", () => new Promise(() => {})]] }));   // pack files never arrive
+  const { page } = env;
+  await settle(page, 600);
+  check("F57", "while files still arrive the card shows the download", /Downloading prices/.test(await visibleText(page, "#readyCard")), await visibleText(page, "#readyCard"));
+  await page.clock.runFor(36_000); await settle(page, 300);
+  const card = await visibleText(page, "#readyCard"), pill = await visibleText(page, "#status");
+  check("F57", "after 30 s without progress the card says it is taking longer and offers a retry", /Taking longer than expected/.test(card) && /Tap to retry/.test(card), card.slice(0, 160));
+  check("F57", "the pill says so too (its long or short label)", /Taking longer than expected|Retry/.test(pill), pill);
+  const diag = await page.evaluate(() => JSON.parse(localStorage.getItem("sfb.boot.log") || "[]").join(" | "));
+  check("F57", "the diagnostics log records the stall", /no progress for 3\d s in state downloading/.test(diag), diag.slice(-200));
+  const retried = await page.evaluate(() => sessionStorage.getItem("sfb.bootRetry"));
+  check("F57", "no reload before two minutes", retried === null, String(retried));
+  await Promise.all([page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => null), page.clock.runFor(95_000)]);
+  await settle(page, 500);
+  check("F57", "after two minutes the page reloaded itself once", (await page.evaluate(() => sessionStorage.getItem("sfb.bootRetry"))) === "1");
+});
+
 await scenario(["F33", "F34"], "Recent", async (set) => {
   const env = set(await open({}));
   const { page } = env;

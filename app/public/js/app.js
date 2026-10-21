@@ -385,7 +385,13 @@ function priceStatus() {
   }
   if (!db.version) {
     const err = state.dbErr;
-    if (db.state === "downloading") return { state: "downloading", long: "Downloading", short: "Loading", live: "Downloading prices.", card: { tone: "busy", icon: "refresh", title: "Downloading prices", sub: state.dlPct == null ? "Starting the download." : `${state.dlPct}% complete` } };
+    // nothing has happened for a while (a stalled download, a pack that will not open, a browser that lost the thread):
+    // say so and offer a retry instead of a spinner that never ends (owner's first Home Screen launch, 2026-10-21)
+    if (state.bootStuck && db.state !== "error") {
+      return { state: "error", long: "Taking longer than expected", short: "Retry", live: "The price list is taking longer than expected. Tap to retry.",
+        card: { tone: "problem", icon: "refresh", title: "Taking longer than expected", sub: db.state === "downloading" ? `The download stopped making progress${state.dlBytes ? ` at ${mb(state.dlBytes.done)} of ${mb(state.dlBytes.total)}` : ""}. Tap to retry.` : "The price list did not open. Tap to retry." } };
+    }
+    if (db.state === "downloading") return { state: "downloading", long: "Downloading", short: "Loading", live: "Downloading prices.", card: { tone: "busy", icon: "refresh", title: "Downloading prices", sub: state.dlPct == null ? "Starting the download." : `${state.dlPct}% complete${state.dlBytes?.total ? ` · ${mb(state.dlBytes.done)} of ${mb(state.dlBytes.total)}` : ""}` } };
     if (db.state === "offline-empty") return { state: "offline", long: "Offline", short: "Offline", live: "Offline. No prices on this phone yet.", card: { tone: "problem", icon: "wifi-off", title: "No prices on this phone yet", sub: "Connect to the internet to download them." } };
     if (db.state === "error" && err) {
       if (err.storage) return { state: "error", long: "Storage full", short: "Storage", live: "Phone storage is full.", card: { tone: "problem", icon: "info", title: "Phone storage is full", sub: `Free about ${db.storageFull?.needMB || err.needMB || "?"} MB, then reopen the app.` } };
@@ -460,7 +466,7 @@ db.addEventListener("progress", (e) => {
   const d = e.detail;
   if (d.phase === "download") {
     // the first download and the other departments show their progress; a background update stays silent
-    if (!d.background) { state.dlPct = pct(d); setProgress(d.totalBytes ? d.doneBytes / d.totalBytes : 0); renderStatus(); }
+    if (!d.background) { state.dlPct = pct(d); state.dlBytes = { done: d.doneBytes, total: d.totalBytes }; setProgress(d.totalBytes ? d.doneBytes / d.totalBytes : 0); renderStatus(); }
     else if (d.tier === "more" && db.version) { state.morePct = pct(d); state.morePaused = false; setProgress(d.totalBytes ? d.doneBytes / d.totalBytes : 0); renderStatus(); }
   } else if (!db.version && d.total) setProgress(0.9 + 0.1 * (d.done / d.total));
 });
@@ -528,7 +534,7 @@ function showInstallHint() {
   if (!h || standalone() || readJson(INSTALL_KEY, null)?.dismissed) return;
   if (!isIOS && !isAndroid && !installPrompt) return;
   const how = isIOS
-    ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. It opens full screen and keeps the prices saved.`
+    ? `Tap ${icon("share")} <b>Share</b>, then <b>Add to Home Screen</b>. It opens full screen and keeps the prices saved (they download once more inside the app).`
     : installPrompt ? "It opens full screen and keeps the prices saved on this phone."
     : "Open the browser menu (⋮) and choose <b>Install app</b> or <b>Add to Home screen</b>. It opens full screen and keeps the prices saved.";
   h.innerHTML = `<span class="sc-ico">${icon(isIOS ? "share" : "plus")}</span><div><b>${isIOS ? "Add to Home Screen" : "Install the app"}</b><span class="sub">${how}</span></div>${installPrompt ? `<button class="btn btn--sm" type="button" data-act="install">Install</button>` : ""}<button class="x-btn" type="button" data-act="dismiss" aria-label="Don't show again">${icon("x")}</button>`;
@@ -749,7 +755,7 @@ async function openRank(rank, { closest = false, source = "search" } = {}) {
 }
 async function openCode(raw, { source = "typed", format, scanned = false, preferId = null } = {}) {
   state.learnFor = null;
-  const res = await resolveCode(db, raw, format, resolveOpts({ scanned, preferId }));
+  const res = await resolveWithPending(raw, format, resolveOpts({ scanned, preferId }), () => toast("Other departments are still loading…", { iconName: "refresh", ms: 2500 }));
   if (!res) { toast("Not a valid barcode number", { iconName: "info" }); return null; }
   openResolution(res, { source });
   return res;
@@ -1287,9 +1293,17 @@ function settingsHtml() {
       <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0). Runs on iPhone (iOS 16.4 or later) and Android (Chrome 111 or later, Samsung Internet, Firefox); nothing leaves the phone except the live price check and the shared barcode matches (<a href="./privacy.html" target="_blank" rel="noopener">privacy</a>).</p>
       <p class="fine verse-full">“We love because he first loved us.” — 1 John 4:19</p>
       <p class="fine mono">Version ${esc(BUILD)}${m ? `<br>Price list ${esc(m.version)}` : ""}</p>
+      <details class="diag"><summary>Diagnostics</summary><pre class="fine mono diag-log">${esc(diagnostics())}</pre><button class="btn btn--ghost btn--sm" type="button" data-act="copy-diag">Copy</button></details>
     </details>
     <div id="resetArea"><button class="btn btn--danger btn--block" type="button" data-act="reset">${icon("trash")}<span>Reset app data</span></button></div>
   </div>`;
+}
+/** What happened on this launch and the end of the previous one, for a report from the phone. */
+function diagnostics() {
+  const prev = readJson("sfb.boot.log", null);
+  const now = db.log.slice(-25);
+  const head = `${BUILD} · ${navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 90)} · ${standalone() ? "home screen" : "browser"} · ${navigator.onLine ? "online" : "offline"}`;
+  return [head, ...now, ...(Array.isArray(prev) && prev.length && prev[prev.length - 1] !== now[now.length - 1] ? ["— previous launch —", ...prev.slice(-12)] : [])].join("\n");
 }
 function fillStorage() {
   db.persistenceStatus().then((p) => {
@@ -1301,6 +1315,7 @@ function openSettings() { modals.open(el.settings, settingsHtml()); fillStorage(
 function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")?.scrollTop || 0; setDialogHtml(el.settings, settingsHtml()); el.settings.querySelector(".sheet-inner").scrollTop = y; el.settings.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.settings)); fillStorage(); }
 window.__sfb.refreshSettings = refreshSettings;   // the checks re-render Settings mid-drag
 el.settings.addEventListener("click", async (e) => {
+  if (e.target.closest("[data-act=copy-diag]")) { navigator.clipboard?.writeText(diagnostics()).then(() => toast("Diagnostics copied"), () => toast("Could not copy", { iconName: "info" })); return; }
   const th = e.target.closest("[data-theme]");
   if (th) { prefs.theme = th.dataset.theme; writeJson(PREFS_KEY, prefs); applyTheme(); el.settings.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b === th))); return; }
   const sw = e.target.closest("[data-pref]");
@@ -1324,7 +1339,37 @@ el.settings.addEventListener("click", async (e) => {
 });
 el.settingsBtn.addEventListener("click", openSettings);
 el.status.addEventListener("click", openSettings);
-el.readyCard.addEventListener("click", openSettings);
+el.readyCard.addEventListener("click", () => { if (state.bootStuck && !db.version) retryBoot("tap"); else openSettings(); });
+
+// ------------------------------------------------------------------ boot watchdog
+// The first open on the owner's iPhone (added to the Home Screen, which starts with its own empty storage on iOS) sat on
+// "Loading" for over three minutes until Settings > Check for new prices was tapped, which worked at once. Whatever
+// stalled, a spinner must never be the only thing on screen: after BOOT_STUCK_MS without a state change or a download
+// step the card says so and offers a retry (and db.start() is tried again where that can help); after BOOT_RELOAD_MS
+// the page reloads itself once (the shell is cached; downloaded files stay in Cache Storage), since a hung fetch or
+// worker call cannot be cancelled from inside the page. Every step is in Settings > About > Diagnostics.
+const BOOT_STUCK_MS = 30_000, BOOT_RELOAD_MS = 120_000, BOOT_RETRY_KEY = "sfb.bootRetry";
+let bootActivity = performance.now();
+const bootActive = () => { bootActivity = performance.now(); if (state.bootStuck) { state.bootStuck = false; renderStatus(); } };
+db.addEventListener("state", bootActive);
+db.addEventListener("progress", bootActive);
+function retryBoot(how) {
+  db.note(`retry (${how}) from state ${db.state}`);
+  if (db.state === "idle" || db.state === "offline-empty" || db.state === "error") { bootActive(); db.start().catch(() => {}); return; }
+  // downloading or loading and nothing moves: only a fresh page lets go of the hung request or worker call
+  let n = 0; try { n = Number(sessionStorage.getItem(BOOT_RETRY_KEY) || 0); sessionStorage.setItem(BOOT_RETRY_KEY, String(n + 1)); } catch { /* none */ }
+  if (how === "auto" && n >= 1) return;   // one automatic reload per session; after that the card waits for a tap
+  location.reload();
+}
+setInterval(() => {
+  if (db.version || state.unsupported || db.state === "error" || !navigator.onLine) return;
+  const idle = performance.now() - bootActivity;
+  if (idle >= BOOT_RELOAD_MS) { retryBoot("auto"); bootActivity = performance.now(); return; }
+  if (idle >= BOOT_STUCK_MS && !state.bootStuck) {
+    state.bootStuck = true; db.note(`no progress for ${Math.round(idle / 1000)} s in state ${db.state}`); renderStatus();
+    if (db.state === "idle" || db.state === "offline-empty") db.start().catch(() => {});
+  }
+}, 5000);
 // the logo is the way home: it clears the search instead of reloading the app (which would reopen the prices)
 document.querySelector(".brand").addEventListener("click", (e) => {
   e.preventDefault();
@@ -1606,6 +1651,19 @@ function resumeScan() {
   if (state.scan.zoom) state.scan.setZoom(false).catch(() => {});
   state.scan.resume(); armSmallHelp();
 }
+/** Resolves when the other departments have joined the search (the "more" event), or after `ms`. */
+const moreArrives = (ms) => new Promise((resolve) => { const done = () => { clearTimeout(t); db.removeEventListener("more", done); resolve(); }; const t = setTimeout(done, ms); db.addEventListener("more", done); });
+/** A barcode the open departments do not know, while other departments are still opening (the first seconds after a
+ *  launch): wait once for them, then look again, so a Home item scanned early is not called unknown. */
+async function resolveWithPending(raw, format, opts, onWait) {
+  let res = await resolveCode(db, raw, format, opts);
+  if (res?.kind === "unknown" && db.more?.pending?.length) {
+    onWait?.();
+    await moreArrives(2500);
+    res = await resolveCode(db, raw, format, opts);
+  }
+  return res;
+}
 async function onScanHit(hit) {
   if (anyModalOpen()) { state.scan?.pause(); return; }   // the tally or settings is open over the camera: never stack a result on it
   const t0 = performance.now();
@@ -1614,7 +1672,7 @@ async function onScanHit(hit) {
   el.scanHint.textContent = `Scanned ${formatGtin(hit.gtin?.gtin14 || hit.raw)}`;
   let res = null;
   state.learnFor = null;
-  try { res = await resolveCode(db, hit.raw, hit.format, resolveOpts({ scanned: true })); } catch (err) { console.warn("resolve", err); }
+  try { res = await resolveWithPending(hit.raw, hit.format, resolveOpts({ scanned: true }), () => { el.scanHint.textContent = "Other departments are still loading…"; }); } catch (err) { console.warn("resolve", err); }
   if (!state.scanOpen) return;
   if (!res) { el.scanHint.textContent = "This is not a product barcode"; setTimeout(resumeScan, 900); return; }
   if (res.kind === "not-ready") { el.scanHint.textContent = "The price list is still loading"; setTimeout(resumeScan, 1200); return; }

@@ -136,6 +136,8 @@ async function cachesFor(cacheName, filesCache) {
   return { match: (url) => pick(url).match(url), put: (url, res) => pick(url).put(url, res) };
 }
 
+const OPEN_PARALLEL = 3;
+
 async function load({ base, root, manifest, cacheName, filesCache, only }) {
   const cache = await cachesFor(cacheName, filesCache);
   root = root || new URL("../", base).href;
@@ -143,11 +145,16 @@ async function load({ base, root, manifest, cacheName, filesCache, only }) {
   const all = shardsOf(manifest, root, base);
   const want = only ? all.filter((sh) => only.includes(sh.id)) : all;
   const same = db && db.version === manifest.version;
-  let done = 0;
-  const total = want.length + (same ? 0 : 2);
-  const tick = (file) => postMessage({ type: "progress", done: ++done, total, file });
   const opened = new Map(same ? db.shardsById : []);
-  for (const sh of want) { if (!opened.has(sh.id)) opened.set(sh.id, await openShard(sh, cache)); tick(sh.id); }
+  const queue = want.filter((sh) => !opened.has(sh.id));
+  let done = 0;
+  const total = queue.length + (same ? 0 : 2);
+  const tick = (file) => postMessage({ type: "progress", done: ++done, total, file });
+  // a few shards at a time: the cache reads and the inflate of one overlap the other's, while the memory peak stays at a
+  // few shards' compressed bytes (opening every shard at once would hold them all)
+  await Promise.all(Array.from({ length: Math.min(OPEN_PARALLEL, queue.length) }, async () => {
+    while (queue.length) { const sh = queue.shift(); opened.set(sh.id, await openShard(sh, cache)); tick(sh.id); }
+  }));
   const d = same ? db : { manifest, version: manifest.version, shardsById: opened };
   d.shardsById = opened;
   d.shards = all.map((sh) => opened.get(sh.id) || null);      // index = shard number in item ids; null = not loaded yet

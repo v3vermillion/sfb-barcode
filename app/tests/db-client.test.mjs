@@ -163,3 +163,48 @@ test("a rollback to an older snapshot reaches the phone: a different live versio
   assert.equal(JSON.parse(store.get("sfb.db")).version, older);
   assert.equal(store.get("sfb.db.pending"), undefined);
 });
+
+// ---- boot: the core departments open first and the app is ready on them; the rest on the phone opens right after
+const SHARDED = { shards: [
+  { id: "food", tier: "core", items: 10, files: { cols: { path: "files/fc" }, strings: [{ path: "files/fs" }], upc: { path: "files/fu" }, tokens: { path: "files/ft" } } },
+  { id: "home", tier: "more", items: 10, files: { cols: { path: "files/hc" }, strings: [{ path: "files/hs" }], upc: { path: "files/hu" }, tokens: { path: "files/ht" } } },
+], files: { equiv: { path: "v1/e.bin.gz" }, plu: { path: "v1/p.bin.gz" } } };
+test("start() opens the core shards first, says ready, then opens the other departments already on the phone", async () => {
+  const b = stubBrowser({ live: "v1" });
+  globalThis.fetch = async (url) => { url = String(url); b.fetched.push(url); const r = (body, ct) => ({ ok: true, status: 200, headers: { get: () => ct || "application/json" }, json: async () => JSON.parse(body), arrayBuffer: async () => new ArrayBuffer(4), clone() { return this; } });
+    return url.endsWith("current.json") ? r(JSON.stringify({ version: "v1" })) : url.endsWith("manifest.json") ? r(JSON.stringify(SHARDED)) : r("pack", "application/octet-stream"); };
+  const vb = await caches.open("sfb-db-v1"), fb = await caches.open("sfb-db-files");
+  const pack = { ok: true, status: 200, headers: { get: () => "application/octet-stream" }, clone() { return this; } };
+  await vb.put("./db/v1/manifest.json", { ...pack, json: async () => SHARDED });
+  for (const f of ["v1/e.bin.gz", "v1/p.bin.gz"]) await vb.put("./db/" + f, pack);
+  for (const f of ["fc", "fs", "fu", "ft", "hc", "hs", "hu", "ht"]) await fb.put("./db/files/" + f, pack);
+  store.set("sfb.db", JSON.stringify({ version: "v1" }));
+  const db = new DbClient();
+  const loads = [];
+  db.worker.postMessage = (m) => setTimeout(() => {
+    if (m.type !== "load") { db.worker.onmessage({ data: { id: m.id, type: "result", result: null } }); return; }
+    loads.push(m.only);
+    const opened = [...new Set(loads.flat())];
+    db.worker.onmessage({ data: { id: m.id, type: "ready", stats: { shards: opened, pending: ["food", "home"].filter((id) => !opened.includes(id)), items: 10 * opened.length } } });
+  });
+  const events = [];
+  db.addEventListener("ready", () => events.push("ready"));
+  db.addEventListener("more", (e) => events.push(`more:${e.detail.loaded.join("+")}`));
+  await db.start();
+  assert.deepEqual(loads[0], ["food"], "the first open is the core alone");
+  assert.equal(db.version, "v1"); assert.deepEqual(events, ["ready"]);
+  assert.deepEqual(db.more, { loaded: ["food"], pending: ["home"] }, "the other department is pending while it opens");
+  for (let i = 0; i < 50 && events.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual(loads[1], ["food", "home"], "then everything on the phone, home included");
+  assert.deepEqual(events, ["ready", "more:food+home"]); assert.equal(db.more, null);
+});
+
+test("a worker call with a deadline rejects when the worker never answers, and the log keeps the steps", async () => {
+  const db = new DbClient();
+  db.worker.postMessage = () => {};                 // a worker that never answers
+  await assert.rejects(db.call({ type: "load" }, null, 30), /took more than 0 s to open/);
+  assert.equal(db.pending.size, 0, "the pending entry is dropped with the rejection");
+  db.note("hello");
+  assert.match(db.log.at(-1), /^\d+\.\ds hello$/);
+  assert.deepEqual(JSON.parse(store.get("sfb.boot.log")).slice(-1), [db.log.at(-1)]);
+});
