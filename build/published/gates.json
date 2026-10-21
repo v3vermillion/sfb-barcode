@@ -1,0 +1,1195 @@
+{
+  "checked": "2026-10-21T16:58:12+00:00",
+  "config_hash": "ddffa24e9d959865689247c49d7a9365438de55a661ace49c03e21f6baaf68ed",
+  "extras": {
+    "drift": [
+      {
+        "id": 872053,
+        "name": "Energizer 123 3V Lithium Photo Batteries (2 Pack), CR123A High Power Lithium Batteries Compatible with Cameras, Flashlights, Electronics and More",
+        "new": 14.37,
+        "old": 8.17
+      },
+      {
+        "id": 2304278,
+        "name": "Great Value Grapette Grape Soda Pop, 12 fl oz, 12 Pack Cans",
+        "new": 4.84,
+        "old": 2.46
+      },
+      {
+        "id": 5983299,
+        "name": "FreeStyle Lite Blood Glucose Test Strips, 50 Count",
+        "new": 92.33,
+        "old": 39.82
+      },
+      {
+        "id": 9886242,
+        "name": "Calvin Klein Obsession Eau de Toilette, Cologne for Men, 2.5 fl oz",
+        "new": 90.0,
+        "old": 54.0
+      },
+      {
+        "id": 10105152,
+        "name": "Carex Soft Grip Derby Folding Cane for Adults and Seniors, Black",
+        "new": 22.95,
+        "old": 9.37
+      },
+      {
+        "id": 10291039,
+        "name": "Ragu Old World Style Mushroom Pasta Sauce, 24 oz",
+        "new": 2.53,
+        "old": 5.31
+      },
+      {
+        "id": 10291253,
+        "name": "San Giorgio 16 oz Lasagna Pasta",
+        "new": 2.42,
+        "old": 5.63
+      },
+      {
+        "id": 10291529,
+        "name": "Nature Made Vitamin C 500 mg Tablets, Dietary Supplement for Immune Support, 250 Count",
+        "new": 18.99,
+        "old": 12.42
+      },
+      {
+        "id": 10291622,
+        "name": "Fresca Citrus Soda Pop Fridge Pack Cans, 12 fl oz, 12 Pack",
+        "new": 7.57,
+        "old": 4.88
+      },
+      {
+        "id": 10291623,
+        "name": "Barq's Zero Sugar Root Beer Soda Pop Fridge Pack Cans, 12 fl oz, 12 Pack",
+        "new": 8.42,
+        "old": 4.68
+      },
+      {
+        "id": 10291814,
+        "name": "Kraft Green Goddess Dressing, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 6.63
+      },
+      {
+        "id": 10292719,
+        "name": "CHIPS AHOY! Minis Original Fudgy Chocolate Chip Cookies, 8 oz",
+        "new": 2.98,
+        "old": 1.98
+      },
+      {
+        "id": 10293986,
+        "name": "HALLS Defense Assorted Citrus Throat Drops, Vitamin C Dietary Supplements, 30 Drops",
+        "new": 2.71,
+        "old": 1.78
+      },
+      {
+        "id": 10294743,
+        "name": "Gerber 3rd Foods Mealtime for Baby Lil' Sticks, Turkey, 2.5 oz, Jar",
+        "new": 4.98,
+        "old": 3.04
+      },
+      {
+        "id": 10294766,
+        "name": "Hawaiian Punch Lemonade Juice, 1 Gal, Bottle",
+        "new": 3.32,
+        "old": 7.37
+      },
+      {
+        "id": 10295145,
+        "name": "Del Monte Very Cherry Mixed Fruit in Extra Light Syrup, Canned Fruit, 15 oz Can",
+        "new": 2.82,
+        "old": 1.48
+      },
+      {
+        "id": 10295268,
+        "name": "Contadina Tomato Sauce, Canned Tomatoes, 15 oz Can",
+        "new": 1.53,
+        "old": 0.98
+      },
+      {
+        "id": 10295382,
+        "name": "Kraft Asian Toasted Sesame Dressing, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 2.12
+      },
+      {
+        "id": 10295416,
+        "name": "Jergens All Purpose Face Cream, Deep Cleansing Moisturizer, Lotion for Dry Skin, 15 fl oz",
+        "new": 9.87,
+        "old": 5.38
+      },
+      {
+        "id": 10295678,
+        "name": "Kraft Classic Catalina Fat Free Dressing, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 6.73
+      },
+      {
+        "id": 10295713,
+        "name": "Kraft Cucumber Ranch Salad Dressing, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 1.98
+      },
+      {
+        "id": 10295780,
+        "name": "Kraft Caesar Vinaigrette with Parmesan, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 2.12
+      },
+      {
+        "id": 10295783,
+        "name": "Kraft Ranch Dressing with Bacon, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 6.63
+      },
+      {
+        "id": 10295801,
+        "name": "Kraft Three Cheese Ranch Salad Dressing, 16 fl oz Bottle",
+        "new": 3.28,
+        "old": 1.98
+      },
+      {
+        "id": 10304329,
+        "name": "Dole Crushed Pineapple in Heavy Syrup, 20 oz Can",
+        "new": 2.22,
+        "old": 1.48
+      },
+      {
+        "id": 10306794,
+        "name": "Bush's Canned Pinto Beans, Canned Beans, 16 oz Can",
+        "new": 2.42,
+        "old": 1.53
+      },
+      {
+        "id": 10307538,
+        "name": "Ken's Steak House\u00ae Creamy Italian Salad Dressing 16 fl oz",
+        "new": 3.47,
+        "old": 7.18
+      },
+      {
+        "id": 10308841,
+        "name": "McCormick Hot Taco Seasoning Mix, 1.25 oz",
+        "new": 1.46,
+        "old": 4.19
+      },
+      {
+        "id": 10308887,
+        "name": "McCormick Gluten Free Yellow Food Color, 1.0 fl oz Box",
+        "new": 2.38,
+        "old": 6.52
+      },
+      {
+        "id": 10308942,
+        "name": "SCHILLING Original Taco Seasoning Mix 1.25 OZ",
+        "new": 1.46,
+        "old": 4.06
+      },
+      {
+        "id": 10308974,
+        "name": "Open Pit Thick And Tangy Original BBQ Sauce, 18 oz.",
+        "new": 1.58,
+        "old": 0.98
+      },
+      {
+        "id": 10308986,
+        "name": "McCormick Guacamole Seasoning Mix, 1.0 oz Packet",
+        "new": 0.97,
+        "old": 5.79
+      },
+      {
+        "id": 10309036,
+        "name": "McCormick Hollandaise Sauce Mix, 1.25 oz Packet",
+        "new": 1.46,
+        "old": 3.17
+      },
+      {
+        "id": 10309245,
+        "name": "Ben & Jerry's Chubby Hubby Vanilla Ice Cream Kosher Milk Cage-Free Eggs, 1 Pint",
+        "new": 4.87,
+        "old": 3.0
+      },
+      {
+        "id": 10311739,
+        "name": "Colgate MaxFresh Cool Mint Toothpaste, Travel Toothpaste, 1.0 oz",
+        "new": 1.47,
+        "old": 0.97
+      },
+      {
+        "id": 10312262,
+        "name": "Lindt Lindor 60% Extra Dark Chocolate Candy Truffles, 5.1 oz, Bag",
+        "new": 6.88,
+        "old": 3.78
+      },
+      {
+        "id": 10312298,
+        "name": "Lindt LINDOR Stracciatella Truffles, 5.1 oz Bag",
+        "new": 6.88,
+        "old": 4.27
+      },
+      {
+        "id": 10312566,
+        "name": "Archway Cookies, Soft Molasses Cookies, 9.5 oz",
+        "new": 4.64,
+        "old": 3.01
+      },
+      {
+        "id": 10313102,
+        "name": "Hollywood Beauty Olive Oil for Hair, Scalp, and Skin, 2 fl oz , All Hair Type",
+        "new": 3.48,
+        "old": 8.18
+      },
+      {
+        "id": 10313415,
+        "name": "Jell-O Blackberry Fusion Gelatin Dessert Mix, 3 oz Box",
+        "new": 1.48,
+        "old": 3.61
+      },
+      {
+        "id": 10313555,
+        "name": "Zep Enforcer 34-2050CVA Country Vet Metered Fly Control Spray, Refill, 30 Day Supply, Brown/A",
+        "new": 29.55,
+        "old": 18.31
+      },
+      {
+        "id": 10313619,
+        "name": "SoftSheen Carson Dark and Lovely Triple Nourished Hair Relaxer, Regular Strength",
+        "new": 22.9,
+        "old": 9.01
+      },
+      {
+        "id": 10314150,
+        "name": "L'OREAL BARE NATURALE LUMINOUS LENGTHENING MASCARA #800 BLACK",
+        "new": 15.99,
+        "old": 9.0
+      },
+      {
+        "id": 10314323,
+        "name": "L'Oreal Paris True Match Super Blendable Oil Free Makeup Powder, Cappuccino, 0.33 oz",
+        "new": 22.99,
+        "old": 14.99
+      },
+      {
+        "id": 10315057,
+        "name": "Nickles Bakery Giant White Bread, 20-Ounce Loaf.",
+        "new": 2.08,
+        "old": 4.7
+      },
+      {
+        "id": 10315224,
+        "name": "Great Value 98% Fat Free Cream of Celery Condensed Soup, 10.5 oz",
+        "new": 1.46,
+        "old": 0.78
+      },
+      {
+        "id": 10315270,
+        "name": "Great Value Light Syrup Extra Cherry Fruit Mix, 15 oz",
+        "new": 2.08,
+        "old": 1.08
+      },
+      {
+        "id": 10315492,
+        "name": "Great Value Fruit Cocktail in Heavy Syrup, 15.25 oz",
+        "new": 2.08,
+        "old": 1.08
+      },
+      {
+        "id": 10315846,
+        "name": "Great Value Apple Manzana Soda Pop, 12 fl oz, 12 Pack Cans",
+        "new": 4.84,
+        "old": 9.69
+      },
+      {
+        "id": 10316712,
+        "name": "Great Value Sugar Free Peach Gelatin Dessert, 0.3 oz",
+        "new": 1.12,
+        "old": 0.52
+      }
+    ],
+    "live": {
+      "by_row": {
+        "100408331": "exact",
+        "102923257": "exact",
+        "10314366": "exact",
+        "103943316": "exact",
+        "1137536553": "exact",
+        "11609461276": "exact",
+        "118656615": "missing",
+        "11964880": "exact",
+        "119862951": "exact",
+        "1202573633": "exact",
+        "120943981": "exact",
+        "1216555594": "exact",
+        "12455823214": "exact",
+        "1269945355": "exact",
+        "12914073144": "exact",
+        "13056622650": "far",
+        "1318009502": "exact",
+        "13188257095": "exact",
+        "13314169091": "exact",
+        "13512555716": "exact",
+        "1363750619": "far",
+        "13960273396": "exact",
+        "140584704": "exact",
+        "14414110880": "far",
+        "14502551913": "exact",
+        "14518216131": "exact",
+        "1455754406": "exact",
+        "14568667304": "exact",
+        "14639719420": "exact",
+        "14678700935": "exact",
+        "14845122373": "exact",
+        "14927871554": "exact",
+        "15039851729": "exact",
+        "151252176": "exact",
+        "15178305698": "far",
+        "15243663938": "exact",
+        "15360767947": "exact",
+        "15381704541": "exact",
+        "15381886": "exact",
+        "15391762554": "exact",
+        "15489869740": "far",
+        "15591273175": "exact",
+        "15648322923": "exact",
+        "1574705658": "exact",
+        "157568194": "exact",
+        "15777703074": "exact",
+        "15783813967": "far",
+        "15965672959": "exact",
+        "16180308944": "exact",
+        "16228053767": "exact",
+        "16346051088": "exact",
+        "16431966584": "exact",
+        "1644005434": "exact",
+        "16442161071": "exact",
+        "16456602135": "far",
+        "16523412943": "exact",
+        "16609510": "exact",
+        "16711321369": "exact",
+        "16782504862": "exact",
+        "16814613014": "exact",
+        "16932466999": "exact",
+        "17078603134": "exact",
+        "170994848": "exact",
+        "17140660940": "exact",
+        "17248851948": "far",
+        "172637120": "exact",
+        "17283158810": "far",
+        "17308856294": "exact",
+        "17344871111": "far",
+        "17378453609": "exact",
+        "17417315002": "exact",
+        "17434316969": "close",
+        "17438272875": "exact",
+        "17575570415": "exact",
+        "17577507868": "exact",
+        "17693200224": "exact",
+        "17732156127": "exact",
+        "1774119555": "close",
+        "17755459508": "exact",
+        "17757100723": "close",
+        "17781613019": "exact",
+        "17794618503": "exact",
+        "17835455275": "exact",
+        "17886350768": "far",
+        "17936810708": "exact",
+        "179967058": "exact",
+        "18067801477": "exact",
+        "18085557250": "exact",
+        "18092206024": "exact",
+        "18092456421": "exact",
+        "18174100219": "exact",
+        "18184953082": "exact",
+        "18343218305": "exact",
+        "18346803073": "exact",
+        "18427918753": "exact",
+        "18479314162": "exact",
+        "18644114722": "exact",
+        "18656951663": "exact",
+        "18677970422": "exact",
+        "18755767916": "exact",
+        "1879733379": "exact",
+        "18830467608": "exact",
+        "18832300151": "exact",
+        "18833411138": "exact",
+        "18861804814": "exact",
+        "18871965029": "exact",
+        "18888663524": "exact",
+        "189234016": "exact",
+        "18930972485": "exact",
+        "18957051791": "exact",
+        "1912638749": "exact",
+        "19139319679": "exact",
+        "19143053959": "exact",
+        "191929784": "far",
+        "19220662": "exact",
+        "19223623844": "exact",
+        "19232418029": "exact",
+        "19274465728": "exact",
+        "19291360817": "exact",
+        "19329053073": "exact",
+        "19372264365": "exact",
+        "19382907265": "exact",
+        "1939524026": "exact",
+        "19502311246": "exact",
+        "19639790": "exact",
+        "19849359579": "exact",
+        "19964905879": "close",
+        "20020203826": "exact",
+        "20025573429": "exact",
+        "20096620365": "exact",
+        "20140712011": "exact",
+        "20182766180": "exact",
+        "20214962599": "exact",
+        "20249158225": "exact",
+        "20321404991": "exact",
+        "20539962356": "exact",
+        "20567974778": "close",
+        "20583853059": "exact",
+        "20610912977": "exact",
+        "20647919169": "exact",
+        "20865651735": "exact",
+        "20918909114": "exact",
+        "21027938": "exact",
+        "21106035": "close",
+        "21129067": "exact",
+        "212143072": "exact",
+        "2218118453": "exact",
+        "2261819619": "exact",
+        "2281552944": "exact",
+        "23964939": "far",
+        "24017078": "exact",
+        "24335829": "exact",
+        "24403305": "exact",
+        "244040528": "exact",
+        "246742147": "exact",
+        "2546052276": "exact",
+        "26681899": "exact",
+        "2709818787": "exact",
+        "27449101": "exact",
+        "282037680": "exact",
+        "28469959": "far",
+        "284835141": "missing",
+        "2866478589": "exact",
+        "28774731": "exact",
+        "29131974": "exact",
+        "2970193461": "exact",
+        "30100342": "exact",
+        "3068809781": "close",
+        "3071489399": "missing",
+        "31039848": "exact",
+        "310774371": "exact",
+        "316856464": "far",
+        "33358412": "exact",
+        "334526495": "exact",
+        "3439607787": "exact",
+        "3505619427": "exact",
+        "352323369": "missing",
+        "365565311": "missing",
+        "37285156": "close",
+        "37301706": "exact",
+        "37325505": "exact",
+        "37744619": "exact",
+        "388779448": "far",
+        "389234698": "missing",
+        "397606309": "exact",
+        "398777272": "exact",
+        "40955801": "exact",
+        "409700998": "exact",
+        "421531581": "exact",
+        "42313594": "exact",
+        "427741509": "exact",
+        "432533857": "missing",
+        "437029859": "exact",
+        "446458882": "exact",
+        "454435594": "exact",
+        "46892773": "missing",
+        "46950986": "exact",
+        "47325505": "exact",
+        "48194547": "exact",
+        "48318851": "exact",
+        "48320959": "exact",
+        "48519864": "exact",
+        "488882472": "exact",
+        "49159057": "exact",
+        "492787403": "exact",
+        "49333138": "exact",
+        "495745692": "exact",
+        "5036484945": "exact",
+        "50374374": "exact",
+        "5042106800": "exact",
+        "5065263543": "exact",
+        "507323372": "exact",
+        "5081658790": "exact",
+        "513774927": "exact",
+        "5144655175": "exact",
+        "5144655672": "exact",
+        "5153023187": "exact",
+        "517056711": "far",
+        "5212491433": "far",
+        "5232316463": "exact",
+        "5256880874": "exact",
+        "5259959391": "exact",
+        "5262667644": "exact",
+        "5264558557": "exact",
+        "5265004905": "close",
+        "526580828": "exact",
+        "5289380930": "exact",
+        "5290151130": "exact",
+        "5296318361": "exact",
+        "5332753455": "exact",
+        "5361099199": "exact",
+        "53722870": "exact",
+        "5379132777": "exact",
+        "5385006208": "exact",
+        "53953005": "exact",
+        "5401758797": "missing",
+        "5466007749": "exact",
+        "549368413": "exact",
+        "5496975009": "exact",
+        "55446713": "exact",
+        "55446751": "close",
+        "5548982905": "exact",
+        "55507788": "exact",
+        "559761702": "exact",
+        "5600977032": "exact",
+        "5606806823": "exact",
+        "561582886": "exact",
+        "5618375117": "exact",
+        "56236380": "exact",
+        "563360874": "exact",
+        "568826377": "exact",
+        "5696805567": "exact",
+        "5748325694": "exact",
+        "590277068": "exact",
+        "590439229": "exact",
+        "5920522376": "exact",
+        "596286505": "close",
+        "596987520": "missing",
+        "597751287": "exact",
+        "5991002675": "exact",
+        "602741462": "missing",
+        "604630302": "close",
+        "612807259": "exact",
+        "613162552": "exact",
+        "614598838": "exact",
+        "624901774": "exact",
+        "629900010": "exact",
+        "640916564": "exact",
+        "642097952": "far",
+        "649669376": "exact",
+        "6521962370": "exact",
+        "656866580": "exact",
+        "6603767151": "exact",
+        "6715014735": "exact",
+        "672666522": "missing",
+        "685064033": "exact",
+        "691422023": "exact",
+        "692149886": "far",
+        "6923555831": "exact",
+        "6923664847": "far",
+        "693332021": "exact",
+        "706114557": "exact",
+        "720368779": "missing",
+        "737083114": "exact",
+        "740815289": "exact",
+        "744411406": "exact",
+        "745587472": "exact",
+        "7653968985": "exact",
+        "7793074562": "far",
+        "781681633": "exact",
+        "7870704343": "exact",
+        "792614016": "exact",
+        "7941650": "exact",
+        "794791357": "exact",
+        "794872551": "exact",
+        "801696022": "exact",
+        "803739861": "exact",
+        "809503304": "missing",
+        "811279650": "missing",
+        "8184020338": "exact",
+        "834192601": "exact",
+        "8529457164": "exact",
+        "853762677": "exact",
+        "857029459": "exact",
+        "871783046": "missing",
+        "872789929": "missing",
+        "873092978": "missing",
+        "880607859": "exact",
+        "881028558": "missing",
+        "882733709": "exact",
+        "898563700": "exact",
+        "899248432": "exact",
+        "9255665531": "exact",
+        "935491612": "exact",
+        "938657742": "exact",
+        "939575558": "far",
+        "944291749": "exact",
+        "963587574": "exact",
+        "9682768840": "far",
+        "992125102": "exact"
+      },
+      "by_tier": {
+        "consumable": {
+          "close": 187,
+          "close_rate": 0.9444,
+          "exact": 180,
+          "found": 198,
+          "missing": 14
+        },
+        "durable": {
+          "close": 90,
+          "close_rate": 0.8738,
+          "exact": 85,
+          "found": 103,
+          "missing": 5
+        }
+      },
+      "calls": 16,
+      "checked": 320,
+      "close": 277,
+      "close_rate": 0.9203,
+      "error": "RuntimeError: HTTP 400 for /items?ids=536238412,669372501,896222347,6026870695,561547009,17092161329,1195141652,16671415,16899207413,19122759848,255305722,18910403447,13622257576,25462481,17234360830,16862401328,36",
+      "exact": 265,
+      "examples": [
+        {
+          "id": 873092978,
+          "live": null,
+          "name": "Godzilla King of Monsters Battlepack featuring 6\" action figures",
+          "snapshot": 9.97
+        },
+        {
+          "id": 46892773,
+          "live": null,
+          "name": "Poolmaster Yellow Suntanner Mattress",
+          "snapshot": 31.96
+        },
+        {
+          "id": 596987520,
+          "live": null,
+          "name": "Garnier Fructis Sleek & Shine Shampoo & Conditioner, Frizzy, Dry, Unmanageable Hair, 33.8 fl. oz.",
+          "snapshot": 9.06
+        },
+        {
+          "id": 432533857,
+          "live": null,
+          "name": "No7 Serums",
+          "snapshot": 20.0
+        },
+        {
+          "id": 284835141,
+          "live": null,
+          "name": "PureBaby Sound Sleepers Portable Sound Machine & Star Projector - Plush Sleep Aid for Baby and Toddlers with Soothing Night Light Display, 10 Lullabies, White Noise, and Heartbeat Sounds (Polar Bear)",
+          "snapshot": 29.99
+        },
+        {
+          "id": 809503304,
+          "live": null,
+          "name": "OGX Bodifying Bamboo Collection",
+          "snapshot": 6.03
+        },
+        {
+          "id": 352323369,
+          "live": null,
+          "name": "Spray \u2018n Wash Laundry Stain Removers",
+          "snapshot": 2.92
+        },
+        {
+          "id": 3071489399,
+          "live": null,
+          "name": "B.E Bio Eyes Womens Cateye Reading Glasses Made from Recycled Plastic Hazel +2.00 in Black",
+          "snapshot": 12.97
+        },
+        {
+          "id": 720368779,
+          "live": null,
+          "name": "PlayWorld Toolbench Time! Take-A Part Carrier Tool Box With Racing Car And Lights & Sounds",
+          "snapshot": 45.89
+        },
+        {
+          "id": 811279650,
+          "live": null,
+          "name": "[35% Off] Screen Shades Mother's Day Bundle - Blue Light Blocking Computer Glasses - SS202 Sand & SS602 Red Fade - UV Protection - Relieve Eye Strain and Prevent Headaches From Device Use and Gaming",
+          "snapshot": 74.98
+        },
+        {
+          "id": 672666522,
+          "live": null,
+          "name": "PlayWorld Giddyup! Buck's Toy Archery Bow And Arrow Set for Kids With Suction Cup Arrows And Target - Multicolor",
+          "snapshot": 46.99
+        },
+        {
+          "id": 602741462,
+          "live": null,
+          "name": "Screen Shades Mother's Day Bundle - Blue Light Blocking Computer Glasses - SS201 Grey/Blue; SS601 Blue Fade - UV Protection - Relieve Eye Strain and Prevent Headaches From Device Use and Gaming",
+          "snapshot": 67.23
+        },
+        {
+          "id": 365565311,
+          "live": null,
+          "name": "L'Oreal Paris Brow Stylist Definer Waterproof Eyebrow Mechanical Pencil, Brunette, 2 Pack",
+          "snapshot": 15.94
+        },
+        {
+          "id": 871783046,
+          "live": null,
+          "name": "PlayWorld Robowonder Dancing Futuristic being With Light & Sound - White",
+          "snapshot": 28.14
+        },
+        {
+          "id": 881028558,
+          "live": null,
+          "name": "Palmer\u2019s Coconut Oil Formula Body Care Collection",
+          "snapshot": 4.75
+        },
+        {
+          "id": 872789929,
+          "live": null,
+          "name": "Great Value Everyday Strong Paper Towels, Split Sheets, 3 Triple Rolls",
+          "snapshot": 4.28
+        },
+        {
+          "id": 5401758797,
+          "live": null,
+          "name": "Lemme Debloat - Digestive & Gut Health Gummies with 2 Clinically Studied Probiotics & Prebiotic, Vegetarian, Gluten Free, BlackBerry Flavor, 60 Count",
+          "snapshot": 29.97
+        },
+        {
+          "id": 118656615,
+          "live": null,
+          "name": "[35% Off] Screen Shades Mother's Day Bundle - Blue Light Blocking Computer Glasses - SS201 Grey/Blue & SS601 Blue Fade - UV Protection - Relieve Eye Strain and Prevent Headaches From Device Use and Gaming",
+          "snapshot": 74.98
+        },
+        {
+          "id": 389234698,
+          "live": null,
+          "name": "Shop all Ziploc\u00ae Accessory Products",
+          "snapshot": 4.98
+        },
+        {
+          "id": 5212491433,
+          "live": 11.99,
+          "name": "Funko Bitty POP Singles: Marvel Mini Vinyl Figure Blind Bag",
+          "snapshot": 3.44
+        },
+        {
+          "id": 517056711,
+          "live": 12.97,
+          "name": "Handi-Foil 8\" x 8\" Aluminum Square Cake Pan, 2 Count",
+          "snapshot": 4.94
+        },
+        {
+          "id": 16456602135,
+          "live": 17.94,
+          "name": "As I Am Rosemary Leave In Conditioner Scalp Treatment for Hair Density and Thinning Hair Hydrating Growth Support Spray 8 fl oz with Biotin, Saw Palmetto & Melatonin",
+          "snapshot": 8.99
+        },
+        {
+          "id": 9682768840,
+          "live": 23.22,
+          "name": "Tide Laundry Detergent Liquid Plus a Boost of Ultra Downy, April Fresh Scent, 73 fl oz, 52 Loads",
+          "snapshot": 12.97
+        },
+        {
+          "id": 191929784,
+          "live": 14.27,
+          "name": "Biosilk Silk Therapy Original Leave In Treatment 5.64 Oz",
+          "snapshot": 28.97
+        },
+        {
+          "id": 388779448,
+          "live": 11.64,
+          "name": "URO Parts 61667264145 Windshield Washer Fluid Reservoir Cap",
+          "snapshot": 20.88
+        }
+      ],
+      "found": 301,
+      "match_rate": 0.8804,
+      "missing": 19,
+      "missing_rate": 0.0594,
+      "sample": 500,
+      "tolerance": 0.05,
+      "within_5pct": 277,
+      "within_5pct_rate": 0.9203
+    },
+    "review_pool": {
+      "eligible": 2334937,
+      "new_rows_only": true,
+      "reason": "the published snapshot was not judged by a passed review",
+      "since": null
+    },
+    "sentinel_misses": [],
+    "unit_outliers": [
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 1390264874,
+        "median": 0.2046,
+        "name": "FLUZONE QIV 0.5ML",
+        "ratio": 33981.733627,
+        "unit": "fl oz",
+        "unit_price": 6952.6627
+      },
+      {
+        "cat": "30",
+        "group": "p:Air Fresheners/All Air Fresheners",
+        "id": 325874115,
+        "median": 2.5,
+        "name": "TimeMist Settings Fragrance Dispenser Black 3 2/5\"W x 3 2/5\"D x 8 1/4\"H 1047811EA",
+        "ratio": 4e-05,
+        "unit": "ct",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "27",
+        "group": "p:Home Health Care",
+        "id": 779549756,
+        "median": 2.1496,
+        "name": "Taylor Precision Products 55814072F 400lb-capacity Digital Glass Body Analyzer & UPG AAA 50 Pack",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "27",
+        "group": "p:Home Health Care",
+        "id": 940971158,
+        "median": 2.1496,
+        "name": "Taylor Precision Products 55804072F 440lb-capacity Digital Glass Body Analyzer & UPG AAA 50 Pack",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 1432550670,
+        "median": 2.1496,
+        "name": "BENTISM Rubber Curb Ramp Driveway Ramp for Curb 4.25\" Rise 19.7\" Wide 33069 lbs",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 1915291114,
+        "median": 2.1496,
+        "name": "BENTISM Rubber Curb Ramp Driveway Ramp for Curb 3.7\" Rise 39.4\" Wide 33069lbs Load",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 2984313755,
+        "median": 2.1496,
+        "name": "BENTISM Curb Ramp Rubber Driveway Ramp 2.6\" Rise 15 tons Capacity Threshold Ramp",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 3084973264,
+        "median": 2.1496,
+        "name": "BENTISM Rubber Curb Ramp Driveway Ramp for Curb 6\" Rise 19.3\" Wide 33069 lbs Load",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 3992026852,
+        "median": 2.1496,
+        "name": "VEVOR Rubber Curb Ramp Driveway Ramp for Curb 2 Pack 6\" Rise 19.3\" Wide 33069lbs",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 5550793769,
+        "median": 2.1496,
+        "name": "KFFKFF Rubber Threshold Ramp Door Ramp 3\" Rise 33069 lbs Load Rubber Curb Ramp",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 5729715760,
+        "median": 2.1496,
+        "name": "KFFKFF Rubber Threshold Ramp Door Ramp 1\" Rise 33069 lbs Load Rubber Curb Ramp",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 14336422198,
+        "median": 2.1496,
+        "name": "KFFKFF Enhanced Rubber Incline Ramp, 4\" Height Doorway Ramp with Single Channel, Pure Rubber Vehicle Ramp with Anti-Slip Grainy Surface, 33069 lbs Weight Tolerance Sidewalk Ramp for Wheelchair",
+        "ratio": 4.7e-05,
+        "unit": "oz",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:FSA and HSA Store/FSA and HSA Shop All",
+        "id": 34052351,
+        "median": 3.6333,
+        "name": "Baseline Tactile monofilament evaluator, 1.65 (0.008 gram) Semmes-Weinstein",
+        "ratio": 17945.118763,
+        "unit": "oz",
+        "unit_price": 65200.0
+      },
+      {
+        "cat": "16",
+        "group": "p:Pest Control/All Pest Control",
+        "id": 16622243,
+        "median": 0.7106,
+        "name": "OFF! Clip-On Mosquito Repellent Starter Kit 0.0016 Ounces",
+        "ratio": 15067.553304,
+        "unit": "oz",
+        "unit_price": 10706.25
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care",
+        "id": 34052350,
+        "median": 2.1496,
+        "name": "Baseline Tactile monofilament evaluator, 2.36 (0.02 gram) Semmes-Weinstein",
+        "ratio": 12999.096157,
+        "unit": "oz",
+        "unit_price": 27942.8571
+      },
+      {
+        "cat": "16",
+        "group": "p:Vision Centers",
+        "id": 38250800,
+        "median": 0.0113,
+        "name": "Shieldme 2015 6ml Lens Cleaning Pen Pop",
+        "ratio": 9918.132743,
+        "unit": "fl oz",
+        "unit_price": 112.0749
+      },
+      {
+        "cat": "16",
+        "group": "p:Pest Control/All Pest Control",
+        "id": 16553034,
+        "median": 0.7106,
+        "name": "OFF! Clip-On Mosquito Repellent Starter Kit, 0.0016 oz",
+        "ratio": 7678.910703,
+        "unit": "oz",
+        "unit_price": 5456.25
+      },
+      {
+        "cat": "16",
+        "group": "p:Vision Centers",
+        "id": 678102390,
+        "median": 0.0113,
+        "name": "Breakthrough Clean Technologies\u00ae Anti-Fog Lens Gel Kit, 10ml Tube & Cloth",
+        "ratio": 5753.132743,
+        "unit": "fl oz",
+        "unit_price": 65.0104
+      },
+      {
+        "cat": "14",
+        "group": "p:Home Health Care/Physical Therapy",
+        "id": 989466932,
+        "median": 2.1592,
+        "name": "Super cost-effective 1/2 pcs Adjustable 10-40 KG Therapy Exerciser Hand Strengthener Hand Gripper",
+        "ratio": 0.000185,
+        "unit": "oz",
+        "unit_price": 0.0004
+      },
+      {
+        "cat": "14",
+        "group": "p:Protein/Amino Acids",
+        "id": 21642316,
+        "median": 2.056,
+        "name": "Europa Sports Prod. Super Amino 4800gm 450 Capsules",
+        "ratio": 0.000195,
+        "unit": "oz",
+        "unit_price": 0.0004
+      },
+      {
+        "cat": "14",
+        "group": "c:14",
+        "id": 401570121,
+        "median": 2.1408,
+        "name": "Habitrol Nicotine Transdermal System Stop Smoking Aid, Steps 1, 2, and 3, 8 Week Kit, 56 Patches",
+        "ratio": 4670.216741,
+        "unit": "oz",
+        "unit_price": 9998.0
+      },
+      {
+        "cat": "14",
+        "group": "p:First Aid",
+        "id": 21854516,
+        "median": 4.275,
+        "name": "PHYSICIANSCARE Bandage, Beige, Plastic, PK50 90242G",
+        "ratio": 0.000257,
+        "unit": "oz",
+        "unit_price": 0.0011
+      },
+      {
+        "cat": "14",
+        "group": "p:Cough Cold and Flu medicine/Cold Cough and Flu",
+        "id": 46120310,
+        "median": 0.3555,
+        "name": "Loratadine usp 10 mg antihistamine allergy relief tablets by OHM - 500 Each",
+        "ratio": 0.000281,
+        "unit": "ct",
+        "unit_price": 0.0001
+      },
+      {
+        "cat": "14",
+        "group": "p:Foot Care",
+        "id": 615847970,
+        "median": 0.0863,
+        "name": "Get Rid of Warts Fast, Removal Pro, Facial, Genital Warts, Natural Healing Cistotelo 1ml",
+        "ratio": 3424.821553,
+        "unit": "fl oz",
+        "unit_price": 295.5621
+      },
+      {
+        "cat": "16",
+        "group": "p:Cleaning Supplies/All Purpose Cleaners/All Purpose Cleaners",
+        "id": 17300524,
+        "median": 0.2916,
+        "name": "ZINSSER 60101 House Cleaner & Mildew Killer, 1 G",
+        "ratio": 2448.151578,
+        "unit": "oz",
+        "unit_price": 713.881
+      }
+    ],
+    "unstable": []
+  },
+  "finalized": "2026-10-21T16:59:27+00:00",
+  "gates": {
+    "category_counts": {
+      "detail": "largest category change 39.3% (categories with >= 200 published rows)",
+      "pass": true,
+      "threshold": 0.4,
+      "value": 0.3929
+    },
+    "departments_complete": {
+      "detail": "7 departments checked; sizing used",
+      "pass": true,
+      "threshold": 0.3,
+      "value": 0
+    },
+    "item_count": {
+      "detail": "2359474 items vs 2566573 published (100.4%, 234230 published rows left by rule: 140909 bundle listings, 93321 above the price ceiling or under an excluded path, against 18807 bundle units kept)",
+      "pass": true,
+      "threshold": 0.9,
+      "value": 1.0036
+    },
+    "live_match": {
+      "detail": "277/301 within 5% (92.0%; exact 265, 88.0%) of the rows Walmart still lists; no longer listed: 19 of 320 (5.9%, not counted as wrong); consumable 94.4% of 198, durable 87.4% of 103; 16 calls; stopped early: RuntimeError: HTTP 400 for /items?ids=536238412,669372501,896222347,6026870695,561547009,17092161329,1195141652,16671415,16899207413,19122759848,255305722,18910403447,13622257576,25462481,17234360830,16862401328,36",
+      "pass": true,
+      "threshold": 0.9,
+      "value": 0.9203
+    },
+    "price_drift": {
+      "detail": "2721 of 2359474 prices moved more than 50% (0.11%)",
+      "pass": true,
+      "threshold": 0.02,
+      "value": 0.00115
+    },
+    "sample_review": {
+      "detail": "junk 20/600 (3.3%), 95% lower bound 2.3% vs 5.0% target, hard cap 10%, systematic junk: no, 20 examples, 2 batches, model claude-sonnet-5-5: ok; notes: No systematic junk class. The sample has a few isolated bad rows: a spam name, a placeholder, a wholesale case, and about five size misparses (an 'L'/'lb' or weight value read as a volume or weight). Category mislabels are the more frequent problem: bobble heads as Beverages, kitchen and bath items as Lawn/Personal Care/Frozen, and a few food items in the wrong food category. | Junk is scattered s",
+      "pass": true,
+      "threshold": 0.05,
+      "value": 0.0333
+    },
+    "sentinels": {
+      "detail": "114/114 found and priced",
+      "pass": true,
+      "threshold": 0,
+      "value": 0
+    },
+    "size_parse": {
+      "detail": "212181/229316 Food rows sized (92.5%): 207682 with a parsed size, 8 sold by the pound, 4491 sold each",
+      "pass": true,
+      "threshold": 0.92,
+      "value": 0.9253
+    },
+    "unit_outliers": {
+      "detail": "measure-only: 12026 of 506915 unit-priced rows outside [median/10, median*10] of their category+unit group (2.37%); their per-unit prices are dropped and the rows flagged unit_price_suspect",
+      "pass": true,
+      "threshold": null,
+      "value": 0.02372
+    }
+  },
+  "passed_deterministic": true,
+  "run_id": "20261020-172046-refresh",
+  "status": "ready",
+  "thresholds": {
+    "audit_match_min": null,
+    "audit_per_department": 30,
+    "audit_sample": 500,
+    "category_count_min_rows": 200,
+    "category_count_tolerance": 0.4,
+    "dept_size_tolerance": 0.3,
+    "item_count_min_ratio": 0.9,
+    "live_match_min": 0.9,
+    "live_match_tolerance": 0.05,
+    "live_missing_max": null,
+    "live_sample": 500,
+    "price_drift_max": 0.02,
+    "price_sanity": {
+      "caps": {
+        "Arts Crafts & Sewing": 2000,
+        "Auto & Tires": 5000,
+        "Baby": 2500,
+        "Beauty": 1000,
+        "Books": 500,
+        "Cell Phones": 3000,
+        "Electronics": 10000,
+        "Food": 500,
+        "Health and Medicine": 3000,
+        "Home": 5000,
+        "Home Improvement": 10000,
+        "Household Essentials": 500,
+        "Jewelry": 20000,
+        "Office Supplies": 3000,
+        "Party & Occasions": 1000,
+        "Patio & Garden": 10000,
+        "Personal Care": 1000,
+        "Pets": 2000,
+        "Pharmacy": 1000,
+        "Premium Beauty": 1500,
+        "Seasonal": 3000,
+        "Sports & Outdoors": 10000,
+        "Toys": 3000,
+        "default": 5000
+      },
+      "floor": 0.1,
+      "note": "Item prices outside [floor, min(cap, over_p99 x the department's 99th percentile)] are withheld: the app values them at an equivalent instead (crawler/process.py). Caps per department name; default when unnamed. Since 2026-10-19 the crawl keeps no consumable listing above consumable_rules.max_price ($150) or durable listing above durable_rules.max_price ($100) in data/categories.json, so these caps only matter below those; a price more than 10x the median of the same kind of item in its category (and of its per-unit price, when it has one) is withheld too (crawler/valuation.py HIGH_FACTOR).",
+      "over_p99": 5
+    },
+    "sample_review": {
+      "batch_size": 300,
+      "confidence": 0.95,
+      "hard_max_junk_rate": 0.1,
+      "max_junk_rate": 0.05,
+      "min_new_rows": 50,
+      "new_rows_only": true,
+      "required": true,
+      "sample_size": 600,
+      "unavailable_grace_days": 21
+    },
+    "sentinel_misses_max": 0,
+    "size_parse_min": 0.92,
+    "unit_outlier_group_min": 50,
+    "unit_outliers_max": null
+  },
+  "transient": false
+}

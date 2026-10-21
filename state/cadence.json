@@ -1,0 +1,163 @@
+{
+  "budget_calls_per_day": 5760.0,
+  "computed": "2026-10-20T16:37:57+00:00",
+  "cost_calls_per_day": 5633.1,
+  "departments": {
+    "Baby": {
+      "calls_per_day": 308.6,
+      "drift_per_day": 0.02032,
+      "evidence_row_days": 371.0,
+      "ideal_days": 7,
+      "interval_days": 7,
+      "pages": 900,
+      "rows": 165687
+    },
+    "Beauty": {
+      "calls_per_day": 492.0,
+      "drift_per_day": 0.02687,
+      "evidence_row_days": 455.0,
+      "ideal_days": 5,
+      "interval_days": 5,
+      "pages": 1025,
+      "rows": 189615
+    },
+    "Food": {
+      "calls_per_day": 474.6,
+      "drift_per_day": 0.01951,
+      "evidence_row_days": 497.0,
+      "ideal_days": 8,
+      "interval_days": 8,
+      "pages": 1582,
+      "rows": 292988
+    },
+    "Health and Medicine": {
+      "calls_per_day": 348.0,
+      "drift_per_day": 0.02356,
+      "evidence_row_days": 462.0,
+      "ideal_days": 6,
+      "interval_days": 6,
+      "pages": 870,
+      "rows": 152652
+    },
+    "Home": {
+      "calls_per_day": 1167.1,
+      "drift_per_day": 0.01542,
+      "evidence_row_days": 1330.0,
+      "ideal_days": 10,
+      "interval_days": 10,
+      "pages": 4863,
+      "rows": 753659
+    },
+    "Home Improvement": {
+      "calls_per_day": 5.7,
+      "drift_per_day": 0.01522,
+      "evidence_row_days": 168.0,
+      "ideal_days": 30,
+      "interval_days": 30,
+      "pages": 71,
+      "rows": 8594
+    },
+    "Household Essentials": {
+      "calls_per_day": 152.4,
+      "drift_per_day": 0.02345,
+      "evidence_row_days": 252.0,
+      "ideal_days": 6,
+      "interval_days": 6,
+      "pages": 381,
+      "rows": 68970
+    },
+    "Office Supplies": {
+      "calls_per_day": 1001.1,
+      "drift_per_day": 0.02095,
+      "evidence_row_days": 497.0,
+      "ideal_days": 7,
+      "interval_days": 8,
+      "pages": 3337,
+      "rows": 180906
+    },
+    "Party & Occasions": {
+      "calls_per_day": 290.6,
+      "drift_per_day": 0.01525,
+      "evidence_row_days": 364.0,
+      "ideal_days": 10,
+      "interval_days": 10,
+      "pages": 1211,
+      "rows": 150392
+    },
+    "Personal Care": {
+      "calls_per_day": 111.2,
+      "drift_per_day": 0.01648,
+      "evidence_row_days": 322.0,
+      "ideal_days": 9,
+      "interval_days": 9,
+      "pages": 417,
+      "rows": 66790
+    },
+    "Pets": {
+      "calls_per_day": 258.3,
+      "drift_per_day": 0.01391,
+      "evidence_row_days": 490.0,
+      "ideal_days": 11,
+      "interval_days": 11,
+      "pages": 1184,
+      "rows": 161608
+    },
+    "Pharmacy": {
+      "calls_per_day": 0.1,
+      "drift_per_day": 0.023,
+      "evidence_row_days": 0.0,
+      "ideal_days": 30,
+      "interval_days": 30,
+      "pages": 1,
+      "rows": 11
+    },
+    "Premium Beauty": {
+      "calls_per_day": 131.5,
+      "drift_per_day": 0.03443,
+      "evidence_row_days": 224.0,
+      "ideal_days": 5,
+      "interval_days": 5,
+      "pages": 274,
+      "rows": 52016
+    },
+    "Seasonal": {
+      "calls_per_day": 12.8,
+      "drift_per_day": 0.02382,
+      "evidence_row_days": 203.0,
+      "ideal_days": 6,
+      "interval_days": 6,
+      "pages": 32,
+      "rows": 4690
+    },
+    "Toys": {
+      "calls_per_day": 879.1,
+      "drift_per_day": 0.02154,
+      "evidence_row_days": 385.0,
+      "ideal_days": 7,
+      "interval_days": 7,
+      "pages": 2564,
+      "rows": 317995
+    }
+  },
+  "expected_close_rate": 0.9237,
+  "expected_close_rate_measured": 0.9242,
+  "fits": true,
+  "fixed_days": null,
+  "measured_departments": [
+    "Food",
+    "Health and Medicine",
+    "Personal Care",
+    "Beauty",
+    "Premium Beauty",
+    "Baby",
+    "Pets",
+    "Household Essentials",
+    "Party & Occasions",
+    "Seasonal",
+    "Home",
+    "Toys",
+    "Office Supplies"
+  ],
+  "per_min": 8.0,
+  "target_close_rate": 0.92
+}

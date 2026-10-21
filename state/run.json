@@ -1,0 +1,111 @@
+{
+  "calls": 6110,
+  "calls_base": 5864,
+  "crawled": "2026-10-21T09:00:43+00:00",
+  "departments": [
+    {
+      "done_at": "2026-10-20T19:34:16+00:00",
+      "id": "976760",
+      "items": 171450,
+      "name": "Health and Medicine",
+      "next": null,
+      "pages": 858,
+      "parts": 9,
+      "status": "done",
+      "total_pages": 858
+    },
+    {
+      "done_at": "2026-10-20T22:15:02+00:00",
+      "id": "1085666",
+      "items": 205745,
+      "name": "Beauty",
+      "next": null,
+      "pages": 1029,
+      "parts": 12,
+      "status": "done",
+      "total_pages": 1029
+    },
+    {
+      "done_at": "2026-10-20T22:58:46+00:00",
+      "id": "7924299",
+      "items": 54795,
+      "name": "Premium Beauty",
+      "next": null,
+      "pages": 274,
+      "parts": 4,
+      "status": "done",
+      "total_pages": 274
+    },
+    {
+      "done_at": "2026-10-21T01:17:27+00:00",
+      "id": "5427",
+      "items": 179776,
+      "name": "Baby",
+      "next": null,
+      "pages": 899,
+      "parts": 10,
+      "status": "done",
+      "total_pages": 899
+    },
+    {
+      "done_at": "2026-10-21T02:16:49+00:00",
+      "id": "1115193",
+      "items": 76462,
+      "name": "Household Essentials",
+      "next": null,
+      "pages": 383,
+      "parts": 5,
+      "status": "done",
+      "total_pages": 383
+    },
+    {
+      "done_at": "2026-10-21T02:20:59+00:00",
+      "id": "1085632",
+      "items": 6315,
+      "name": "Seasonal",
+      "next": null,
+      "pages": 32,
+      "parts": 1,
+      "status": "done",
+      "total_pages": 32
+    },
+    {
+      "done_at": "2026-10-21T09:00:42+00:00",
+      "id": "4171",
+      "items": 514387,
+      "name": "Toys",
+      "next": null,
+      "pages": 2573,
+      "parts": 28,
+      "status": "done",
+      "total_pages": 2573
+    }
+  ],
+  "pace": {
+    "inferred": {
+      "consistent": true,
+      "limit_from_429s": 7,
+      "limit_per_min": 7,
+      "limit_per_min_median": 7,
+      "ok": 243,
+      "ok_per_min": 6.52,
+      "pattern": "per-minute",
+      "reason": "3 x 429 cost 0.8% of the run: incidental",
+      "requests": 246,
+      "safe_per_min": 7,
+      "sleep_s": 18.2,
+      "span_s": 2235.9,
+      "status_429": 3
+    },
+    "per_min": 8,
+    "run_id": "20261020-172046-refresh",
+    "updated": "2026-10-21T09:00:43+00:00"
+  },
+  "plan": "refresh",
+  "run_id": "20261020-172046-refresh",
+  "started": "2026-10-20T17:20:46+00:00",
+  "status": "published",
+  "throttle_base": 349,
+  "throttle_wait_s": 367,
+  "updated": "2026-10-21T09:00:43+00:00"
+}

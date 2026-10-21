@@ -1,0 +1,131 @@
+{
+  "points": [
+    {
+      "age_days": 7.0,
+      "close": 46,
+      "date": "2026-10-20",
+      "dept": "Baby",
+      "found": 53,
+      "missing": 3,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 52,
+      "date": "2026-10-20",
+      "dept": "Beauty",
+      "found": 65,
+      "missing": 4,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 62,
+      "date": "2026-10-20",
+      "dept": "Food",
+      "found": 71,
+      "missing": 4,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 55,
+      "date": "2026-10-20",
+      "dept": "Health and Medicine",
+      "found": 66,
+      "missing": 6,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 171,
+      "date": "2026-10-20",
+      "dept": "Home",
+      "found": 190,
+      "missing": 18,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 23,
+      "date": "2026-10-20",
+      "dept": "Home Improvement",
+      "found": 24,
+      "missing": 7,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 30,
+      "date": "2026-10-20",
+      "dept": "Household Essentials",
+      "found": 36,
+      "missing": 2,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 61,
+      "date": "2026-10-20",
+      "dept": "Office Supplies",
+      "found": 71,
+      "missing": 4,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 48,
+      "date": "2026-10-20",
+      "dept": "Party & Occasions",
+      "found": 52,
+      "missing": 6,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 42,
+      "date": "2026-10-20",
+      "dept": "Personal Care",
+      "found": 46,
+      "missing": 0,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 65,
+      "date": "2026-10-20",
+      "dept": "Pets",
+      "found": 70,
+      "missing": 1,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 22,
+      "date": "2026-10-20",
+      "dept": "Premium Beauty",
+      "found": 32,
+      "missing": 0,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 24,
+      "date": "2026-10-20",
+      "dept": "Seasonal",
+      "found": 29,
+      "missing": 1,
+      "version": "20261007-182439-full"
+    },
+    {
+      "age_days": 7.0,
+      "close": 47,
+      "date": "2026-10-20",
+      "dept": "Toys",
+      "found": 55,
+      "missing": 4,
+      "version": "20261007-182439-full"
+    }
+  ],
+  "updated": "2026-10-20T16:37:57+00:00"
+}

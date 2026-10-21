@@ -1,0 +1,329 @@
+{
+  "batches": [
+    {
+      "junk_count": 10,
+      "junk_listed": 10,
+      "max_tokens": 12000,
+      "model_junk_rate": 0.033,
+      "rows": 300,
+      "systematic_junk": false,
+      "usage": {
+        "input_tokens": 55290,
+        "output_tokens": 4291
+      }
+    },
+    {
+      "junk_count": 10,
+      "junk_listed": 10,
+      "max_tokens": 12000,
+      "model_junk_rate": 0.03,
+      "rows": 300,
+      "systematic_junk": false,
+      "usage": {
+        "input_tokens": 53247,
+        "output_tokens": 4736
+      }
+    }
+  ],
+  "checked": "2026-10-21T16:58:20+00:00",
+  "confidence": 0.95,
+  "hard_max_junk_rate": 0.1,
+  "hold_reason": "ok",
+  "junk_count": 20,
+  "junk_examples": [
+    {
+      "id": 161921530,
+      "why": "Name is a search-query/spam string ('Wholesale distributors | Online wholesale...'), not a product"
+    },
+    {
+      "id": 31031863,
+      "why": "Placeholder listing named 'Discontinued per vendor.'"
+    },
+    {
+      "id": 255990052,
+      "why": "Wholesale case of 12 plush priced $132, not a consumer unit"
+    },
+    {
+      "id": 3523296537,
+      "why": "'Toilet Paper Patent III' is gallery-wrapped wall art at $76, not toilet paper"
+    },
+    {
+      "id": 10312714,
+      "why": "Name 'Fountain Pen, 10 mm, Grade 631' doesn't match brand Lip Smacker or the Beauty listing"
+    },
+    {
+      "id": 119972450,
+      "why": "Planner parsed as size 1450 g and pack 2022 (a model number and a year); size and pack are wrong"
+    },
+    {
+      "id": 166167815,
+      "why": "Silicone spatula parsed as 1 liter"
+    },
+    {
+      "id": 20198458366,
+      "why": "Pet stairs parsed as 16 liters and given a per-fl-oz unit price"
+    },
+    {
+      "id": 35609948,
+      "why": "Skewer set parsed as 2.5 liters"
+    },
+    {
+      "id": 28636954,
+      "why": "Copy paper's '20 lb basis weight' parsed as a 20 lb size, with 5000 sheets per carton"
+    },
+    {
+      "id": 37085281,
+      "why": "Placeholder name 'Uh322' with no real product description"
+    },
+    {
+      "id": 962538005,
+      "why": "Name is a SKU dump ('8393AMCA2FWALSTE,P009516S')"
+    },
+    {
+      "id": 771588823,
+      "why": "Test listing: 'Test Utility bedding'"
+    },
+    {
+      "id": 43154513,
+      "why": "Projector (PT-VX605NU) priced at $3.00, implausible, and the name is a SKU-style catalogue line"
+    },
+    {
+      "id": 761510057,
+      "why": "Book (autism guide for teachers and parents), which is media"
+    },
+    {
+      "id": 8875264876,
+      "why": "Third-party marketplace listing: White Claw 0% seltzer under brand 'ChromaCast' at about $4 per can"
+    },
+    {
+      "id": 54883066,
+      "why": "Envelope paper weight '24lb' parsed as size 24 lb, so name and size disagree"
+    },
+    {
+      "id": 476984180,
+      "why": "Name 'AS KINSLEY NAVY WHITE DOT' reads like a catalogue code, not a shelf label"
+    },
+    {
+      "id": 811890798,
+      "why": "Name 'Mythical - Pink' is not a usable product name; adult novelty item"
+    },
+    {
+      "id": 968828892,
+      "why": "Name 'AquaNATURE Water?' looks like a placeholder, and a $7.23 gallon of water is high"
+    }
+  ],
+  "junk_listed": 20,
+  "junk_lower_bound": 0.0232,
+  "junk_rate": 0.0333,
+  "max_junk_rate": 0.05,
+  "max_tokens": 12000,
+  "miscategorized_examples": [
+    {
+      "category": "Beverages",
+      "id": 10983845,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Beverages",
+      "id": 124165796,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Beauty",
+      "id": 148437291,
+      "should_be": "Pasta, Rice & Dry Goods"
+    },
+    {
+      "category": "Frozen Foods",
+      "id": 19907751937,
+      "should_be": "Kitchen & Dining"
+    },
+    {
+      "category": "Pet Food & Supplies",
+      "id": 169186408,
+      "should_be": "Home"
+    },
+    {
+      "category": "Lawn, Garden & Floral",
+      "id": 19325304249,
+      "should_be": "Kitchen & Dining"
+    },
+    {
+      "category": "Lawn, Garden & Floral",
+      "id": 35609948,
+      "should_be": "Kitchen & Dining"
+    },
+    {
+      "category": "Lawn, Garden & Floral",
+      "id": 1707780971,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Household Supplies",
+      "id": 3345688723,
+      "should_be": "Seasonal & Party"
+    },
+    {
+      "category": "Personal Care",
+      "id": 336141455,
+      "should_be": "Home"
+    },
+    {
+      "category": "Personal Care",
+      "id": 277447361,
+      "should_be": "Home"
+    },
+    {
+      "category": "Condiments, Sauces & Spreads",
+      "id": 10314922,
+      "should_be": "Canned & Jarred Foods"
+    },
+    {
+      "category": "Snacks & Candy",
+      "id": 100934609,
+      "should_be": "Home"
+    },
+    {
+      "category": "Bread & Bakery",
+      "id": 17479700731,
+      "should_be": "Pasta, Rice & Dry Goods"
+    },
+    {
+      "category": "Health & Medicine",
+      "id": 172339662,
+      "should_be": "Pet Food & Supplies"
+    },
+    {
+      "category": "Lawn, Garden & Floral",
+      "id": 258270785,
+      "should_be": "Automotive"
+    },
+    {
+      "category": "Kitchen & Dining",
+      "id": 193040110,
+      "should_be": "Household Supplies"
+    },
+    {
+      "category": "Beverages",
+      "id": 6004810022,
+      "should_be": "Beauty"
+    },
+    {
+      "category": "Beverages",
+      "id": 5488768753,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Health & Medicine",
+      "id": 888772904,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Health & Medicine",
+      "id": 827381244,
+      "should_be": "Electronics"
+    },
+    {
+      "category": "Household Supplies",
+      "id": 44726589,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Household Supplies",
+      "id": 959099250,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Beauty",
+      "id": 44145956,
+      "should_be": "Seasonal & Party"
+    },
+    {
+      "category": "Health & Medicine",
+      "id": 5014524616,
+      "should_be": "Baby"
+    },
+    {
+      "category": "Toys, Books & Games",
+      "id": 5022557264,
+      "should_be": "Kitchen & Dining"
+    },
+    {
+      "category": "Seasonal & Party",
+      "id": 510564843,
+      "should_be": "Baking, Spices & Oils"
+    },
+    {
+      "category": "Household Supplies",
+      "id": 552683013,
+      "should_be": "Seasonal & Party"
+    },
+    {
+      "category": "Electronics",
+      "id": 899302302,
+      "should_be": "School, Office & Crafts"
+    },
+    {
+      "category": "Lawn, Garden & Floral",
+      "id": 883564063,
+      "should_be": "Household Supplies"
+    },
+    {
+      "category": "Electronics",
+      "id": 55375709,
+      "should_be": "Home"
+    },
+    {
+      "category": "Electronics",
+      "id": 739670097,
+      "should_be": "Toys, Books & Games"
+    },
+    {
+      "category": "Pasta, Rice & Dry Goods",
+      "id": 47234900,
+      "should_be": "Canned & Jarred Foods"
+    },
+    {
+      "category": "Seasonal & Party",
+      "id": 409034145,
+      "should_be": "Kitchen & Dining"
+    },
+    {
+      "category": "Lawn, Garden & Floral",
+      "id": 3807423529,
+      "should_be": "Seasonal & Party"
+    },
+    {
+      "category": "Home",
+      "id": 5262667417,
+      "should_be": "Kitchen & Dining"
+    },
+    {
+      "category": "Personal Care",
+      "id": 960182302,
+      "should_be": "Beauty"
+    },
+    {
+      "category": "Kitchen & Dining",
+      "id": 50694859,
+      "should_be": "Household Supplies"
+    },
+    {
+      "category": "Home",
+      "id": 915524601,
+      "should_be": "Kitchen & Dining"
+    }
+  ],
+  "miscategorized_rate": 0.068,
+  "model": "claude-sonnet-5-5",
+  "model_junk_rate": 0.0315,
+  "notes": "No systematic junk class. The sample has a few isolated bad rows: a spam name, a placeholder, a wholesale case, and about five size misparses (an 'L'/'lb' or weight value read as a volume or weight). Category mislabels are the more frequent problem: bobble heads as Beverages, kitchen and bath items as Lawn/Personal Care/Frozen, and a few food items in the wrong food category. | Junk is scattered single rows (placeholder or SKU names, one test listing, one book, one marketplace item, a $3 projector, one bad size parse) with no repeating pattern. The one repeating issue is category labels, such as non-food items filed under Beverages and RC or toy parts filed under Household or Electronics.",
+  "run_id": "20261020-172046-refresh",
+  "sample_rows": 600,
+  "status": "pass",
+  "systematic_junk": false,
+  "usage": {
+    "input_tokens": 108537,
+    "output_tokens": 9027
+  }
+}
