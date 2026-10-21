@@ -163,7 +163,7 @@ nor first in line every run. Two whole chunks in a row failing on server errors 
 `Unavailable`, what it priced is saved, the run ends normally and the schedule retries later; it does not open an issue.
 
 ### Search gold set
-`data/gold-search.json` holds 330 queries as volunteers type them, each with the words the right item must contain (and a
+`data/gold-search.json` holds 340 queries as volunteers type them, each with the words the right item must contain (and a
 size when the query states one). deploy-app runs `app/tools/gold.mjs` on every real pack (not the fixture): the summary
 lists every miss with the top 3 found; below 95% opens `[search-gold]`, below 90% the step fails and the live site keeps
 the previous build. Locally: `node --max-old-space-size=6144 app/tools/gold.mjs --db app/dist/db`. When a volunteer

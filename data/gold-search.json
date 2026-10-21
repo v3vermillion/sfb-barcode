@@ -330,6 +330,16 @@
   {"q": "dish set", "all": ["dinnerware"]},
   {"q": "frying pan", "all": ["frying pan"]},
   {"q": "can opener", "all": ["can opener"]},
-  {"q": "space heater", "all": ["heater"]}
+  {"q": "space heater", "all": ["heater"]},
+  {"q": "skinny pop 28", "all": ["skinnypop"]},
+  {"q": "stonemill rosemary", "all": ["rosemary"]},
+  {"q": "schwebels stuffing", "all": ["stuffing"]},
+  {"q": "loretta corn muffin mix", "all": ["corn muffin"]},
+  {"q": "earthly grains chicken rice", "all": ["chicken", "rice"]},
+  {"q": "chefs cupboard scalloped potatoes", "all": ["great value", "scalloped potatoes"]},
+  {"q": "burmans yellow mustard", "all": ["great value", "yellow mustard"]},
+  {"q": "libbys pumpkin", "all": ["libby", "pumpkin"]},
+  {"q": "craisins original", "all": ["craisins"]},
+  {"q": "chef boyardee beefaroni", "all": ["beefaroni"]}
  ]
 }

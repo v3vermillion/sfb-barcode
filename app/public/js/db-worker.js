@@ -447,10 +447,13 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     for (const g of groups) { const pos = toks.findIndex((t) => g.some((a) => t.startsWith(a))); if (pos >= 0) { if (first < 0 || pos < first) first = pos; if (pos > last) last = pos; } }
     if (first >= 0 && groups.length > 1) s += 1.2 * groups.length / Math.max(groups.length, last - first + 1);
     for (const h of homes) if (h && h === it.cat) s += 0.8;
-    if (head && groups.some((g) => g.some((a) => head === a || (a.length >= 4 && head.startsWith(a))))) s += 1.6;
+    const headHit = !!head && groups.some((g) => g.some((a) => head === a || (a.length >= 4 && head.startsWith(a))));
+    if (headHit) s += 1.6;
     else if (head && toks.length) s -= 0.6;          // the query's words only describe it: a diaper *bag*, a tomato *basket*
-    // Walmart's own brand is the same price tier as another chain's store brand: first when the query named one
-    if (it.storeBrand) s += ownBrandFirst ? 3 : 0.3;
+    // Walmart's own brand is the same price tier as another chain's store brand: first when the query named one, but only
+    // for the item the query names, among the consumable departments other chains' store brands compete in ("giant eagle
+    // pumpkin" is canned pumpkin, not Mainstays pumpkin plates; owner's food-bank photos, 2026-10-21)
+    if (it.storeBrand) s += ownBrandFirst && headHit && S.tier !== "more" ? 3 : 0.3;
     if (it.retired) s -= 1.5;
     if (it.unavailable) s -= 0.4;
     s -= (r / S.N) * 0.8;             // rank within the shard as the final tiebreaker
@@ -503,18 +506,39 @@ function search(q, limit = 40) {
   // never blank: relax one word at a time. The word dropped is the least informative one (the most common) among those
   // whose removal leaves something to show: "great value dry pinto beans" drops "dry" and keeps "pinto"; dropping the
   // rarest word, as before, threw away exactly the word that says what the item is.
-  while (live.length > 1 && !anyAll(() => true)) {
-    const counts = live.map((_, i) => perShard.reduce((a, { bits }) => a + (bits[i] ? popcount(bits[i]) : 0), 0));
-    let pick = -1;
-    for (let i = 0; i < live.length; i++) {
-      if (pick >= 0 && counts[i] <= counts[pick]) continue;
-      if (anyAll((j) => j !== i)) pick = i;
+  // Which word goes first (owner's food-bank photos, 2026-10-21): a number ("skinny pop 28": the 28 bags, not "pop"), then
+  // a brand word, one that is mostly a brand in the listings that carry it ("stonemill rosemary", "martins apple chips",
+  // "schwebels stuffing": Walmart does not carry that product of that brand, and the product is what is valued, so the
+  // brand goes, not "rosemary"), then the most common word.
+  const isNumber = (i) => /^\d/.test(live[i].src);
+  const brandShare = (i) => {
+    let seen = 0, branded = 0;
+    for (const { S, bits } of perShard) {
+      if (!bits[i] || seen >= 80) continue;
+      for (const r of collect([bits[i]], 80 - seen)) {
+        const it = itemOf(S, r, false);
+        const { brandToks, brandJoined } = itemTokens(it.rank, it);
+        seen++;
+        if (live[i].alts.some((a) => brandToks.includes(a) || brandJoined.includes(a))) branded++;
+      }
     }
-    if (pick < 0) pick = counts.indexOf(Math.max(...counts));   // no single word frees a result: drop the most common, go on
+    return seen ? branded / seen : 0;
+  };
+  const drop = (pick) => {
     if (!dropped.includes(live[pick].src)) dropped.push(live[pick].src);
     live = live.filter((_, j) => j !== pick);
     for (const p of perShard) p.bits = p.bits.filter((_, j) => j !== pick);
     relaxed = true;
+  };
+  while (live.length > 1 && !anyAll(() => true)) {
+    const counts = live.map((_, i) => perShard.reduce((a, { bits }) => a + (bits[i] ? popcount(bits[i]) : 0), 0));
+    const frees = live.map((_, i) => anyAll((j) => j !== i));
+    const best = (ok) => { let pick = -1; for (let i = 0; i < live.length; i++) if (frees[i] && ok(i) && (pick < 0 || counts[i] > counts[pick])) pick = i; return pick; };
+    let pick = best(isNumber);
+    if (pick < 0) pick = best((i) => !isNumber(i) && brandShare(i) >= 0.35);
+    if (pick < 0) pick = best(() => true);
+    if (pick < 0) pick = counts.indexOf(Math.max(...counts));   // no single word frees a result: drop the most common, go on
+    drop(pick);
   }
   // candidates per shard, best rank first: items that ARE what a query word names (head noun) before items that only
   // carry the word, so "bananas" reaches the fresh bananas before a thousand banana-flavoured things

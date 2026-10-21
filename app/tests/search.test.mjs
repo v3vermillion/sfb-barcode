@@ -32,6 +32,15 @@ const ROWS = [
   row("Progresso Chicken Noodle Soup, 19 oz Can", "Progresso", 2.48, { size: 19, unit: "oz", cat: "11" }),
   // one unit of a "(200 pack)" bundle listing at a cent: the count must come from the pack, not from the rounded prices
   row("Dixie Bath Cups, 3 oz", "Dixie", 0.01, { size: 3, unit: "oz", cat: "9", listing_price: 2.5, listing_pack: 200, flags: ["pack_listing"] }),
+  // the food bank's shelves, 2026-10-21: an Aldi spice brand that shares a word with a Walmart dip brand, a count typed
+  // after the name, and Walmart's own brand in a durable department
+  row("Stonemill Kitchens Pesto, 7 oz", "Stonemill Kitchens", 5.19, { size: 7, unit: "oz", cat: "4" }),
+  row("Stonemill Kitchens Spinach Artichoke Dip, 10 oz", "Stonemill Kitchens", 4.48, { size: 10, unit: "oz", cat: "4" }),
+  row("Great Value Rosemary Leaves, 0.8 oz", "Great Value", 1.98, { size: 0.8, unit: "oz", cat: "28", store_brand: true }),
+  row("SkinnyPop Skinny Pop Original Popcorn, 4.4 oz", "SkinnyPop", 2.99, { size: 4.4, unit: "oz", cat: "9" }),
+  row("Caroline's Treasures Skinny Guinea Pig Kitchen Mat, 28 x 19 in", "Caroline's Treasures", 21.81, { cat: "18", dept: "Home" }),
+  row("Mainstays 4pk Dinner_pumpkin", "Mainstays", 12.58, { cat: "17", dept: "Home", store_brand: true }),   // the listing as Walmart names it
+  row("Great Value 100% Pure Pumpkin, 15 oz", "Great Value", 1.96, { size: 15, unit: "oz", cat: "6", store_brand: true }),
 ];
 
 let db;
@@ -122,4 +131,19 @@ test("a bundle listing's count is read from the pack, never derived from rounded
   assert.equal(it.packListing, true); assert.equal(it.listingCents, 250); assert.equal(it.listingPack, 200);   // 250 / 1 would say 250
   const hunts = db.search("hunts tomato sauce", 10).items.find((x) => x.name.startsWith("(6 pack)"));
   assert.equal(hunts.packListing, false, "a row without the flag is not a bundle unit");
+});
+
+test("when no item has every word, a count goes first, then a brand word, and the product stays (food-bank photos, 2026-10-21)", () => {
+  const pop = top("skinny pop 28");
+  assert.deepEqual(pop.dropped, ["28"], "the 28 bags, not the word pop");
+  assert.match(pop.items[0].name, /^SkinnyPop/);
+  const spice = top("stonemill rosemary");
+  assert.deepEqual(spice.dropped, ["stonemill"], "Aldi's Stonemill rosemary is valued as rosemary, not as a Stonemill Kitchens dip");
+  assert.match(spice.items[0].name, /Rosemary/);
+});
+
+test("Walmart's own brand ranks first for another chain's brand only among the things the food bank receives", () => {
+  const r = top("giant eagle pumpkin");
+  assert.equal(r.otherBrand?.store, "Giant Eagle");
+  assert.equal(r.items[0].name, "Great Value 100% Pure Pumpkin, 15 oz", "canned pumpkin, not Mainstays pumpkin plates");
 });
