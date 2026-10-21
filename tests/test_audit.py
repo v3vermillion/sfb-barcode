@@ -76,7 +76,9 @@ class Run(StoreCase, unittest.TestCase):
         self.assertEqual(sum(len(c) for c in wm.requested), 40)
         self.write_gates(audit_sample=25, audit_per_department=0)
         wm = FakeWM(self.rows)
-        self.audit.run(wm=wm)
+        # both audits run on fixed dates: the first used the real clock and failed on 2026-10-21, the day NOW + 7
+        with mock.patch.object(self.audit, "_now", return_value=NOW):
+            self.audit.run(wm=wm)
         self.assertEqual(sum(len(c) for c in wm.requested), 25)
         a = [i for c in wm.requested for i in c]
         wm = FakeWM(self.rows)
