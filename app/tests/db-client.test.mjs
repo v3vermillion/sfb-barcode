@@ -198,3 +198,13 @@ test("start() opens the core shards first, says ready, then opens the other depa
   assert.deepEqual(loads[1], ["food", "home"], "then everything on the phone, home included");
   assert.deepEqual(events, ["ready", "more:food+home"]); assert.equal(db.more, null);
 });
+
+test("a worker call with a deadline rejects when the worker never answers, and the log keeps the steps", async () => {
+  const db = new DbClient();
+  db.worker.postMessage = () => {};                 // a worker that never answers
+  await assert.rejects(db.call({ type: "load" }, null, 30), /took more than 0 s to open/);
+  assert.equal(db.pending.size, 0, "the pending entry is dropped with the rejection");
+  db.note("hello");
+  assert.match(db.log.at(-1), /^\d+\.\ds hello$/);
+  assert.deepEqual(JSON.parse(store.get("sfb.boot.log")).slice(-1), [db.log.at(-1)]);
+});

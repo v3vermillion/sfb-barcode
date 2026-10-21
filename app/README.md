@@ -201,6 +201,11 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 - Sample → real: tally lines and recents made on the synthetic fixture carry `sample: true`; the first load of a real
   snapshot drops them and says so once, so sample prices never mix into a real tally.
 - Online: `current.json` is checked; a new snapshot is fetched in the background and applied when idle.
+- A first open that stalls (a download that stops, a pack that will not open) is never an endless spinner: after 30 s
+  without progress the status card says "Taking longer than expected · tap to retry", after 120 s the page reloads
+  itself once, and a pack open past 90 s is an error with a message. Settings › About › Diagnostics lists the boot steps
+  of this launch and the previous one (Copy to send them). On iOS a Home Screen app has its own storage, so its first
+  launch downloads the core once more; the hint says so.
 - Price list date: the header pill ("Prices Oct 13") and every sheet carry the snapshot's date. From 40 days a banner
   under the header says "Price list is N days old" (amber), from 60 days "Price list may be out of date" (red; the list is rebuilt monthly), with an **Update now**
   button that checks, downloads and applies the newest snapshot (`js/staleness.js`; thresholds pinned by

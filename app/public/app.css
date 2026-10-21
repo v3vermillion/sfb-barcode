@@ -538,6 +538,8 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .about { margin-top: 14px; border-top: 1px solid var(--line); }
 .about summary { list-style: none; display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 6px 0; font-size: 16px; font-weight: 500; cursor: pointer; }
 .about summary::-webkit-details-marker { display: none; }
+.diag { margin-top: 10px; } .diag summary { font-size: 13.5px; color: var(--ink-3); cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.diag-log { margin: 6px 0 8px; padding: 8px 10px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11.5px; line-height: 1.4; background: var(--surface-2); border-radius: var(--r-m); }
 .about summary .chev { transition: transform .2s var(--ease-out); }
 .about[open] summary .chev { transform: rotate(270deg); }
 .about summary:focus-visible { outline-offset: 0; }

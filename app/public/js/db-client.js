@@ -22,6 +22,8 @@
 const KEY = "sfb.db";
 const PENDING_KEY = "sfb.db.pending";
 const PERSIST_KEY = "sfb.persist";       // when persistent storage was last requested
+const LOG_KEY = "sfb.boot.log";          // the last diagnostics lines of the previous page (Settings > About)
+const LOAD_TIMEOUT_MS = 90_000;          // a pack open that takes longer than this is an error, never an endless "Loading"
 const PERSIST_RETRY_MS = 86_400_000;     // ask again at most once a day until it is granted
 const DB_ROOT = "./db/";
 const CACHE_PREFIX = "sfb-db-";
@@ -103,6 +105,9 @@ export class DbClient extends EventTarget {
     };
     this.pending = new Map();
     this.seq = 0;
+    // what happened since the page opened, for Settings > About > Diagnostics (the owner reads the phone, not a console):
+    // state changes, the steps of start(), errors; the last entries are also kept in localStorage across a reload
+    this.log = [];
     this.state = "idle";
     this.version = null;
     this.manifest = null;
@@ -121,7 +126,14 @@ export class DbClient extends EventTarget {
   #readKey(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } }
   #writeKey(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage may be blocked */ } }
   #emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
-  #setState(state, extra = {}) { this.state = state; this.#emit("state", { state, ...extra }); }
+  #setState(state, extra = {}) { this.state = state; this.note(`state ${state}${extra.message ? `: ${extra.message}` : ""}`); this.#emit("state", { state, ...extra }); }
+  /** One line in the diagnostics log (seconds since the page opened), kept in memory and, the last 40, in localStorage. */
+  note(text) {
+    const line = `${(performance.now() / 1000).toFixed(1)}s ${text}`;
+    this.log.push(line);
+    if (this.log.length > 200) this.log.splice(0, this.log.length - 200);
+    try { localStorage.setItem(LOG_KEY, JSON.stringify(this.log.slice(-40))); } catch { /* private mode */ }
+  }
 
   #onMessage(m) {
     if (m.type === "progress") { this.#emit("progress", { done: m.done, total: m.total, file: m.file, phase: "load" }); return; }
@@ -131,10 +143,12 @@ export class DbClient extends EventTarget {
     if (m.type === "error") p.reject(new Error(m.error));
     else p.resolve(m.type === "ready" ? m.stats : m.result);
   }
-  call(msg, transfer) {
+  call(msg, transfer, timeoutMs = 0) {
     return new Promise((resolve, reject) => {
       const id = ++this.seq;
-      this.pending.set(id, { resolve, reject });
+      let timer = 0;
+      if (timeoutMs > 0) timer = setTimeout(() => { if (this.pending.delete(id)) reject(new Error(`the price database took more than ${Math.round(timeoutMs / 1000)} s to open`)); }, timeoutMs);
+      this.pending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
       this.worker.postMessage({ ...msg, id }, transfer || []);
     });
   }
@@ -190,6 +204,7 @@ export class DbClient extends EventTarget {
       let installed = this.#readKey(KEY)?.version || null;
       const pending = this.#readKey(PENDING_KEY)?.version || null;
       if (!installed) { const cached = await this.#cachedVersions(); if (cached.length) installed = cached[0]; }
+      this.note(`start: installed ${installed || "none"}, pending ${pending || "none"}, ${navigator.onLine ? "online" : "offline"}`);
       // a fully downloaded newer snapshot waits for an idle moment: boot is one
       if (pending && pending !== installed && (await this.#usable(pending))?.complete) {
         try { await this.#load(pending); this.#writeKey(KEY, { version: pending, installedAt: Date.now() }); this.#writeKey(PENDING_KEY, null); installed = pending; }
@@ -208,7 +223,9 @@ export class DbClient extends EventTarget {
         if (!navigator.onLine) { this.#setState("offline-empty"); return; }
         try {
           const cur = await this.#fetchCurrent();
+          this.note(`current ${cur.version}: downloading the core`);
           await this.#download(cur.version, { background: false, tier: "core" });
+          this.note("core downloaded");
           await this.#load(cur.version);
           this.#writeKey(KEY, { version: cur.version, installedAt: Date.now() });
         } catch (err) {
@@ -332,8 +349,10 @@ export class DbClient extends EventTarget {
     const core = new Set(coreIds(manifest));
     const only = present.filter((id) => core.has(id));
     if (!only.length) throw new Error("the price database on this phone is incomplete");
+    this.note(`open ${version}: ${only.join(", ")}${present.length > only.length ? ` (then ${present.length - only.length} more)` : ""}`);
     const stats = await this.call({ type: "load", root: new URL(DB_ROOT, location.href).href, base: new URL(`${DB_ROOT}${version}/`, location.href).href,
-      manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only });
+      manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only }, null, LOAD_TIMEOUT_MS);
+    this.note(`opened ${version} in ${stats.loadMs} ms (${stats.items} items)`);
     this.manifest = manifest;
     this.stats = { ...stats, wallMs: Math.round(performance.now() - t0), downloadMs: this.#lastDownloadMs };
     this.#lastDownloadMs = null;
