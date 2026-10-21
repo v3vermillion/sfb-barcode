@@ -586,6 +586,8 @@ await scenario(["F58"], "a box: one of its pieces, and the product's other sizes
   check("F58", "the sheet lists the product's other sizes", /Other sizes/i.test(head) && rows >= 1, `${head} · ${rows} rows`);
   const o = await page.evaluate(() => { const i = document.querySelector("#sheet .sheet-inner"); return i.scrollWidth - i.clientWidth; });
   check("F58", "the list never scrolls the sheet sideways", o <= 0, `overflow ${o}px`);
+  const order = await page.evaluate(() => [...document.querySelectorAll("#sheet .sizes-slot [data-rank]")].map((b) => b.getBoundingClientRect().top));
+  check("F58", "the sizes read top-down, smallest count first", order.every((t, i) => i === 0 || t > order[i - 1]), JSON.stringify(order.map(Math.round)));
   await page.click("#sheet .sizes-slot [data-rank]"); await settle(page, 700);
   const title = await visibleText(page, "#sheetTitle");
   check("F58", "tapping another size opens it in the sheet", title && title !== found.name && !/1 of/.test(await visibleText(page, "#sheet .price-basis")), title);
