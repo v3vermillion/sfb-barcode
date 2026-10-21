@@ -510,6 +510,8 @@ export class DbClient extends EventTarget {
   lookupUpc(key) { return this.call({ type: "upc", key }); }
   lookupPlu(code) { return this.call({ type: "plu", code }); }
   item(rank) { return this.call({ type: "item", rank }); }
+  /** The same product's other sizes and counts (see db-worker sizesOf). */
+  sizes(rank, limit = 8) { return this.call({ type: "sizes", rank, limit }); }
 
   /** Remove every downloaded pack and the markers (settings → reset). The app shell is left alone. */
   async reset() {

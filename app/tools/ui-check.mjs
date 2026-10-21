@@ -560,6 +560,37 @@ await scenario(["F57"], "download that stops making progress: the card says so, 
   check("F57", "after two minutes the page reloaded itself once", (await page.evaluate(() => sessionStorage.getItem("sfb.bootRetry"))) === "1");
 });
 
+await scenario(["F58"], "a box: one of its pieces, and the product's other sizes in the sheet (owner, 2026-10-21)", async (set) => {
+  const env = set(await open({ w: 390, h: 844 }));
+  const { page } = env;
+  // an item counted in pieces (eggs, 6 ct) whose product comes in other sizes
+  const found = await page.evaluate(async () => {
+    for (let i = 0; i < 3000; i++) {
+      const it = await window.__sfb.db.item(i);
+      if (!it || it.pack !== 1 || !(it.pieces > 1) || it.priceCents == null || it.priceWithheld || it.basis === "lb") continue;
+      const sizes = await window.__sfb.db.sizes(i);
+      if (sizes.length) return { i, pieces: it.pieces, name: it.name, other: sizes[0].name };
+    }
+    return null;
+  });
+  check("F58", "the sample pack has a counted item with other sizes", !!found, JSON.stringify(found));
+  if (!found) return;
+  await page.evaluate((i) => window.__sfb.openRank(i), found.i); await page.waitForSelector("#sheet[open]"); await settle(page, 900);
+  const seg = await visibleText(page, "#sheet .pack-seg");
+  check("F58", `the sheet offers one of its ${found.pieces}`, new RegExp(`1 of ${found.pieces}`).test(seg), seg);
+  await page.click("#sheet [data-pack=one]"); await settle(page, 300);
+  const basis = await visibleText(page, "#sheet .price-basis");
+  check("F58", "pricing one piece says so beside the price", basis === `1 of ${found.pieces}`, basis);
+  const head = await visibleText(page, "#sheet .sizes-slot h2");
+  const rows = await page.evaluate(() => document.querySelectorAll("#sheet .sizes-slot [data-rank]").length);
+  check("F58", "the sheet lists the product's other sizes", /Other sizes/i.test(head) && rows >= 1, `${head} · ${rows} rows`);
+  const o = await page.evaluate(() => { const i = document.querySelector("#sheet .sheet-inner"); return i.scrollWidth - i.clientWidth; });
+  check("F58", "the list never scrolls the sheet sideways", o <= 0, `overflow ${o}px`);
+  await page.click("#sheet .sizes-slot [data-rank]"); await settle(page, 700);
+  const title = await visibleText(page, "#sheetTitle");
+  check("F58", "tapping another size opens it in the sheet", title && title !== found.name && !/1 of/.test(await visibleText(page, "#sheet .price-basis")), title);
+});
+
 await scenario(["F33", "F34"], "Recent", async (set) => {
   const env = set(await open({}));
   const { page } = env;

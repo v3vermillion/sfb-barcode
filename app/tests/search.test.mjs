@@ -41,6 +41,25 @@ const ROWS = [
   row("Caroline's Treasures Skinny Guinea Pig Kitchen Mat, 28 x 19 in", "Caroline's Treasures", 21.81, { cat: "18", dept: "Home" }),
   row("Mainstays 4pk Dinner_pumpkin", "Mainstays", 12.58, { cat: "17", dept: "Home", store_brand: true }),   // the listing as Walmart names it
   row("Great Value 100% Pure Pumpkin, 15 oz", "Great Value", 1.96, { size: 15, unit: "oz", cat: "6", store_brand: true }),
+  // photos 6-10: a soup named "Chili Mac", a brand typed as two words, a product line named without its maker, a brand
+  // that makes canned fruit only, and an appliance that shares the product line's words
+  row("Campbell's Chunky Chili Mac Soup, 18.8 oz Can", "Chunky", 1.98, { size: 18.8, unit: "oz", cat: "11" }),
+  row("Hamburger Helper Chili Macaroni, 5.2 oz Box", "Hamburger Helper", 1.38, { size: 5.2, unit: "oz", cat: "7" }),
+  row("Redpack Whole Peeled Plum Tomatoes in Puree, 28 oz Can", "Redpack", 1.98, { size: 28, unit: "oz", cat: "6" }),
+  row("(6 pack) Red Gold Whole Peeled Tomatoes, 28 Oz", "Red Gold", 11.76, { size: 28, unit: "oz", pack: 6, cat: "6" }),
+  row("Oven Fry Extra Crispy Seasoned Coating Mix for Chicken, 4.2 oz Box", "Kraft Oven Fry", 4.23, { size: 4.2, unit: "oz", cat: "7" }),
+  row("Hamilton Beach Sure-Crisp Air Fry Oven", "Hamilton Beach", 44.96, { cat: "17", dept: "Home" }),
+  row("Mission Pride Pear Slices 15oz", "Mission Pride", 0.98, { size: 15, unit: "oz", cat: "6" }),
+  row("Mission Pride Peach Slices 15oz", "Mission Pride", 0.98, { size: 15, unit: "oz", cat: "6" }),
+  row("Great Value Light Syrup Extra Cherry Fruit Mix, 15 oz", "Great Value", 1.08, { size: 15, unit: "oz", cat: "6", store_brand: true }),
+  row("Zilla Reptile Munchies Vegetable and Fruit Mix 4 Ounces", "Zilla", 14.95, { size: 4, unit: "oz", cat: "19", dept: "Pets" }),
+  // one product in its sizes: a single bar, boxes whose count follows the box's weight, a count size, a bundle of boxes
+  row("Rice Krispies Treats Original Chewy Marshmallow Snack Bars, 26.4 oz, 12 Count", "Rice Krispies Treats", 17.57, { size: 26.4, unit: "oz", cat: "9" }),
+  row("Rice Krispies Treats Original Chewy Marshmallow Snack Bar, Kids Snacks, 2.2 oz", "Rice Krispies Treats", 1.48, { size: 2.2, unit: "oz", cat: "9" }),
+  row("Rice Krispies Treats Original Chewy Marshmallow Snack Bars, Kids Snacks, 26 oz, 20 Count", "Rice Krispies Treats", 14.63, { size: 26, unit: "oz", cat: "9" }),
+  row("Rice Krispies Treats Original Chewy Marshmallow Snack Bars, 40 Ct", "Rice Krispies Treats", 13.79, { size: 40, unit: "ct", cat: "9" }),
+  row("(2 pack) Rice Krispies Treats Original Chewy Marshmallow Snack Bars, 26.4 oz, 12 Count", "Rice Krispies Treats", 34.0, { size: 26.4, unit: "oz", pack: 2, cat: "9" }),
+  row("Rice Krispies Treats Original Breakfast Cereal, 11.6 oz", "Rice Krispies Treats", 6.86, { size: 11.6, unit: "oz", cat: "7" }),
 ];
 
 let db;
@@ -146,4 +165,34 @@ test("Walmart's own brand ranks first for another chain's brand only among the t
   const r = top("giant eagle pumpkin");
   assert.equal(r.otherBrand?.store, "Giant Eagle");
   assert.equal(r.items[0].name, "Great Value 100% Pure Pumpkin, 15 oz", "canned pumpkin, not Mainstays pumpkin plates");
+});
+
+test("words the shelves typed differently from the listing: Chili Mac, Red Pack, Oven Fry (food-bank photos 6-10, 2026-10-21)", () => {
+  const mac = top("chunky chili mac");
+  assert.deepEqual(mac.dropped, [], "mac is a word of the listing, not only short for macaroni");
+  assert.match(mac.items[0].name, /Chunky Chili Mac/);
+  assert.match(top("red pack whole peeled tomatoes").items[0].name, /^Redpack/, "the brand typed as two words, not a Red Gold 6 pack");
+  assert.match(top("oven fry").items[0].name, /Coating Mix/, "Kraft Oven Fry, not an air fry oven");
+});
+
+test("a brand Walmart has, set aside, still says what kind of item it is", () => {
+  const r = top("mission pride fruit mix");
+  assert.ok(r.dropped.includes("pride") && r.dropped.includes("mission"));
+  assert.match(r.items[0].name, /Fruit Mix, 15 oz/, "Mission Pride makes canned fruit: the canned fruit mix, not a reptile food");
+});
+
+test("a box priced as one of its pieces, and the product's other sizes (owner, 2026-10-21: individual, box, count of)", () => {
+  const box = top("rice krispies treats 26.4 oz 12 count").items.find((x) => x.name.startsWith("Rice Krispies Treats Original Chewy Marshmallow Snack Bars, 26.4"));
+  assert.equal(box.pack, 1, "the box is one listing");
+  assert.equal(box.pieces, 12, "its 12 bars, for pricing one of them");
+  const find = (q, re) => top(q).items.find((x) => re.test(x.name));
+  assert.equal(find("rice krispies treats 40 ct", /40 Ct/).pieces, 40, "a count size is its pieces");
+  assert.equal(find("rice krispies treats 2.2 oz", /2\.2 oz/).pieces, 1, "a single bar");
+  assert.equal(find("rice krispies treats 26.4 oz 12 count", /^\(2 pack\)/).pieces, 2, "a bundle is priced one box at a time");
+  const sizes = db.sizes(box.rank).map((x) => x.name);
+  assert.ok(sizes.some((n) => /2\.2 oz/.test(n)), "the single bar");
+  assert.ok(sizes.some((n) => /20 Count/.test(n)) && sizes.some((n) => /40 Ct/.test(n)), "the other boxes");
+  assert.ok(!sizes.some((n) => /^\(2 pack\)/.test(n)), "not a bundle of the same box");
+  assert.ok(!sizes.some((n) => /Cereal/.test(n)), "not the cereal of the same brand");
+  assert.ok(!sizes.some((n) => n === box.name), "not the item itself");
 });

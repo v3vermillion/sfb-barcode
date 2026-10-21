@@ -340,6 +340,11 @@
   {"q": "burmans yellow mustard", "all": ["great value", "yellow mustard"]},
   {"q": "libbys pumpkin", "all": ["libby", "pumpkin"]},
   {"q": "craisins original", "all": ["craisins"]},
-  {"q": "chef boyardee beefaroni", "all": ["beefaroni"]}
+  {"q": "chef boyardee beefaroni", "all": ["beefaroni"]},
+  {"q": "chunky chili mac", "all": ["chunky", "chili mac"]},
+  {"q": "red pack whole peeled tomatoes", "all": ["redpack", "whole peeled"]},
+  {"q": "oven fry", "all": ["oven fry", "coating"]},
+  {"q": "swanson sipping bone broth beef", "all": ["swanson", "sipping"]},
+  {"q": "mission pride fruit mix", "all": ["fruit mix", "15 oz"]}
  ]
 }

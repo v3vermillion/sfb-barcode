@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, piecesOf, countText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -686,8 +686,9 @@ async function runSearch(q) {
 function rowHtml(it, toks) {
   const { pre, brand, rest } = splitTitle(it);
   const title = brand ? `${highlight(pre, toks)}<b>${highlight(brand, toks)}</b>${highlight(rest, toks)}` : highlight(rest, toks);
-  const tags = [sizeText(it), it.pack > 1 ? `Pack of ${it.pack}` : "", it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : ""].filter(Boolean);
-  const sub = it.basis === "lb" ? "<small>per lb</small>" : it.pack > 1 ? `<small>${money(Math.round(it.priceCents / it.pack))} each</small>` : "";
+  const n = piecesOf(it);
+  const tags = [sizeText(it), countText(it), it.storeBrand ? "Store brand" : "", it.retired ? "Older barcode" : ""].filter(Boolean);
+  const sub = it.basis === "lb" ? "<small>per lb</small>" : n > 1 ? `<small>${money(Math.round(it.priceCents / n))} each</small>` : "";
   const value = it.priceWithheld ? `<small>Equivalent value</small>` : sub;
   return `<li><button class="row${it.retired ? " is-retired" : ""}" type="button" data-rank="${it.rank}"><span class="name">${title}</span><span class="price">${money(it.priceCents)}${value}</span><span class="meta">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span></button></li>`;
 }
@@ -772,7 +773,8 @@ function basisText(res) {
   if (res.unit === "lb") return "per lb";
   if (res.kind === "store-label") return "on the label";
   if (res.listing) return res.unitCents === res.listing.cents ? `pack of ${res.listing.n}` : "each";
-  return it && it.pack > 1 ? (res.unitCents != null && res.unitCents !== res.priceCents ? `1 of ${it.pack}` : "whole pack") : "each";
+  const n = piecesOf(it);
+  return n > 1 ? (res.unitCents != null && res.unitCents !== res.priceCents ? `1 of ${n}` : "whole pack") : "each";
 }
 /** The big price, read by a screen reader as one phrase ("$4.84 each"); the visual parts are hidden from it. */
 function priceBlockHtml(res) {
@@ -787,7 +789,7 @@ function sheetHtml(res) {
   const chips = [];
   if (it && (res.kind === "exact" || res.kind === "closest")) {
     const s = sizeText(it); if (s) chips.push(s);
-    if (it.pack > 1) chips.push(`Pack of ${it.pack}`);
+    const c = countText(it); if (c) chips.push(c);
     if (it.storeBrand) chips.push("Store brand");
     if (it.retired) chips.push("Older barcode");
   }
@@ -812,8 +814,8 @@ function sheetHtml(res) {
   // lists only as a "(N pack)" bundle is priced as one unit, with the bundle's own price as the alternate
   const packSeg = res.listing && res.priceCents != null
     ? `<div class="seg pack-seg" role="group" aria-label="Price one item or the whole pack"><button type="button" data-pack="unit" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">One · ${money(res.priceCents)}</button><button type="button" data-pack="listing" data-cents="${res.listing.cents}" aria-pressed="${res.unitCents === res.listing.cents}">Pack of ${res.listing.n} · ${money(res.listing.cents)}</button></div>`
-    : it && it.pack > 1 && res.unit !== "lb" && res.priceCents != null
-    ? `<div class="seg pack-seg" role="group" aria-label="Price the whole pack or one item"><button type="button" data-pack="whole" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">Whole pack · ${money(res.priceCents)}</button><button type="button" data-pack="one" data-cents="${Math.round(res.priceCents / it.pack)}" aria-pressed="${res.unitCents != null && res.unitCents !== res.priceCents}">1 of ${it.pack} · ${money(Math.round(res.priceCents / it.pack))}</button></div>`
+    : it && piecesOf(it) > 1 && res.unit !== "lb" && res.priceCents != null
+    ? `<div class="seg pack-seg" role="group" aria-label="Price the whole pack or one item"><button type="button" data-pack="whole" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">Whole pack · ${money(res.priceCents)}</button><button type="button" data-pack="one" data-cents="${Math.round(res.priceCents / piecesOf(it))}" aria-pressed="${res.unitCents != null && res.unitCents !== res.priceCents}">1 of ${piecesOf(it)} · ${money(Math.round(res.priceCents / piecesOf(it)))}</button></div>`
     : "";
   const liveRow = (LIVE_URL && prefs.live && res.gtin && res.kind !== "store-label" && res.kind !== "plu" && res.kind !== "not-ready") ? `<div class="live-row" data-state="idle" hidden></div>` : "";
 
@@ -866,9 +868,31 @@ function sheetHtml(res) {
     ${stepper}
     <div class="actions">${primary}${secondary}${again}</div>
     </div></div>
-    ${basisCard}${also}
+    ${basisCard}${also}<div class="sizes-slot">${sizesHtml(res)}</div>
     ${facts.length ? `<ul class="facts">${facts.map(([k, v]) => `<li><span>${k}</span><span>${v}</span></li>`).join("")}</ul>` : ""}
   </div>`;
+}
+
+// the same product in its other sizes and counts (a single bar, the 8, 16 and 40 count boxes), from the worker after the
+// sheet opens, so a box can be priced against its single and the other way round
+function sizesHtml(res) {
+  const rows = res.sizes || [];
+  return rows.length ? `<section class="also"><h2 class="h2">Other sizes</h2><ol class="list list--compact">${rows.map((o) => rowHtml(o, [])).join("")}</ol></section>` : "";
+}
+async function loadSizes(res) {
+  const it = res.item;
+  if (res.sizes || !it || (res.kind !== "exact" && res.kind !== "closest" && res.kind !== "live")) return;
+  const rows = await db.sizes(it.rank).catch(() => null);
+  if (!rows?.length || state.sheetRes !== res || !el.sheet.open) return;
+  res.sizes = rows;
+  const slot = el.sheet.querySelector(".sizes-slot");
+  if (!slot) return;
+  slot.innerHTML = sizesHtml(res);
+  slot.querySelectorAll("[data-rank]").forEach((b) => b.addEventListener("click", () => openInSheet(Number(b.dataset.rank))));
+}
+async function openInSheet(rank) {
+  const item = await db.item(rank);
+  if (item) { const r = fromItem(item); state.qty = 1; rerenderSheet(r); liveCheck(r).catch(() => {}); }
 }
 
 function boldTitle(item) {
@@ -889,6 +913,7 @@ function openResolution(res, { source = "search" } = {}) {
   requestAnimationFrame(() => perf.opens.push({ kind: res.kind, source, ms: Math.round((performance.now() - t0) * 10) / 10 }));
   if (res.priceCents != null) haptic(8);
   liveCheck(res).catch(() => {});
+  loadSizes(res).catch(() => {});
 }
 function rerenderSheet(res) {
   state.sheetRes = res;
@@ -896,6 +921,7 @@ function rerenderSheet(res) {
   el.sheet.querySelector(".x-btn")?.addEventListener("click", () => modals.close(el.sheet));
   wireSheet(el.sheet, res);
   el.sheet.querySelector(".sheet-inner").scrollTop = 0;
+  loadSizes(res).catch(() => {});
 }
 function refreshPrice(dlg, res) {
   const pb = dlg.querySelector(".price-block");
@@ -918,7 +944,7 @@ function wireSheet(dlg, res) {
     // from the price the sheet holds now (a live price the volunteer adopted included), never the price it was drawn with
     res.packOne = b.dataset.pack === "one";
     res.packListing = b.dataset.pack === "listing";
-    res.unitCents = res.packOne ? Math.round(res.priceCents / Math.max(1, res.item?.pack || 1)) : res.packListing && res.listing ? res.listing.cents : res.priceCents;
+    res.unitCents = res.packOne ? Math.round(res.priceCents / piecesOf(res.item)) : res.packListing && res.listing ? res.listing.cents : res.priceCents;
     dlg.querySelectorAll("[data-pack]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     refreshPrice(dlg, res);
     haptic(5);
@@ -939,10 +965,7 @@ function wireSheet(dlg, res) {
     }
     else if (act === "close") { if (state.scanOpen && state.source === "scan") state.closeScannerAfterSheet = true; modals.close(dlg); }
   }));
-  dlg.querySelectorAll("[data-rank]").forEach((b) => b.addEventListener("click", async () => {
-    const item = await db.item(Number(b.dataset.rank));
-    if (item) { const r = fromItem(item); state.qty = 1; rerenderSheet(r); liveCheck(r).catch(() => {}); }
-  }));
+  dlg.querySelectorAll("[data-rank]").forEach((b) => b.addEventListener("click", () => openInSheet(Number(b.dataset.rank))));
 }
 el.sheet.addEventListener("closed", () => {
   if (state.closeScannerAfterSheet) { state.closeScannerAfterSheet = false; closeScanner(); }
@@ -1021,7 +1044,7 @@ async function liveCheck(res) {
       row.innerHTML = `${icon("bolt")}<span>${esc(src)} ${when}: <b>${money(live)}</b></span><span class="delta ${diff > 0 ? "up" : "down"}">${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}</span><button class="btn btn--ghost btn--sm" type="button">Use this price</button>`;
       row.querySelector("button").addEventListener("click", () => {
         res.priceCents = live; res.livePrice = live; res.live = j;
-        if (res.packOne && res.item?.pack > 1) res.unitCents = Math.round(live / res.item.pack);
+        if (res.packOne && piecesOf(res.item) > 1) res.unitCents = Math.round(live / piecesOf(res.item));
         else if (res.packListing && res.listing) { res.listing = { ...res.listing, cents: live * res.listing.n }; res.unitCents = res.listing.cents; }
         else res.unitCents = live;
         refreshPrice(el.sheet, res);
@@ -1054,7 +1077,7 @@ function saveTally() { writeJson(TALLY_KEY, tally); renderTallyPill(); }
 function addToTally(res) {
   const cents = lineTotal(res);
   const base = res.kind === "exact" || res.kind === "closest" ? titleOf(res.item) : res.title;
-  const title = res.packOne && res.item?.pack > 1 ? `${base} (1 of ${res.item.pack})` : res.packListing && res.listing ? `${base} (pack of ${res.listing.n})` : base;
+  const title = res.packOne && piecesOf(res.item) > 1 ? `${base} (1 of ${piecesOf(res.item)})` : res.packListing && res.listing ? `${base} (pack of ${res.listing.n})` : base;
   const line = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, unitCents: unitCents(res), qty: state.qty, unit: res.unit, kind: res.kind, cents, at: Date.now(), key: res.key, ...(db.manifest?.fixture ? { sample: true } : {}) };
   tally.push(line);
   saveTally();

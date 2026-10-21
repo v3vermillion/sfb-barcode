@@ -23,7 +23,7 @@ const splitGid = (g) => [Math.floor(g / SHARD_SPAN), g % SHARD_SPAN];
 // Query-time vocabulary: abbreviations volunteers actually type (AND-expansions) and spellings that
 // should match each other (OR-groups). Index tokens are never altered; this only widens the query.
 const ABBREV = {
-  gv: ["great", "value"], pb: ["peanut", "butter"], pbj: ["peanut", "butter"], mac: ["macaroni"],
+  gv: ["great", "value"], pb: ["peanut", "butter"], pbj: ["peanut", "butter"],
   tp: ["toilet", "paper"], hbs: ["head", "shoulders"],
   oj: ["orange", "juice"], aj: ["apple", "juice"], ev: ["extra", "virgin"], evoo: ["extra", "virgin", "olive", "oil"], gf: ["gluten", "free"],
   sf: ["sugar", "free"], ls: ["low", "sodium"], nsa: ["no", "salt", "added"], ww: ["whole", "wheat"], wg: ["whole", "grain"],
@@ -219,12 +219,23 @@ function itemOf(S, rank, withBasis = true) {
     cat: S.cat[rank], catName: (db.catNames && db.catNames[S.cat[rank]]) || CAT_NAME[S.cat[rank]] || "Other", upc: upc ? String(upc).padStart(14, "0") : null,
     placeholder: !!(flags2 & F2.PLACEHOLDER), discontinued: !!(flags2 & F2.DISCONTINUED), storePrice: !!(flags2 & F2.STORE_PRICE), unitSuspect: !!(flags2 & F2.UNIT_SUSPECT),
     priceWithheld: withheld, rawPriceCents: withheld ? S.rawPrice[rank] : null, valueConfidence: withheld ? VALUE_CONF[(flags2 >> 3) & 3] : null,
-    packListing, listingCents, listingPack,
+    packListing, listingCents, listingPack, pieces: piecesOf(S, rank, txt.slice(sep + 1)),
     valueBasis: withheld && withBasis && basisRank !== NO_RANK && basisRank !== rank ? itemOf(S, basisRank, false) : null,
     retired: !!(flags & F.RETIRED), noSize: !!(flags & F.NO_SIZE), promo: !!(flags & F.PROMO), carried: !!(flags & F.CARRIED),
     storeBrand: !!(flags & F.STORE_BRAND), primary: !!(flags & F.PRIMARY), sizeConflict: !!(flags & F.SIZE_CONFLICT), unavailable: !!(flags & F.UNAVAILABLE),
   };
 }
+// how many pieces one listing holds, for "1 of N": its pack, else a count the name states beside a total weight ("26.4 oz,
+// 12 Count", "8 ea", "Size 4, 60 Count"), else a count size ("40 Ct"). A "(6 pack)" bundle prefix is not one; 1 when none
+const PIECES_RX = /(?<![\d.])(\d{1,3})\s*-?\s*(?:count|ct|cnt|ea|each|pk|bars|pieces|pcs|packets|pouches|cups|cans|bottles|rolls|sticks|pods|squares|cookies|cakes|pies|packs?)\b(?!\s*\))/i;
+function piecesOf(S, rank, name) {
+  if (S.pack[rank] > 1) return S.pack[rank];
+  if (S.basis[rank]) return 1;
+  const m = PIECES_RX.exec(name);
+  const n = m ? Number(m[1]) : UNIT_NAME[S.unit[rank]] === "ct" ? Math.round(S.size[rank] || 0) : 0;
+  return n > 1 && n <= 500 ? n : 1;
+}
+
 /** An item by its id across the pack (shard * 2^24 + rank); null when its shard is not loaded. */
 function item(g, withBasis = true) {
   const [si, r] = splitGid(Number(g));
@@ -408,7 +419,7 @@ function otherStoreBrand(tokens) {
   return null;
 }
 
-function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst = false) {
+function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst = false, joined = [], brandHome = 0) {
   const nums = numberTokens(qTokens);
   const homes = homeCategories(S, groups);
   const scored = ranks.map((r) => {
@@ -436,10 +447,14 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     const namesBrand = (g) => brandToks.some((b) => covers(g, 0, b)) || brandJoined.some((j) => covers(g, 0, j));
     if (brandToks.length && groups.length && namesBrand(groups[0])
         && (brandToks.every((b) => groups.some((g, gi) => covers(g, gi, b))) || brandJoined.some((j) => groups.some((g, gi) => covers(g, gi, j))))) s += 1.5;
+    // a product line named without its maker: "oven fry" is the brand Kraft Oven Fry, the words after the company name
+    else if (brandToks.length >= 3 && groups.length >= 2 && covers(groups[0], 0, brandToks[1])
+        && brandToks.slice(1).every((b) => groups.some((g, gi) => covers(g, gi, b)))) s += 1.5;
     // the plain item: every word of the listing (brand, sizes and qualifiers aside) is in the query ("Organic Bananas"
     // for "bananas", "Heinz Ketchup, 20 oz" for "ketchup"), not a product made with it ("Banana Pouch")
     // (the word as typed or a listed synonym, not its singular: "Chocolate Chip" cookies are not "chocolate chips")
     if (typed && content.length && content.every((t) => PLAIN_QUALIFIERS.has(t) || typed.some((w, gi) => w.has(t) || (gi === lastG && [...w].some((x) => t.startsWith(x)))))) s += 1.2;
+    for (const j of joined) if (tokSet.has(j)) s += 1.5;   // the brand typed as two words: "red pack" is Redpack, not a Red Gold 6 pack
     for (const n of nums) { if ((it.size && Math.abs(it.size - n) < 0.01) || it.pack === n) s += 1.2; }
     s -= 0.03 * Math.max(0, toks.length - groups.length);
     // phrase proximity: query words that sit next to each other in the name are the item the volunteer means
@@ -447,6 +462,7 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     for (const g of groups) { const pos = toks.findIndex((t) => g.some((a) => t.startsWith(a))); if (pos >= 0) { if (first < 0 || pos < first) first = pos; if (pos > last) last = pos; } }
     if (first >= 0 && groups.length > 1) s += 1.2 * groups.length / Math.max(groups.length, last - first + 1);
     for (const h of homes) if (h && h === it.cat) s += 0.8;
+    if (brandHome && it.cat === brandHome) s += 2;
     const headHit = !!head && groups.some((g) => g.some((a) => head === a || (a.length >= 4 && head.startsWith(a))));
     if (headHit) s += 1.6;
     else if (head && toks.length) s -= 0.6;          // the query's words only describe it: a diaper *bag*, a tomato *basket*
@@ -477,6 +493,46 @@ function andCount(bs) {
   return n;
 }
 
+// the share of the items carrying a word (up to 80 sampled) whose brand is or contains it: near 1 for "redpack" or
+// "stonemill", low for "rosemary"
+function brandShareOf(alts) {
+  let seen = 0, branded = 0;
+  for (const S of db.shards) {
+    if (!S || seen >= 80) continue;
+    const bits = groupBits(S, alts);
+    if (!bits) continue;
+    for (const r of collect([bits], 80 - seen)) {
+      const it = itemOf(S, r, false);
+      const { brandToks, brandJoined } = itemTokens(it.rank, it);
+      seen++;
+      if (alts.some((a) => brandToks.includes(a) || brandJoined.includes(a))) branded++;
+    }
+  }
+  return seen ? branded / seen : 0;
+}
+
+// the category of most (at least 60%) of the items whose brand carries every one of these words, else 0
+function brandCategory(altsList) {
+  const tally = new Map();
+  let seen = 0;
+  for (const S of db.shards) {
+    if (!S || seen >= 120) continue;
+    const bs = altsList.map((alts) => groupBits(S, alts));
+    if (bs.some((b) => !b)) continue;
+    for (const r of collect(bs, 400)) {
+      if (seen >= 120) break;
+      const it = itemOf(S, r, false);
+      const { brandToks, brandJoined } = itemTokens(it.rank, it);
+      if (!altsList.every((alts) => alts.some((a) => brandToks.includes(a) || brandJoined.includes(a)))) continue;
+      seen++;
+      tally.set(it.cat, (tally.get(it.cat) || 0) + 1);
+    }
+  }
+  let best = 0, n = 0;
+  for (const [c, k] of tally) if (k > n) { best = c; n = k; }
+  return seen >= 2 && n / seen >= 0.6 ? best : 0;
+}
+
 function search(q, limit = 40) {
   const t0 = performance.now();
   let tokens = tokenize(q).filter(Boolean);
@@ -488,6 +544,16 @@ function search(q, limit = 40) {
   if (other) { otherBrand = { brand: other.brand, store: other.store }; tokens = [...tokens.slice(0, other.start), ...tokens.slice(other.end)]; }
   const shards = db.shards.filter(Boolean);
   let groups = expand(tokens);
+  const joined = [];
+  // two typed words that are one brand word in the listings ("red pack" is Redpack, "veg all" Veg-All): the joined word
+  // is an alternative of both, so an item carrying it matches the pair. Only a joined word that is mostly a brand, so
+  // "all purpose" does not start matching an "allpurpose" somewhere in a name (owner's food-bank photos, 2026-10-21)
+  for (let i = 0; i + 1 < groups.length; i++) {
+    const a = groups[i].src, b = groups[i + 1].src, ab = a + b;
+    if (a === b || /^\d/.test(a) || /^\d/.test(b) || ab.length < 5 || !hasExactToken(ab) || brandShareOf([ab]) < 0.6) continue;
+    for (const g of [groups[i], groups[i + 1]]) if (!g.alts.includes(ab)) g.alts = [...g.alts, ab];
+    joined.push(ab);
+  }
   const matches = (g) => g.alts.some((a) => hasAnyToken(a));
   let fuzzy = false, relaxed = false;
   const dropped = [];
@@ -511,20 +577,10 @@ function search(q, limit = 40) {
   // "schwebels stuffing": Walmart does not carry that product of that brand, and the product is what is valued, so the
   // brand goes, not "rosemary"), then the most common word.
   const isNumber = (i) => /^\d/.test(live[i].src);
-  const brandShare = (i) => {
-    let seen = 0, branded = 0;
-    for (const { S, bits } of perShard) {
-      if (!bits[i] || seen >= 80) continue;
-      for (const r of collect([bits[i]], 80 - seen)) {
-        const it = itemOf(S, r, false);
-        const { brandToks, brandJoined } = itemTokens(it.rank, it);
-        seen++;
-        if (live[i].alts.some((a) => brandToks.includes(a) || brandJoined.includes(a))) branded++;
-      }
-    }
-    return seen ? branded / seen : 0;
-  };
-  const drop = (pick) => {
+  const brandShare = (i) => brandShareOf(live[i].alts);
+  const brandDropped = [];   // the alternatives of brand words set aside: what kind of item that brand makes still counts
+  const drop = (pick, asBrand = false) => {
+    if (asBrand) brandDropped.push(live[pick].alts);
     if (!dropped.includes(live[pick].src)) dropped.push(live[pick].src);
     live = live.filter((_, j) => j !== pick);
     for (const p of perShard) p.bits = p.bits.filter((_, j) => j !== pick);
@@ -534,12 +590,24 @@ function search(q, limit = 40) {
     const counts = live.map((_, i) => perShard.reduce((a, { bits }) => a + (bits[i] ? popcount(bits[i]) : 0), 0));
     const frees = live.map((_, i) => anyAll((j) => j !== i));
     const best = (ok) => { let pick = -1; for (let i = 0; i < live.length; i++) if (frees[i] && ok(i) && (pick < 0 || counts[i] > counts[pick])) pick = i; return pick; };
-    let pick = best(isNumber);
-    if (pick < 0) pick = best((i) => !isNumber(i) && brandShare(i) >= 0.35);
+    let pick = best(isNumber), asBrand = false;
+    // a long description ("swanson sipping bone broth beef") keeps its brand: one word too many there is a flavour or
+    // variant the brand does not make, and the brand's nearest product is the better match
+    if (pick < 0 && live.length <= 4) { pick = best((i) => !isNumber(i) && brandShare(i) >= 0.35); asBrand = pick >= 0; }
     if (pick < 0) pick = best(() => true);
-    if (pick < 0) pick = counts.indexOf(Math.max(...counts));   // no single word frees a result: drop the most common, go on
-    drop(pick);
+    // no single word frees a result: drop a brand word first (an unknown brand such as "mission pride fruit mix" or
+    // "mothers maid apple sauce" shares a word with brands Walmart has), else the most common word, and go on
+    if (pick < 0) {
+      let b = -1;
+      for (let i = 0; i < live.length; i++) if (!isNumber(i) && brandShare(i) >= 0.35 && (b < 0 || counts[i] > counts[b])) b = i;
+      pick = b >= 0 ? b : counts.indexOf(Math.max(...counts));
+      asBrand = b >= 0;
+    }
+    drop(pick, asBrand);
   }
+  // the kind of item the set-aside brand makes ("mission pride fruit mix": Mission Pride is canned fruit, so the canned
+  // fruit mix, not a reptile food or a trail mix): the one category holding most of the items branded with every word
+  const brandHome = brandDropped.length ? brandCategory(brandDropped) : 0;
   // candidates per shard, best rank first: items that ARE what a query word names (head noun) before items that only
   // carry the word, so "bananas" reaches the fresh bananas before a thousand banana-flavoured things
   const CAND = Math.max(limit * 10, 400);
@@ -565,11 +633,62 @@ function search(q, limit = 40) {
       const seen = new Set(ranks);
       for (const r of collect(bits, cand)) { if (ranks.length >= cand) break; if (!seen.has(r)) ranks.push(r); }
     }
-    scored = scored.concat(scoreCandidates(S, ranks, tokens, alts, typed, !!otherBrand));
+    scored = scored.concat(scoreCandidates(S, ranks, tokens, alts, typed, !!otherBrand, joined, brandHome));
   }
   scored.sort((a, b) => b.s - a.s || a.it.rank - b.it.rank);
   const items = scored.slice(0, limit).map((x) => x.it);
   return { query: q, items, relaxed, dropped, fuzzy, otherBrand, total, ms: Math.round((performance.now() - t0) * 100) / 100 };
+}
+
+// ---------------------------------------------------------------- other sizes
+// The same product in its other sizes and counts (a single bar, the 8, 16 and 40 count boxes): the brand's items in the
+// same department whose names, brand words and quantities aside, mostly agree with this one. Owner, 2026-10-21: "for a
+// box in bulk such as Rice Krispies ... the different sizes and variations they can come in - individual, box - count of".
+const FILLER = new Set(["kids", "snack", "snacks", "new", "value", "size", "family", "pack", "packs", "variety", "bulk", "per", "for"]);
+function nameWords(it, brandToks) {
+  const out = new Set();
+  for (const t of tokenize(it.name)) if (!/^\d/.test(t) && t.length > 1 && !UNIT_WORDS.has(t) && !FILLER.has(t) && !brandToks.includes(t)) out.add(t.endsWith("s") && t.length > 3 ? t.slice(0, -1) : t);
+  return out;
+}
+const BUNDLE_RX = /^\(\d+ pack\)/i;
+function sizesOf(g, limit = 8) {
+  const me = item(g, false);
+  if (!me || !me.brand) return [];
+  const [si] = splitGid(Number(g));
+  const S = db.shards[si];
+  const brandToks = tokenize(me.brand).filter((t) => !UNIT_WORDS.has(t));
+  if (!brandToks.length) return [];
+  let bits = null;
+  for (const t of brandToks) { const b = groupBits(S, [t]); if (!b) return []; if (!bits) bits = b.slice(); else for (let i = 0; i < bits.length; i++) bits[i] &= b[i]; }
+  const mine = nameWords(me, brandToks);
+  // a big brand (Great Value) narrows to the listings carrying this one's rarest word as well
+  if (andCount([bits]) > 600 && mine.size) {
+    let rare = null, rareN = Infinity;
+    for (const w of mine) { const b = groupBits(S, [w]); if (!b) continue; const n = andCount([bits, b]); if (n > 0 && n < rareN) { rare = b; rareN = n; } }
+    if (rare) bits = bits.map((v, i) => v & rare[i]);
+  }
+  const brandKey = me.brand.toLowerCase();
+  const qty = (it) => (it.size || 0) * (it.unit === "lb" ? 16 : it.unit === "gal" ? 128 : it.unit === "qt" ? 32 : it.unit === "pt" ? 16 : 1);
+  const sig = (it) => `${Math.round(qty(it) * 100)}|${it.unit}|${it.pieces}`;
+  const seen = new Set([sig(me)]);
+  const out = [];
+  for (const r of collect([bits], 600)) {
+    const it = itemOf(S, r, false);
+    if (it.rank === me.rank || it.cat !== me.cat || it.brand.toLowerCase() !== brandKey || it.retired || it.placeholder || it.priceCents == null) continue;
+    if (it.packListing || BUNDLE_RX.test(it.name)) continue;      // a "(6 pack)" bundle of the same size is not another size
+    const w = nameWords(it, brandToks);
+    let both = 0; for (const x of w) if (mine.has(x)) both++;
+    const sim = w.size + mine.size ? (2 * both) / (w.size + mine.size) : 1;
+    if (sim < 0.6) continue;
+    const k = sig(it);
+    if (seen.has(k)) continue;           // one listing per size and count: the best ranked
+    seen.add(k);
+    out.push({ it, sim });
+  }
+  // the closest wording (same flavour) and the best sellers kept, then shown smallest to largest
+  out.sort((a, b) => b.sim - a.sim || a.it.rank - b.it.rank);
+  // shown by count (the single first, then the 8, 16, 40 count boxes), then by size
+  return out.slice(0, limit).map((x) => x.it).sort((a, b) => a.pieces - b.pieces || (qty(a) || 0) - (qty(b) || 0));
 }
 
 // ---------------------------------------------------------------- messages
@@ -582,6 +701,7 @@ self.onmessage = async (e) => {
       case "upc": { postMessage({ type: "result", id: m.id, result: db ? { items: lookupUpc(m.key), equivalent: lookupEquivalent(m.key) } : { notReady: true } }); break; }
       case "plu": { postMessage({ type: "result", id: m.id, result: db ? lookupPlu(m.code) : { notReady: true } }); break; }
       case "item": { postMessage({ type: "result", id: m.id, result: db ? item(m.rank) : null }); break; }
+      case "sizes": { postMessage({ type: "result", id: m.id, result: db ? sizesOf(m.rank, m.limit) : [] }); break; }
       case "unload": { db = null; loaded.clear(); tokCache.clear(); postMessage({ type: "result", id: m.id, result: true }); break; }
       default: postMessage({ type: "error", id: m.id, error: "unknown message " + m.type });
     }
@@ -591,4 +711,4 @@ self.onmessage = async (e) => {
 };
 
 // for tools/search-harness.mjs (Node: tests and the gold search set); a module worker ignores exports
-export { load, search, lookupUpc, lookupEquivalent, lookupPlu, item };
+export { load, search, lookupUpc, lookupEquivalent, lookupPlu, item, sizesOf };

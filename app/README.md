@@ -50,7 +50,7 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 
 | label | when | what is shown |
 |---|---|---|
-| Exact item | barcode or chosen search hit found in the snapshot (incl. retired UPCs, "older barcode") | item, price, other listings for the same barcode |
+| Exact item | barcode or chosen search hit found in the snapshot (incl. retired UPCs, "older barcode") | item, price, "1 of N" for a pack or a box counted in its name, other listings for the same barcode, the product's other sizes and counts |
 | Store price label | barcode starting with 2 (scale labels: meat, deli, bakery) | price decoded from the barcode, GS1 verifier checked |
 | Produce code | 4-digit PLU (and 9xxxx organic) | produce name, price per lb or each, weight stepper |
 | Equivalent value | barcode Walmart doesn't sell, present in the equivalents table | estimated price, confidence, the Walmart basis item (tappable) |

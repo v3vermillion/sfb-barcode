@@ -186,7 +186,7 @@ jobs:
         if: steps.peek.outputs.skip != 'true'
         run: node --max-old-space-size=6144 tools/build-db.mjs --store "${{ steps.data.outputs.store }}" --out dist/db
 
-      # Search quality on the real pack (data/gold-search.json, 340 everyday donations): below 95% opens [search-gold],
+      # Search quality on the real pack (data/gold-search.json, 345 everyday donations): below 95% opens [search-gold],
       # below 90% fails here so the live site keeps the previous build. Not run on the synthetic fixture.
       - name: Search gold set
         id: gold
