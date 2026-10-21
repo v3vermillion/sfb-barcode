@@ -27,7 +27,7 @@ this order of priority:
    never receives, are left out.
 4. **Gate** the candidate (`crawler/qa.py`, thresholds in `data/gates.json`): every department finished, every sentinel
    item priced, a live check of sampled prices against Walmart, size parsing, per-unit outliers, item and category counts
-   against the previous snapshot, price drift, the 348-query search gold set, and a sample review of the rows the last
+   against the previous snapshot, price drift, the 350-query search gold set, and a sample review of the rows the last
    reviewed snapshot did not have, judged on evidence. A held snapshot opens a `[gates-hold]` issue with the report;
    the previous snapshot stays live.
 5. **Publish** to `data-store:build/published/` with a manifest; the price history records what changed

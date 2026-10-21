@@ -380,7 +380,7 @@ function collect(bitsets, limit, mask = null, skip = null) {
 }
 
 const UNIT_WORDS = new Set(["oz", "ounce", "ounces", "fl", "fluid", "lb", "lbs", "pound", "pounds", "ct", "cnt", "count", "pack", "pk", "pc", "pcs", "piece", "pieces", "g", "gram", "grams", "kg", "mg", "mcg", "ml", "l", "liter", "liters", "litre", "litres", "gal", "gallon", "gallons", "qt", "quart", "quarts", "pt", "pint", "pints", "each", "ea", "x", "of", "the", "and", "with", "in", "a", "can", "bag", "box", "bottle", "jar", "cup", "tub", "pouch", "package", "carton", "case", "sq", "ft", "inch", "inches", "mm", "cm"]);
-const PLAIN_QUALIFIERS = new Set(["organic", "fresh", "whole", "large", "small", "medium", "jumbo", "original", "classic", "regular", "plain", "pure", "natural", "each", "loose", "family", "size", "value"]);
+const PLAIN_QUALIFIERS = new Set(["percent", "organic", "fresh", "whole", "large", "small", "medium", "jumbo", "original", "classic", "regular", "plain", "pure", "natural", "each", "loose", "family", "size", "value"]);
 function numberTokens(tokens) { return tokens.filter((t) => /^\d/.test(t)).map(Number); }
 
 function homeCategories(S, groups) {
@@ -474,6 +474,8 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     // pumpkin" is canned pumpkin, not Mainstays pumpkin plates; owner's food-bank photos, 2026-10-21)
     // (or carries every word: "giant eagle honey nut toasted oats" is Great Value Honey Nut Toasted Oats Cereal)
     if (it.storeBrand) s += ownBrandFirst && (headHit || exact === groups.length) && S.tier !== "more" ? 3 : 0.3;
+    const aud = AUDIENCE_CATS.get(it.cat);
+    if (aud && !qTokens.some((t) => aud.test(t)) && !namesBrand(groups[0])) s -= 2.5;
     if (it.retired) s -= 1.5;
     if (it.unavailable) s -= 0.4;
     s -= (r / S.N) * 0.8;             // rank within the shard as the final tiebreaker
@@ -537,6 +539,9 @@ function brandCategory(altsList) {
   return seen >= 2 && n / seen >= 0.6 ? best : 0;
 }
 
+// baby food and pet food carry the same flavour words as people food ("roasted chicken rice", "sweet corn"): they rank
+// first only when the query says it is for a baby or a pet, or names the item's brand (owner's food-bank photos 16-20)
+const AUDIENCE_CATS = new Map([[13, /^(baby|babies|infant|toddler|newborn|puree|purees|formula|stage|kids?)$/], [19, /^(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|bird|fish|hamster|kibble|treats?|chews?|litter)$/]]);
 function search(q, limit = 40) {
   const t0 = performance.now();
   let tokens = tokenize(q).filter(Boolean);

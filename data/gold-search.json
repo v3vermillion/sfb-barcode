@@ -348,6 +348,8 @@
   {"q": "mission pride fruit mix", "all": ["fruit mix", "15 oz"]},
   {"q": "giant eagle honey nut toasted oats", "all": ["great value", "honey nut"]},
   {"q": "amazon saver cream of chicken", "all": ["great value", "cream of chicken"]},
-  {"q": "puffs plus lotion", "all": ["puffs", "lotion"]}
+  {"q": "puffs plus lotion", "all": ["puffs", "lotion"]},
+  {"q": "earthly grains roasted chicken rice", "all": ["great value", "roasted chicken", "rice"]},
+  {"q": "our family sweet corn", "all": ["great value", "corn"]}
  ]
 }

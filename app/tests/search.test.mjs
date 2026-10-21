@@ -63,6 +63,11 @@ const ROWS = [
   // photos 11-15: another chain's cereal whose Walmart own-brand twin is named "... Cereal"
   row("Weight Watchers Ww Honey Nut Toasted Oats 12.3 Oz.", "Weight Watchers", 7.78, { size: 12.3, unit: "oz", cat: "7" }),
   row("Great Value Honey Nut Toasted Oats Cereal, 12.25 oz", "Great Value", 3.14, { size: 12.25, unit: "oz", cat: "7", store_brand: true }),
+  // photos 16-20: pet food and baby food share the flavour words of people food
+  row("Pedigree Adult Complete Nutrition Roasted Chicken, Rice & Vegetable Flavor Dry Dog Food, 14 lb", "Pedigree", 14.98, { cat: "19", dept: "Pets" }),
+  row("Great Value Ready-to-Heat 90-Second Roasted Chicken Flavored Rice Pouch, 8.8 oz", "Great Value", 1.37, { size: 8.8, unit: "oz", cat: "7", store_brand: true }),
+  row("Parents Choice Sweet Potato & Sweet Corn, 4oz Glass Jar", "Parent's Choice", 0.98, { size: 4, unit: "oz", cat: "13", dept: "Baby", store_brand: true }),
+  row("Great Value Golden Sweet Whole Kernel Corn, 15.25 oz", "Great Value", 0.72, { size: 15.25, unit: "oz", cat: "6", store_brand: true }),
 ];
 
 let db;
@@ -204,4 +209,11 @@ test("another chain's brand: Walmart's own brand first when it carries every oth
   const r = top("giant eagle honey nut toasted oats");
   assert.equal(r.otherBrand?.store, "Giant Eagle");
   assert.match(r.items[0].name, /^Great Value Honey Nut Toasted Oats Cereal/, "the store-brand twin, not Weight Watchers");
+});
+
+test("pet food and baby food come first only when the query is for a pet or a baby (food-bank photos 16-20)", () => {
+  assert.match(top("earthly grains roasted chicken rice").items[0].name, /Rice Pouch/, "Aldi's rice side is valued as the rice pouch, not dog food");
+  assert.match(top("dog food roasted chicken").items[0].name, /Dog Food/);
+  assert.match(top("sweet corn").items[0].name, /Whole Kernel Corn/, "canned corn, not a baby-food jar");
+  assert.match(top("baby sweet corn").items[0].name, /Glass Jar/);
 });
