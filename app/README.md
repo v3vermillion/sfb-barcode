@@ -50,7 +50,7 @@ quantity or weight stepper, and **Add to tally**. The sheet's coloured label nam
 
 | label | when | what is shown |
 |---|---|---|
-| Exact item | barcode or chosen search hit found in the snapshot (incl. retired UPCs, "older barcode") | item, price, other listings for the same barcode |
+| Exact item | barcode or chosen search hit found in the snapshot (incl. retired UPCs, "older barcode") | item, price, "1 of N" for a pack or a box counted in its name, other listings for the same barcode, the product's other sizes and counts |
 | Store price label | barcode starting with 2 (scale labels: meat, deli, bakery) | price decoded from the barcode, GS1 verifier checked |
 | Produce code | 4-digit PLU (and 9xxxx organic) | produce name, price per lb or each, weight stepper |
 | Equivalent value | barcode Walmart doesn't sell, present in the equivalents table | estimated price, confidence, the Walmart basis item (tappable) |
@@ -136,8 +136,10 @@ home department, the item's head noun named, the plain item, coverage of the ite
 retired, out-of-stock and multipacks pushed down) and return 40. A run of query words that is another chain's store
 brand (the manifest's `brands`, from data/brands.json) is set aside, named in the result (`otherBrand`), and Walmart's
 own-brand items rank first among the matches for the rest. A word that matches nothing gets one-edit
-alternatives; if the AND is empty the most common word whose removal leaves results is dropped and the result is
-flagged. The main thread renders 12 rows synchronously and the rest on the next idle slice;
+alternatives; if the AND is empty a word is dropped and the result is flagged: a number first ("skinny pop 28"), then a
+word that is mostly a brand in the listings carrying it ("stonemill rosemary" keeps rosemary), then the most common word
+whose removal leaves results. Walmart's own brand ranks first for another chain's brand only for the item the query names
+in a consumable department. The main thread renders 12 rows synchronously and the rest on the next idle slice;
 off-screen rows skip layout via `content-visibility`.
 
 **Barcodes** (`barcode.js`) — GS1 check digits, UPC-E → UPC-A expansion, 11-digit typed codes completed, EAN-13

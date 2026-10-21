@@ -37,6 +37,19 @@ export function sizeText(item) {
   if (item.size && item.unit) return `${fmtNum(item.size)} ${item.unit}`;
   return "";
 }
+/** How many pieces one listing holds, for pricing one of them: its pack, else the count its name states ("26.4 oz,
+ * 12 Count": a box of 12 bars), else 1. Sold by the pound: 1. */
+export function piecesOf(item) {
+  if (!item || item.basis === "lb") return 1;
+  return item.pack > 1 ? item.pack : item.pieces > 1 ? item.pieces : 1;
+}
+/** "Pack of 6", or "Count of 12" for a count read from the name, unless the size already says it ("40 ct"). */
+export function countText(item) {
+  if (!item) return "";
+  if (item.pack > 1) return `Pack of ${item.pack}`;
+  const n = piecesOf(item);
+  return n > 1 && !(item.unit === "ct" && Math.round(item.size) === n) ? `Count of ${n}` : "";
+}
 
 function moneyText(cents) {
   return "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

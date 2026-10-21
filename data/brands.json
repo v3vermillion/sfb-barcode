@@ -34,6 +34,8 @@
         "sweet harvest",
         "southern grove",
         "chef's cupboard",
+        "earthly grains",
+        "peanut delight",
         "savoritz",
         "fusia",
         "reggano",
@@ -125,8 +127,11 @@
         "amazon",
         "amazon fresh",
         "amazon grocery",
+        "amazon saver",
+        "amazon fresh",
         "amazon kitchen",
         "amazon basics",
+        "amazon commercial",
         "happy belly",
         "aplenty",
         "solimo",
@@ -229,6 +234,8 @@
     "another grocer": {
       "brands": [
         "food club",
+        "essential everyday",
+        "our family",
         "best choice",
         "shurfine",
         "coburn farms"

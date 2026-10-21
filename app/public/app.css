@@ -331,6 +331,8 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .row .price { grid-column: 2; grid-row: 1 / span 2; align-self: start; font-size: 20px; line-height: 20.48px; margin-top: -1px; font-weight: 650; letter-spacing: -0.02em; text-align: right; white-space: nowrap; }
 .row .price small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-3); letter-spacing: .02em; }
 .row.is-retired .name { color: var(--ink-2); }
+/* lists inside a sheet read top-down (only the results list is bottom-anchored) */
+.also .list { flex-direction: column; }
 .list--compact .row { min-height: 56px; padding: 9px 12px; }
 /* Recent: the row slides left over a Remove button (a swipe; or the keyboard, which reaches the button first and reveals it) */
 .swipe { position: relative; border-radius: var(--r-m); }
