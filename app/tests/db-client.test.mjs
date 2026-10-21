@@ -208,3 +208,63 @@ test("a worker call with a deadline rejects when the worker never answers, and t
   assert.match(db.log.at(-1), /^\d+\.\ds hello$/);
   assert.deepEqual(JSON.parse(store.get("sfb.boot.log")).slice(-1), [db.log.at(-1)]);
 });
+
+// ---- a pack that fails to open is kept until a new copy can be fetched (audit W9-02, 2026-10-21): an offline phone at the
+// food bank must not lose its prices to one failed open
+function flakyWorker(db, failures) {   // the first `failures` loads fail, then the worker answers as usual
+  let n = 0;
+  db.worker.postMessage = (m) => setTimeout(() => {
+    if (m.type === "load" && n++ < failures) db.worker.onmessage({ data: { id: m.id, type: "error", error: "RangeError: Array buffer allocation failed" } });
+    else db.worker.onmessage({ data: m.type === "load" ? { id: m.id, type: "ready", stats: {} } : { id: m.id, type: "result", result: null } });
+  });
+}
+
+test("offline, a pack that fails to open stays on the phone and opens at the next try, with nothing downloaded", async () => {
+  const b = stubBrowser({ live: "v1" });
+  b.install("v1");
+  store.set("sfb.db", JSON.stringify({ version: "v1" }));
+  nav.onLine = false;
+  try {
+    const db = new DbClient(); flakyWorker(db, 1);
+    const states = [];
+    db.addEventListener("state", (e) => states.push(e.detail));
+    await db.start();
+    assert.equal(db.version, null);
+    assert.equal(states.at(-1).state, "error", "an error the volunteer can retry, not 'no prices on this phone yet'");
+    assert.match(states.at(-1).message, /could not be opened/);
+    assert.ok(b.buckets.has("sfb-db-v1"), "the pack is kept");
+    assert.equal(JSON.parse(store.get("sfb.db")).version, "v1", "and still recorded as installed");
+    assert.ok(db.log.some((l) => /installed v1 failed to open: RangeError/.test(l)), "Diagnostics says why");
+    await db.start();                               // the next launch, a tap on the card, or the "online" event
+    assert.equal(db.version, "v1", "the same pack opens on the next try");
+    assert.equal(b.fetched.length, 0, "offline: nothing was fetched");
+  } finally { nav.onLine = true; }
+});
+
+test("online, a pack that fails to open is replaced once the server answers", async () => {
+  const b = stubBrowser({ live: "v1" });
+  b.install("v1");
+  store.set("sfb.db", JSON.stringify({ version: "v1" }));
+  const db = new DbClient(); flakyWorker(db, 1);
+  await db.start();
+  assert.equal(db.version, "v1", "re-downloaded and opened");
+  assert.ok(b.fetched.some((u) => u.endsWith("v1/manifest.json")), "the version's files were fetched again");
+  assert.ok(db.log.some((l) => /reinstalling v1 in place of v1/.test(l)));
+});
+
+test("online with no answer from the server, a pack that fails to open is kept for the next try", async () => {
+  const b = stubBrowser({ live: "v1" });
+  b.install("v1");
+  store.set("sfb.db", JSON.stringify({ version: "v1" }));
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };   // a Wi-Fi with no internet
+  try {
+    const db = new DbClient(); flakyWorker(db, 1);
+    const states = [];
+    db.addEventListener("state", (e) => states.push(e.detail));
+    await db.start();
+    assert.equal(states.at(-1).state, "error");
+    assert.ok(b.buckets.has("sfb-db-v1"), "kept: nothing was deleted before a new copy could be fetched");
+    assert.equal(JSON.parse(store.get("sfb.db")).version, "v1");
+  } finally { globalThis.fetch = realFetch; }
+});

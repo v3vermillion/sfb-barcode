@@ -30,6 +30,8 @@ Walmart listing, written by `crawler/process.py` from `crawler/normalize.py`. Th
 | `equiv` | for a withheld price: `{price, method, confidence, basis_id, basis_name}`, the value the app shows |
 | `family_price_from` | rows flagged `family_price`: the listing's own (stale, out-of-stock) price; `price` is the one its in-stock variants agree on (crawler/valuation.apply_family_prices) |
 | `listing_price`, `listing_pack` | rows flagged `pack_listing`: Walmart's listing was a "(N pack)" bundle; these are its own price and N, and `price` is one unit (`listing_price` / `listing_pack`) |
+| `reviews` | Walmart's review count when above 0: a popularity signal for search ranking in the app (absent on older crawls) |
+| `online_price`, `store_checked`, `store_stock` | rows flagged `store_price`: Walmart.com's price (`price` is then the Strongsville store's shelf price), when the store's price was checked, and the store's stock status (crawler/storeprice.py) |
 | `flags` | see below |
 
 Flags: `no_size`, `sold_each` (priced per piece; sized by its basis), `size_conflict`, `retired_upc`, `upc_check_digit`,
@@ -37,7 +39,9 @@ Flags: `no_size`, `sold_each` (priced per piece; sized by its basis), `size_conf
 `unit_price_suspect` (per-unit price more than 10x off comparable items; dropped), `placeholder` (name identifies no
 product: barcode lookup only, never in typed search, not in the size-parse rate), `discontinued` (Walmart marks it so),
 `price_withheld`, `family_price` (an out-of-stock variant priced as its in-stock siblings), `name_filled` (a barcode-only row named from another listing or Open Facts), `pack_listing` (one unit of a
-"(N pack)" bundle listing: the wrapper is stripped from `name`, `price` is 1/N of the listing's; docs/DECISIONS.md 2026-10-19).
+"(N pack)" bundle listing: the wrapper is stripped from `name`, `price` is 1/N of the listing's; docs/DECISIONS.md 2026-10-19),
+`store_price` (`price` is the Strongsville store's shelf price within its tier's age limit, data/store.json), `pack_truncated`
+(the listing name ends cut off inside "(Pack of" or "(Case of", so 1 and the common case counts are offered as pack options).
 
 Not carried at all (rejected with a reason in `stats.json` `rejects_by_department`): `apparel`, `footwear`, `pet_bed`,
 `alcohol`, `tobacco`, `media`, `large_equipment`, `test_listing`, `store_display`, `marketplace`,

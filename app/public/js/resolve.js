@@ -224,6 +224,17 @@ export function mergeLearned(local, shared) {
   return out;
 }
 
+/** At most `max` of this phone's own matches, the newest kept; shared matches (the Worker's list, up to 5,000) are left as
+ *  they are and never count against the phone's own (they come back with every sync). Audit 2026-10-21: counting them
+ *  deleted a phone's own older matches once the shared list passed about 500 rows. */
+export function pruneOwnMatches(learned, max) {
+  const own = Object.keys(learned || {}).filter((g) => learned[g] && !learned[g].shared);
+  if (own.length <= max) return learned;
+  const out = { ...learned };
+  for (const g of own.sort((a, b) => (learned[a].at || 0) - (learned[b].at || 0)).slice(0, own.length - max)) delete out[g];
+  return out;
+}
+
 /** Human notes that explain the price's provenance; shown under the title. */
 export function notesFor(res, ctx = {}) {
   const notes = [];

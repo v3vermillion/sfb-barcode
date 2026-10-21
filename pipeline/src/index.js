@@ -111,7 +111,7 @@ function walmartSold(it) {
   return typeof it.salePrice === "number" && it.salePrice > 0;
 }
 
-// Two limits guard the shared Walmart key: per caller (30/min per IP) and in aggregate (60 Walmart calls/min
+// Two limits guard the shared Walmart key: per caller (30/min per IP) and in aggregate (20 Walmart calls/min
 // across everyone), both charged only when a Walmart call is actually about to be made. A deploy without the
 // bindings fails closed: the route answers 503 rather than serving the key without a cap.
 async function rateLimited(env, req) {

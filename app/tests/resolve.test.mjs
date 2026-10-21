@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand, mergeLearned } from "../public/js/resolve.js";
+import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand, mergeLearned, pruneOwnMatches } from "../public/js/resolve.js";
 
 const corn = { rank: 0, id: 1, brand: "Great Value", name: "Great Value Golden Sweet Whole Kernel Corn, Canned Corn, 15.25 oz Can", priceCents: 87, size: 15.25, unit: "oz", pack: 1, basis: "each", cat: 6, catName: "Canned & Jarred", upc: "00078742054261", retired: false, primary: true, storeBrand: true };
 const retired = { ...corn, rank: 1, id: 2, retired: true, primary: false };
@@ -251,4 +251,18 @@ test("shared matches fill in behind this phone's own, are labelled as a voluntee
   assert.equal(r.kind, "closest"); assert.equal(r.item.id, 1);
   const note = notesFor(r).map((n) => n.text).join(" ");
   assert.match(note, /matched to this Walmart item by a volunteer on/); assert.doesNotMatch(note, /on this phone/);
+});
+
+test("the phone keeps its own newest matches; shared ones never push them out (audit 2026-10-21)", () => {
+  const learned = {};
+  for (let i = 0; i < 600; i++) learned[String(90000000000000 + i)] = { key: 78742054261, title: "Shared", at: 1_000_000 + i, shared: true };
+  for (let i = 0; i < 5; i++) learned[String(10000000000000 + i)] = { key: 78742054261, title: "Own", at: i };
+  assert.equal(pruneOwnMatches(learned, 500), learned, "5 own matches, 600 shared: nothing is removed");
+  const many = {};
+  for (let i = 0; i < 503; i++) many[String(10000000000000 + i)] = { key: 1, title: "Own", at: i };
+  many["90000000000001"] = { key: 2, title: "Shared", at: 0, shared: true };
+  const kept = pruneOwnMatches(many, 500);
+  assert.equal(Object.values(kept).filter((m) => !m.shared).length, 500, "own matches are capped at 500");
+  assert.ok(!kept["10000000000000"] && !kept["10000000000002"] && kept["10000000000003"], "the oldest own matches go first");
+  assert.ok(kept["90000000000001"], "a shared match is left alone");
 });

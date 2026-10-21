@@ -37,6 +37,8 @@ on:
       - "crawler/identify.py"
       - "data/categories.json"
       - "data/sentinels.json"
+      - "data/brands.json"
+      - "data/store.json"
       - "requirements.txt"
   workflow_run:
     workflows: [pipeline]
@@ -77,7 +79,7 @@ jobs:
           set -eu
           cd "$GITHUB_WORKSPACE"
           code="$( { git rev-parse HEAD:app HEAD:.github/workflows/deploy-app.yml HEAD:crawler/normalize.py \
-                       HEAD:crawler/identify.py HEAD:data/categories.json HEAD:data/sentinels.json HEAD:requirements.txt
+                       HEAD:crawler/identify.py HEAD:data/categories.json HEAD:data/sentinels.json HEAD:data/brands.json HEAD:data/store.json HEAD:requirements.txt
                      printf 'live=%s\nandroid=%s\n' "${LIVE_CHECK_URL:-}" "${ANDROID_ASSET_LINKS:-}"; } | sha256sum | cut -c1-16)"
           echo "code=${code}" >> "$GITHUB_OUTPUT"
 

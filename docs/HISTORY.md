@@ -71,6 +71,6 @@ back to its current price. To weight by time instead of by publish, use `entry["
 
 ## Size
 
-A full snapshot is ~760k rows; a baseline is about the size of the price column (a few MB gzipped).
-A weekly core refresh changes a small share of prices, so a changes file is typically well under a
-megabyte. `index.json` grows by one line per publish.
+A full snapshot is about 2.4-2.6 million rows; the first baseline (20261007-182439-full) is about 32 MB gzipped.
+Each refresh is a full re-crawl, and its changes file is far smaller: the first, 20261020-172046-refresh, holds
+268k rows in 3.6 MB. `index.json` grows by one line per publish.

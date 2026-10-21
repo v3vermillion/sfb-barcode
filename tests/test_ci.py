@@ -1083,10 +1083,9 @@ class OtherPlans(PlanBase):
         self.assertIn("review grace", Path(os.environ["GITHUB_STEP_SUMMARY"]).read_text())
 
     def test_finish_without_finalize_is_a_clear_error(self):
+        # qa.finalize always exists now, so the guard is exercised by taking it away (it used to skip itself; audit F-W11-13)
         self.write("state/run.json", state("built"))
-        if hasattr(self.qa, "finalize"):
-            self.skipTest("qa.finalize present")
-        with self.assertRaises(SystemExit) as cm:
+        with mock.patch.object(ci.qa, "finalize", None), self.assertRaises(SystemExit) as cm:
             self.run_plan("--plan", "finish")
         self.assertIn("finalize", str(cm.exception))
 

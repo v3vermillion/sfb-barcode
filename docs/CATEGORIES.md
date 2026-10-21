@@ -3,7 +3,7 @@
 Every kept item carries one category: **what the item is**, the way a grocery or general-merchandise store would label
 it on the shelf. Walmart's own category path is a hint, never the answer: its feed files turtlenecks under Meat & Seafood,
 cookbooks under Baking and coffee filters under Coffee. `crawler/classify.py` applies these rules; `data/categories.json`
-holds the ids and names. The rules are measured against a hand-labelled sample (`tests/fixtures/category-gold.jsonl`),
+holds the ids and names. The rules are measured against a hand-labelled sample (`tests/fixtures/category-gold.jsonl.gz`),
 and every snapshot's 600-row sample review checks the category as well.
 
 ## Not carried at all (excluded everywhere, whatever the department)
