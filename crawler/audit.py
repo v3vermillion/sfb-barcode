@@ -3,12 +3,14 @@
   python -m crawler.audit            # sample published rows, re-check them live, write audit/<date>.json + latest.json
 
 due(store_root, cfg, now) -> bool    audit/latest.json missing or older than cfg["audit_every_days"] (default 7)
-run(wm=None) -> dict                 {"status", "match_rate", "within_5pct", "outlier_share", "alert", ...}
-                                     alert = match_rate < data/gates.json audit_match_min (0.95); null = never alert
+run(wm=None) -> dict                 {"status", "match_rate", "close_rate", "within_5pct", "outlier_share", "alert", ...}
+                                     alert = close_rate (within live_match_tolerance) < data/gates.json audit_match_min;
+                                     null = never alert (the setting since 2026-10-19: month-old prices are the choice)
 The sample uses the same selection rule as the live_match gate (qa.live_sample_rows: primary, UPC, in stock,
-no promo price) but keeps carried-over rows, since stale prices on rows the weekly core crawl did not refresh
-are what the audit is for. The seed changes daily, so successive audits look at different rows. Nothing is
-written when the audit could not run ({"status": "skipped"|"error"}), so the next scheduled run tries again.
+no promo price) but keeps carried-over rows, since stale prices on rows not re-crawled since their department's
+last crawl are what the audit is for. Each department's drift goes to the ledger (audit/drift.json). The seed
+changes daily, so successive audits look at different rows. Nothing is written when the audit could not run
+({"status": "skipped"|"error"}), so the next scheduled run tries again.
 """
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -159,7 +161,7 @@ def _by_department(rows, manifest, samples, lives, now):
     for name, d in out.items():
         d["close_rate"] = round(d["close"] / d["found"], 4) if d["found"] else None
         when = (crawled.get(name) or {}).get("crawled") if isinstance(crawled.get(name), dict) else None
-        when = _parse(when) or _parse(manifest.get("published"))
+        when = _parse(when) or _parse(manifest.get("full_published")) or _parse(manifest.get("published"))   # as ci.due_departments
         d["age_days"] = round((now - when).total_seconds() / 86400, 1) if when else None
     return out
 

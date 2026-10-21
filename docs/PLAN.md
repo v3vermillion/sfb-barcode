@@ -20,7 +20,7 @@ nothing is written back, and a live check covers unknown barcodes when there is 
 | 4 Normalise sizes, packs and prices | Done: `crawler/normalize.py`, measured by unit tests and a hand-labelled gold set |
 | 5 The app, shipped as versioned compressed packs | Done: `app/`, see `app/README.md` |
 | 6 Pilot with a real donation batch and a shelf spot-check | Pending: see READINESS.md |
-| 7 Refresh on a schedule | Done, measured instead of fixed: each department is re-crawled on the interval its own price drift justifies |
+| 7 Refresh on a schedule | Done: every department is re-crawled 30 days after its last crawl (owner, 2026-10-19); the measured per-department planner stays in the code, bypassed while `refresh.fixed_days` is set |
 | 8 Other stores' brands (Aldi, Giant Eagle, Meijer) | Done through Open Food, Beauty and Products Facts: an equivalent value with a confidence level |
 
 ## App requirements (all met)

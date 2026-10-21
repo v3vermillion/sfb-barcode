@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, piecesOf, countText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned, pruneOwnMatches } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, piecesOf, countText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned, pruneOwnMatches, liveCheckable } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -828,7 +828,7 @@ function sheetHtml(res) {
     : it && piecesOf(it) > 1 && res.unit !== "lb" && res.priceCents != null
     ? `<div class="seg pack-seg" role="group" aria-label="Price the whole pack or one item"><button type="button" data-pack="whole" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">Whole pack · ${money(res.priceCents)}</button><button type="button" data-pack="one" data-cents="${Math.round(res.priceCents / piecesOf(it))}" aria-pressed="${res.unitCents != null && res.unitCents !== res.priceCents}">1 of ${piecesOf(it)} · ${money(Math.round(res.priceCents / piecesOf(it)))}</button></div>`
     : "";
-  const liveRow = (LIVE_URL && prefs.live && res.gtin && res.kind !== "store-label" && res.kind !== "plu" && res.kind !== "not-ready") ? `<div class="live-row" data-state="idle" hidden></div>` : "";
+  const liveRow = (LIVE_URL && prefs.live && liveCheckable(res.gtin) && res.kind !== "store-label" && res.kind !== "plu" && res.kind !== "not-ready") ? `<div class="live-row" data-state="idle" hidden></div>` : "";
 
   const stepper = res.priceCents == null ? "" : res.unit === "lb"
     ? `<div class="stepper" role="group" aria-label="Weight"><button class="st-btn" type="button" data-step="-0.25" aria-label="Decrease weight">${icon("minus")}</button><span class="st-val counting" aria-live="polite" aria-atomic="true"><span id="qtyVal">${fmtNum(state.qty)}</span> <small>lb</small></span><button class="st-btn" type="button" data-step="0.25" aria-label="Increase weight">${icon("plus")}</button></div>`

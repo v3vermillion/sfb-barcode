@@ -78,7 +78,7 @@ budget_min 300).
 
 ### Acceptance gates (`data/gates.json`; a null threshold = measure only)
 departments_complete (every department done, kept > 0, pages within 30% of `sizing.json`), sentinels (every one of data/sentinels.json found and priced; 114 since Electronics and the Rain-X auto-care sentinel left on 2026-10-12),
-live_match (500 random items re-checked live in 25 calls: ≥ 90% of the rows Walmart still lists within 5% of the snapshot price, consumable and durable rates reported; rows no longer listed are counted separately and never a wrong price, `live_missing_max` null), size_parse (≥ 92% of Food rows sized: a parsed size, sold by the pound, or sold each; 92.7% measured 2026-10-08),
+live_match (500 random in-stock items — primary listing, UPC, no promo price — re-checked live in 25 calls: ≥ 90% of the rows Walmart still lists within 5% of the snapshot price, consumable and durable rates reported; rows no longer listed are counted separately and never a wrong price, `live_missing_max` null), size_parse (≥ 92% of Food rows sized: a parsed size, sold by the pound, or sold each; 92.7% measured 2026-10-08),
 unit_outliers (rows outside 10× of their category median: measured and reported, `unit_outliers_max` null, never holds), the existing drift and count gates, and
 sample_review (up to 600 rows the last reviewed snapshot did not have, in two calls of 300, judged against `data/review-criteria.md`; fewer than 50 new rows: no review; holds on systematic junk, when the 95% lower bound of the junk rate is above 5%, or at 10% raw). All pass → publish;
 otherwise hold + `[gates-hold]` issue with the report. `plan=approve` publishes a held candidate after the owner has read the report.
@@ -268,8 +268,9 @@ evidence it is never crawled more often than the legacy cadence (consumable 7 da
 crawled four times a year, not six). The run summary of
 every audit prints the plan; `[accuracy-budget]` opens when the target does not fit the quota. `plan=core` and
 `plan=full` from the Actions tab still crawl by hand. `volunteer_hours` in data/schedule.json (time zone, days, from, to,
-per_min) caps the pipeline's pace while volunteers may be using the app's live check, which shares the Walmart key:
-set the food bank's real hours there.
+per_min) is meant to cap the pipeline's pace while volunteers may be using the app's live check, which shares the
+Walmart key: set the food bank's real hours there. Not applied yet: the pipeline never read the setting, and turning it
+on needs the pace analysis to tell a capped run from a clean one first (docs/DECISIONS.md 2026-10-21).
 
 Store prices (data/store.json `tiers`): only the listed departments are priced, on their tier's cycle, and only Walmart's
 own in-stock offer counts; `store_prices/latest.json` `by_dept` shows how often the store price differed from
@@ -282,8 +283,8 @@ pipeline → Run workflow → plan `rollback`, `rollback_to` = `previous` (the n
 again to go forward) or a version from the repo's Releases page. The run downloads it, checks the manifest and that every
 item reads back, replaces `data-store:build/published/` (manifest gains `rolled_back` {from, to, at}) and pushes; deploy-app
 then ships it, and phones treat any live version other than their own as an update (older or newer), so it arrives through
-the normal "Update now" banner. The crawl state and any candidate are untouched. After a rollback, new crawls (start-core /
-start-full) wait `core_every_days` so the restored prices stay live while the cause is fixed; a crawl already running
+the normal "Update now" banner. The crawl state and any candidate are untouched. After a rollback, new crawls (start-refresh /
+start-core / start-full) wait `rollback_pause_days` (7) so the restored prices stay live while the cause is fixed; a crawl already running
 continues, and its publish would replace the rollback, so fix the cause (rules, thresholds) first or run plan=core/full when
 ready. A refused rollback (unknown version, incomplete download) changes nothing.
 

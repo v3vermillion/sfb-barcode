@@ -33,8 +33,9 @@ this order of priority:
    `[search-gold]`, below 90% the deploy stops and the live site keeps the previous build.
 5. **Publish** to `data-store:build/published/` with a manifest; the price history records what changed
    (docs/HISTORY.md); the newest three publishes are kept as GitHub Releases for rollback. The app deploys itself next.
-6. **Audit** the published prices against Walmart every week, per department; the measured drift sets each department's
-   refresh interval (`crawler/cadence.py`) within the Walmart quota.
+6. **Audit** the published prices against Walmart every week, per department, and record each department's drift.
+   Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19); the measured
+   per-department intervals (`crawler/cadence.py`) apply only when that is set to 0.
 7. **Identify** barcodes Walmart does not sell (`crawler/identify.py`, monthly) from USDA FoodData Central's Branded Foods
    (the other chains' brands in `data/brands.json`: label data from the barcode registry) and Open Food, Beauty and Products
    Facts (everything else), matched to the closest Walmart item for an equivalent value with a confidence level; what both
@@ -48,8 +49,8 @@ this order of priority:
 - Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19), so each refresh is a full
   crawl of a few days; the measured per-department planner is bypassed while that is set.
 - Store prices: food, household, personal care and health every 28 days; baby, pets, beauty and pharmacy every 56.
-- The pipeline slows to 3 calls a minute on weekday mornings (`volunteer_hours`), when volunteers may be using the live
-  check that shares the same Walmart key.
+- The pipeline is meant to slow to 3 calls a minute on weekday mornings (`volunteer_hours`), when volunteers may be
+  using the live check that shares the same Walmart key; not applied yet (docs/DECISIONS.md 2026-10-21).
 
 ## How the app resolves an item (decision 2026-10-06)
 1. **Barcode → exact Walmart item**, retired barcodes and single units from multipacks included.

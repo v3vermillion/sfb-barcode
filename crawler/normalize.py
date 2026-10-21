@@ -26,6 +26,10 @@ _UNIT_RX = (r"(fl\.?\s?oz|fluid\s+ounces?|fz|fo|ounces?|oz|lbs?|pounds?|kilogram
 QTY = re.compile(r"(?<![\w.])(?<![a-z]-)(\d+(?:\.\d+)?|\.\d+)\s*-?\s*" + _UNIT_RX + r"(?![a-z])", re.I)   # not "FC-600L"
 # a proper fraction of a unit: "1/2 oz", "1 1/2oz", "3/4 LT" (only halves, thirds, quarters and eighths: "6/16fo" is a pack)
 FRACTION = re.compile(r"(?<![\w./])(?:(\d+)[\s-]+)?([1-7])/([2348])(?=\s*-?\s*" + _UNIT_RX + r"(?![a-z]))", re.I)
+# a vulgar fraction, alone or behind a whole number: "½ oz", "2½ oz packs", "3½ Gallon" (audit F-WU03-011, 2026-10-21:
+# they were not read, so the size was missing or came from a bare "Gallon"). NFKD would turn "1½" into "11⁄2"
+VULGAR = re.compile(r"(?<![\w.])(?:(\d+)\s?)?([½¼¾⅓⅔⅛⅜⅝⅞])")
+VULGAR_VALUE = {"½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 0.333, "⅔": 0.667, "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875}
 MULTI = re.compile(r"(?<![\w.])(\d+)\s*(?:x|-|×)\s*(\d+(?:\.\d+)?)\s*-?\s*" + _UNIT_RX + r"(?![a-z])", re.I)
 PACK = [
     re.compile(r"\((\d+)\s*(?:-\s*)?(?:pack|pk|count|ct)\)", re.I),
@@ -191,6 +195,10 @@ def _fraction(m) -> str:
     return f"{whole + int(m.group(2)) / int(m.group(3)):g}"
 
 
+def _vulgar(m) -> str:
+    return f"{int(m.group(1) or 0) + VULGAR_VALUE[m.group(2)]:g}"
+
+
 def _plausible(q) -> bool:
     """Reject numbers that cannot be the stated quantity: zero, and abbreviations that collide with shade codes."""
     n, u = float(q.group(1)), q.group(2).lower()
@@ -219,6 +227,7 @@ def parse_quantity(text: str, extended: bool = True):
     t = text.replace("\u00d7", "x")
     t = WORD_QTY.sub(lambda m: f"{WORD_NUM[m.group(1).lower()]} ", t)          # "Two Pounds" -> "2 Pounds"
     t = POUND_SIGN.sub(lambda m: f"{m.group(1)} lb", t)                         # "1#" -> "1 lb"
+    t = VULGAR.sub(_vulgar, t)                                                   # "2½ oz" -> "2.5 oz"
     t = FRACTION.sub(lambda m: _fraction(m), t)                                  # "1 1/2oz" -> "1.5oz"
     for rx, fn in REWRITES:
         t = rx.sub(fn, t)
@@ -226,6 +235,12 @@ def parse_quantity(text: str, extended: bool = True):
         t = Z_OUNCES.sub(lambda m: f"{m.group(1)} oz" if float(m.group(1)) <= Z_MAX else m.group(0), t)
     pack = None
     m = MULTI.search(t)
+    if (m and "-" in t[m.end(1):m.start(2)] and int(m.group(1)) < float(m.group(2)) and _unit(m.group(3)) in ("gal", "qt")
+            and CAPACITY_RX.search(t)):
+        # "Can Liners, 7-10 Gallon, 500 Count" is a capacity range on bags, not 7 packs of 10 gallons: the capacity rule
+        # below reads the count (2026-10-19; audit F-WU03-001, 2026-10-21). Only a rising range: "100-1-Gallon Mylar
+        # Bags" is 100 one-gallon bags
+        m = None
     if m:
         return float(m.group(2)), _unit(m.group(3)), int(m.group(1))
     wrapper = WRAPPER.match(t)

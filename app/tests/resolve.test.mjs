@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand, mergeLearned, pruneOwnMatches } from "../public/js/resolve.js";
+import { resolveCode, fromItem, kindLabel, splitTitle, titleOf, notesFor, livePlausible, packListingOf, liveUnitCents, storeOfCode, whoseBrand, mergeLearned, pruneOwnMatches, liveCheckable } from "../public/js/resolve.js";
 
 const corn = { rank: 0, id: 1, brand: "Great Value", name: "Great Value Golden Sweet Whole Kernel Corn, Canned Corn, 15.25 oz Can", priceCents: 87, size: 15.25, unit: "oz", pack: 1, basis: "each", cat: 6, catName: "Canned & Jarred", upc: "00078742054261", retired: false, primary: true, storeBrand: true };
 const retired = { ...corn, rank: 1, id: 2, retired: true, primary: false };
@@ -13,6 +13,7 @@ const mkDb = ({ ready = true } = {}) => ({
     if (key === 4252614) return { items: [{ ...corn, id: 9, upc: "00000004252614" }], equivalent: null };   // keyed the crawler's way (zero-padded 8 digits)
     if (key === 4099100000000) return { items: [], equivalent: { brand: "Clancy's", name: "Potato Chips", quantity: "10 oz", estCents: 198, confidence: "high", basis: corn } };
     if (key === 4099100000017) return { items: [], equivalent: { brand: "Clancy's", name: "Pretzels", quantity: "16 oz", estCents: 150, confidence: "low", basis: null } };
+    if (key === 213571107096) return { items: [{ ...corn, id: 11, brand: "Hickory Farms", name: "Spiral-Sliced Ham", priceCents: 4900, upc: "00213571107096" }], equivalent: null };   // a Walmart listing whose own barcode starts with 2
     if (key === 212345000007) return { items: [{ ...corn, id: 7, name: "Great Value Ground Beef Tray", upc: "00212345000007" }], equivalent: null };
     return { items: [], equivalent: null };
   },
@@ -39,11 +40,11 @@ test("a UPC-E that the crawler keyed as 8 zero-padded digits is still found", as
   assert.deepEqual(db.calls, [42100005264, 4252614]);
 });
 
-test("store-printed price labels decode without any database lookup; a zero price never shows as $0.00", async () => {
+test("store-printed price labels decode when the barcode is not a Walmart listing; a zero price never shows as $0.00", async () => {
   const db = mkDb();
   const r = await resolveCode(db, "201234928751");
   assert.equal(r.kind, "store-label"); assert.equal(r.priceCents, 2875); assert.equal(r.label.verified, true);
-  assert.equal(db.calls.length, 0);
+  assert.deepEqual(db.calls, [201234928751]);                  // the barcode is looked up first (audit W8-02)
   const zero = await resolveCode(db, "212345000007");          // price field 0000: a manufacturer variable-measure code
   assert.equal(zero.kind, "exact"); assert.equal(zero.item.id, 7);
   const zeroUnknown = await resolveCode(db, "212346000006");
@@ -52,6 +53,41 @@ test("store-printed price labels decode without any database lookup; a zero pric
   const typo = await resolveCode(db, "201234928759");          // bad check digit
   assert.equal(typo.kind, "store-label"); assert.equal(typo.label.verified, false);
   assert.match(notesFor(typo).map((n) => n.text).join(" "), /check digit does not match/);
+});
+
+test("a Walmart listing whose barcode starts with 2 opens that listing, not a price read from its digits (audit W8-02)", async () => {
+  const db = mkDb();
+  const ham = await resolveCode(db, "213571107096", "upc_a", { scanned: true });   // read as a label: a 5-digit price of $107.09
+  assert.equal(ham.kind, "exact"); assert.equal(ham.item.id, 11); assert.equal(ham.priceCents, 4900); assert.equal(ham.gtin, "00213571107096");
+  const ean = await resolveCode(db, "0213571107096");           // the EAN-13 form of the same code
+  assert.equal(ean.kind, "exact"); assert.equal(ean.item.id, 11);
+  const cold = mkDb({ ready: false });                          // while the list loads, a label still reads its price
+  const r = await resolveCode(cold, "201234928751");
+  assert.equal(r.kind, "store-label"); assert.equal(r.priceCents, 2875);
+  const zero = await resolveCode(cold, "212345000007");
+  assert.equal(zero.kind, "not-ready");
+  const typed11 = await resolveCode(db, "20123492875");         // 11 typed digits: never completed, never looked up
+  assert.equal(typed11.kind, "store-label"); assert.equal(typed11.priceCents, 2875); assert.equal(db.calls.includes(201234928751), false);
+});
+
+test("no live check is offered for a code the Worker always refuses (a 2-prefix Walmart listing)", () => {
+  assert.equal(liveCheckable("00213571107096"), false);         // the gift ham above: the Worker answers 400
+  assert.equal(liveCheckable("00078742054261"), true);
+  assert.equal(liveCheckable("05000112637922"), true);          // EAN-13
+  assert.equal(liveCheckable("00000004252614"), true);          // an 8-digit key
+  assert.equal(liveCheckable("02000000000000"), true);          // 13 digits starting 2 after the zero: an EAN-13, accepted there
+  assert.equal(liveCheckable(null), false); assert.equal(liveCheckable(""), false);
+});
+
+test("an 11-digit typed label whose price digits fail is not said to fail a check digit (audit W8-03)", async () => {
+  const db = mkDb();
+  const r11 = await resolveCode(db, "20123420699");
+  assert.equal(r11.kind, "unknown"); assert.equal(r11.badDigits, true); assert.equal(r11.priceCents, null);
+  const t11 = notesFor(r11).map((n) => n.text).join(" ");
+  assert.doesNotMatch(t11, /check digit|check-digit/); assert.match(t11, /price digits do not check out/); assert.match(t11, /all 12 digits/);
+  const r12 = await resolveCode(db, "201234206991");             // 12 digits, verifier and check digit both wrong
+  assert.equal(r12.badDigits, true);
+  assert.match(notesFor(r12).map((n) => n.text).join(" "), /failed its check-digit test/);
 });
 
 test("PLU codes price produce by the pound, organic 9-prefix included", async () => {

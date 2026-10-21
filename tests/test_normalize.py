@@ -346,6 +346,29 @@ class HygieneAndContainerCounts(unittest.TestCase):
                            ("Sterilite 30 Gal. Tote Box, Case of 6", (30.0, "gal", 6))]:            # a tote is not a bag
             self.assertEqual(N.parse_quantity(name), want, name); self.assertEqual(N.parse_quantity(name, extended=False), want, name)
 
+    def test_a_gallon_range_on_bags_is_their_capacity_not_a_pack(self):
+        # audit F-WU03-001, 2026-10-21: "7-10 Gallon" on liners read as a pack of 7 of 10 gallons ("1 of 7" on a case of 500)
+        for name, want in [("Earthsense Commercial Black Can Liners, 7-10 Gallon, 500 Count", (500.0, "ct", None)),
+                           ("Reynolds Kitchens Slow Cooker Liners, Regular (Fits 3-8 Quarts), 10 Count", (10.0, "ct", None)),
+                           ("Shop-Vac 10-14 Gallon Disposable Filter Bags, 3-Pack, Type F", (14.0, "gal", 3)),
+                           ("Heritage 55-60 Gallon Trash Bags 36x58 Low H7258XK", (60.0, "gal", None)),
+                           # these stay as they are: a pack written with a hyphen, a falling "count-size" form, a liquid
+                           ("Dry-Packs 100-1-Gallon Mylar Bags, 10\" by 14\" for Dried Dehydrafted", (1.0, "gal", 100)),
+                           ("BOOST KID ESSENTIALS Vanilla Vortex 4-8 fl. oz. Cartons", (8.0, "fl oz", 4)),
+                           ("Gerber 1st Foods Peas Baby Food, 2-2.5 oz. Tubs", (2.5, "oz", 2)),
+                           ("Coca-Cola 24-12 oz Cans", (12.0, "oz", 24)),
+                           ("Great Value Distilled Water, 6-1 Gallon Jugs", (1.0, "gal", 6))]:
+            self.assertEqual(N.parse_quantity(name), want, name); self.assertEqual(N.parse_quantity(name, extended=False), want, name)
+
+    def test_vulgar_fractions_are_read(self):
+        # audit F-WU03-011, 2026-10-21: "½", "2½", "3½ Gallon" were not read (no size, or 1 gal from a bare "Gallon")
+        for name, want in [("Cheese ½ oz", (0.5, "oz", None)), ("Cheese 1½ oz", (1.5, "oz", None)), ("Butter ¼ lb", (0.25, "lb", None)),
+                           ("Feline Greenies Dental Treats, 2½ oz packs", (2.5, "oz", None)),
+                           ("Antique Copper Quatrefoil Oval Party Tub - 3½ Gallon", (3.5, "gal", None)),
+                           ("Mason Jars 6 ¾ Ounce Glass Jar (12 Pack)", (6.75, "oz", 12)),
+                           ("Cheese 1 1/2 oz", (1.5, "oz", None))]:                                  # the ASCII form, as before
+            self.assertEqual(N.parse_quantity(name), want, name)
+
     def test_a_count_behind_a_word_or_two_is_read_for_pharmacy_goods(self):
         for name, want in [("Kirkland Signature Aller-Tec D 12 Hour, 24 Extended Release Tablets", (24.0, "ct", None)),
                            ("Nature Made Vitamin D3 2000 IU, 100 Softgels", (100.0, "ct", None)),

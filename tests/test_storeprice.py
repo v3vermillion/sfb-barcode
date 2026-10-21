@@ -151,6 +151,23 @@ class Refresh(unittest.TestCase):
         wm2 = StoreWM()
         self.assertEqual(self.sp.refresh(wm2, 60, now=NOW_)["due"], 0); self.assertEqual(wm2.paths, [])
 
+    def test_the_next_pass_is_due_when_a_row_of_the_list_is_due(self):
+        # audit W2-013, 2026-10-21: next_due was the oldest record plus the cadence, so a row the store does not carry
+        # (asked again after 90 days) or a record of a row that left the list kept a store run due every half hour
+        days = __import__("datetime").timedelta(days=1)
+        self.sp.refresh(StoreWM(), 60, now=NOW_)
+        recs = self.sp.load("2266")
+        recs[13]["t"] = (NOW_ - 40 * days).date().isoformat()                       # not carried: due again on day 50
+        recs[999] = {"id": 999, "p": 1.0, "s": "Available", "t": (NOW_ - 40 * days).date().isoformat(), "d": "Food", "v": 2}   # left the list
+        self.sp.save("2266", recs)
+        res = self.sp.refresh(StoreWM(), 60, now=NOW_ + days)
+        self.assertEqual(res["due"], 0)
+        latest = self.store.read_json(self.tmp / "store_prices" / "latest.json")
+        self.assertEqual((latest["due"], latest["next_due"]), (0, "2026-10-19"), "the priced rows, 7 days after their check")
+        self.assertFalse(self.sp.due(latest, NOW_ + days))
+        self.assertTrue(self.sp.due(latest, NOW_ + 7 * days))
+        self.assertEqual(self.sp.refresh(StoreWM(), 60, now=NOW_ + 7 * days)["due"], 45, "and then they are due")
+
     def test_a_chunk_walmart_refuses_is_split_so_the_rest_is_still_priced(self):
         wm = RefusingStoreWM()
         res = self.sp.refresh(wm, 60, now=NOW_)

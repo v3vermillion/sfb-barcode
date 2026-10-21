@@ -159,6 +159,13 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
   }
 
   if (cls.kind === "store-label") {
+    // A Walmart listing whose own barcode starts with 2 (about 1,700 in the list: gift hams, steaks, some toys) is that
+    // listing, not a scale label: the barcode is looked up first, as the resolve order says (barcode, then store label;
+    // decision 2026-10-06). Read as a label it showed a price made of its digits ($49 ham as $107.09; audit W8-02,
+    // 2026-10-21). A real scale label is not in the list, and while the list loads the label is read as before.
+    const g = toGtin14(cls.digits, undefined, { scanned: true });     // null for 11 typed digits: never completed
+    const r = g ? await db.lookupUpc(g.key) : null;
+    if (r?.items?.length) { const [item, ...others] = pickListing(r.items, preferId); return { ...fromItem(item), others, gtin: g.gtin14, code: cls.digits, scanned: g }; }
     if (cls.priceCents == null) {
       // a digit does not check out: no price is better than a wrong one
       return { kind: "unknown", code: cls.digits, codeType: "store-label", badDigits: true, noPrice: true, title: `Label ${formatGtin(cls.digits)}`, priceCents: null, unit: "each", key: `u:${cls.digits}` };
@@ -169,11 +176,9 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
         title: "Store-priced item (meat, deli, bakery or weighed produce)", key: `l:${cls.digits}`,
       };
     }
-    // a 2-prefix code with no price encoded is a manufacturer's variable-measure code: try the catalog, never show $0.00
-    const g = toGtin14(cls.digits, undefined, { scanned: true });
-    const r = g ? await db.lookupUpc(g.key) : null;
+    // a 2-prefix code with no price encoded is a manufacturer's variable-measure code (not in the list: looked up above),
+    // never shown as $0.00
     if (r?.notReady) return { kind: "not-ready", code: cls.digits, title: "The price list is still loading", priceCents: null, unit: "each", key: `n:${cls.digits}` };
-    if (r?.items?.length) { const [item, ...others] = pickListing(r.items, preferId); return { ...fromItem(item), others, gtin: g.gtin14, code: cls.digits, scanned: g }; }
     return { kind: "unknown", code: cls.digits, gtin: g?.gtin14 || null, codeType: "store-label", noPrice: true, title: `Label ${formatGtin(cls.digits)}`, priceCents: null, unit: "each", key: `u:${cls.digits}` };
   }
 
@@ -208,6 +213,14 @@ export async function resolveCode(db, raw, format, { scanned = false, preferId =
     kind: "unknown", code: cls.digits, gtin: cls.gtin14, codeType: cls.type, checkOk: cls.checkOk, ...(store ? { store } : {}),
     title: store ? (store.brand === store.store ? `${store.brand} item` : `${store.brand} item (${store.store})`) : `Barcode ${formatGtin(cls.gtin14)}`, priceCents: null, unit: "each", key: `u:${cls.gtin14}`, scanned: cls,
   };
+}
+
+/** Whether the Worker's live check can price this barcode: it prices Walmart barcodes only, and a 12-digit code starting
+ *  with 2 (a store's own number range, used by a few Walmart listings such as gift hams) is always refused there
+ *  (pipeline/src/index.js parseGtin), so no check is offered for it. */
+export function liveCheckable(gtin) {
+  const d = String(gtin || "").replace(/^0+(?=\d{12}$)/, "");
+  return /^\d{8,14}$/.test(d) && !(d.length === 12 && d[0] === "2");
 }
 
 /** This phone's remembered matches merged with the shared list (the Worker's /v1/learned): a match made on this phone
@@ -273,6 +286,7 @@ export function notesFor(res, ctx = {}) {
   }
   if (res.kind === "unknown") {
     if (res.codeType === "PLU") notes.push({ tone: "warn", text: "This produce code is not in the price list. Search by the produce name instead." });
+    else if (res.badDigits && String(res.code).length === 11) notes.push({ tone: "warn", text: "This label's price digits do not check out, so no price can be read from it. Re-enter all 12 digits under the barcode, or search by name." });   // 11 typed digits have no check digit to fail (audit W8-03)
     else if (res.badDigits) notes.push({ tone: "warn", text: "This label failed its check-digit test, so no price can be read from it. Re-enter the number under the barcode, or search by name." });
     else if (res.noPrice) notes.push({ tone: "warn", text: "This label has no encoded price and is not in the price list. Use the price printed on the label, or search by name." });
     else if (res.store) {

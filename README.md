@@ -55,8 +55,9 @@ scheduler is unreliable) checks what is due and does one job: crawl, build, audi
   against the previous snapshot, price drift, and a sample review of newly added rows judged on evidence. A held snapshot
   opens a GitHub issue; the previous snapshot stays live. After a publish, the app's deploy checks a 351-query search gold
   set on the built pack (below 95% opens an issue, below 90% the deploy stops and the live site keeps the previous build).
-- **A weekly live audit** samples the published prices against Walmart, per department, and the measured drift sets
-  how often each department is re-crawled, within the Walmart quota.
+- **A weekly live audit** samples the published prices against Walmart and measures each department's price drift.
+  Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19); the measured
+  per-department planner (`crawler/cadence.py`) stays in the code, bypassed while that is set.
 - **Store prices** for consumables come from the Strongsville Supercenter itself and are refreshed on their own cycle.
 - **Alerts** are GitHub issues labelled `pipeline-alert`, one per condition, closed automatically when it clears. The
   [RUNBOOK](docs/RUNBOOK.md) lists every one and what it needs.
