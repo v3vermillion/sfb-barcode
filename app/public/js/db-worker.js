@@ -427,10 +427,10 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     const { toks, brandToks, brandJoined, head } = itemTokens(it.rank, it);
     const tokSet = new Set(toks);
     let s = 0;
-    let matched = 0;
+    let matched = 0, exact = 0;
     for (const g of groups) {
       if (g.some((a) => tokSet.has(a))) {
-        s += 2; matched++;                                                         // exact token vs prefix-only
+        s += 2; matched++; exact++;                                                        // exact token vs prefix-only
         let tf = 0; for (const t of toks) if (g.includes(t)) tf++;                 // "Corn, Canned Corn" over "Corn Meal"
         if (tf > 1) s += 0.8;
       } else { s += 0.6; if (toks.some((t) => g.some((a) => t.startsWith(a)))) matched++; }
@@ -472,7 +472,8 @@ function scoreCandidates(S, ranks, qTokens, groups, typed = null, ownBrandFirst 
     // Walmart's own brand is the same price tier as another chain's store brand: first when the query named one, but only
     // for the item the query names, among the consumable departments other chains' store brands compete in ("giant eagle
     // pumpkin" is canned pumpkin, not Mainstays pumpkin plates; owner's food-bank photos, 2026-10-21)
-    if (it.storeBrand) s += ownBrandFirst && headHit && S.tier !== "more" ? 3 : 0.3;
+    // (or carries every word: "giant eagle honey nut toasted oats" is Great Value Honey Nut Toasted Oats Cereal)
+    if (it.storeBrand) s += ownBrandFirst && (headHit || exact === groups.length) && S.tier !== "more" ? 3 : 0.3;
     if (it.retired) s -= 1.5;
     if (it.unavailable) s -= 0.4;
     s -= (r / S.N) * 0.8;             // rank within the shard as the final tiebreaker

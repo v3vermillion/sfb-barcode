@@ -51,7 +51,7 @@ scheduler is unreliable) checks what is due and does one job: crawl, build, audi
 
 - **Acceptance gates** hold a snapshot that would make the app worse: every department finished, every sentinel item
   priced, a live check of sampled prices against Walmart, size parsing, per-unit outliers, item and category counts
-  against the previous snapshot, price drift, a 345-query search gold set, and a sample review of newly added rows judged
+  against the previous snapshot, price drift, a 348-query search gold set, and a sample review of newly added rows judged
   on evidence. A held snapshot opens a GitHub issue; the previous snapshot stays live.
 - **A weekly live audit** samples the published prices against Walmart, per department, and the measured drift sets
   how often each department is re-crawled, within the Walmart quota.

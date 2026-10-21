@@ -60,6 +60,9 @@ const ROWS = [
   row("Rice Krispies Treats Original Chewy Marshmallow Snack Bars, 40 Ct", "Rice Krispies Treats", 13.79, { size: 40, unit: "ct", cat: "9" }),
   row("(2 pack) Rice Krispies Treats Original Chewy Marshmallow Snack Bars, 26.4 oz, 12 Count", "Rice Krispies Treats", 34.0, { size: 26.4, unit: "oz", pack: 2, cat: "9" }),
   row("Rice Krispies Treats Original Breakfast Cereal, 11.6 oz", "Rice Krispies Treats", 6.86, { size: 11.6, unit: "oz", cat: "7" }),
+  // photos 11-15: another chain's cereal whose Walmart own-brand twin is named "... Cereal"
+  row("Weight Watchers Ww Honey Nut Toasted Oats 12.3 Oz.", "Weight Watchers", 7.78, { size: 12.3, unit: "oz", cat: "7" }),
+  row("Great Value Honey Nut Toasted Oats Cereal, 12.25 oz", "Great Value", 3.14, { size: 12.25, unit: "oz", cat: "7", store_brand: true }),
 ];
 
 let db;
@@ -195,4 +198,10 @@ test("a box priced as one of its pieces, and the product's other sizes (owner, 2
   assert.ok(!sizes.some((n) => /^\(2 pack\)/.test(n)), "not a bundle of the same box");
   assert.ok(!sizes.some((n) => /Cereal/.test(n)), "not the cereal of the same brand");
   assert.ok(!sizes.some((n) => n === box.name), "not the item itself");
+});
+
+test("another chain's brand: Walmart's own brand first when it carries every other word, not only when it is named by them", () => {
+  const r = top("giant eagle honey nut toasted oats");
+  assert.equal(r.otherBrand?.store, "Giant Eagle");
+  assert.match(r.items[0].name, /^Great Value Honey Nut Toasted Oats Cereal/, "the store-brand twin, not Weight Watchers");
 });

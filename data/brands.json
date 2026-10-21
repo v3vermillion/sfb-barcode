@@ -127,6 +127,8 @@
         "amazon",
         "amazon fresh",
         "amazon grocery",
+        "amazon saver",
+        "amazon fresh",
         "amazon kitchen",
         "amazon basics",
         "happy belly",
@@ -232,6 +234,7 @@
       "brands": [
         "food club",
         "essential everyday",
+        "our family",
         "best choice",
         "shurfine",
         "coburn farms"

@@ -345,6 +345,9 @@
   {"q": "red pack whole peeled tomatoes", "all": ["redpack", "whole peeled"]},
   {"q": "oven fry", "all": ["oven fry", "coating"]},
   {"q": "swanson sipping bone broth beef", "all": ["swanson", "sipping"]},
-  {"q": "mission pride fruit mix", "all": ["fruit mix", "15 oz"]}
+  {"q": "mission pride fruit mix", "all": ["fruit mix", "15 oz"]},
+  {"q": "giant eagle honey nut toasted oats", "all": ["great value", "honey nut"]},
+  {"q": "amazon saver cream of chicken", "all": ["great value", "cream of chicken"]},
+  {"q": "puffs plus lotion", "all": ["puffs", "lotion"]}
  ]
 }
