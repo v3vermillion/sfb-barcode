@@ -215,13 +215,14 @@ def _plausible(q) -> bool:
     return True
 
 
-def parse_quantity(text: str, extended: bool = True):
+def parse_quantity(text: str, extended: bool = True, context: str = None):
     """Return (size, unit, pack) from free text. pack is None when not stated.
 
     The basic pass reads a weight or volume ("29 oz", "1.5 Lt", "Two Pounds", "1#") or a plain count ("24 ct").
     With extended=True, when that finds nothing, count nouns ("20 Tea Bags", "12 Bars", "2 Dozen") and a bare
     "Quart" / "Pint" / "Half Gallon" are read as well. normalize() tries the size field's basic pass before the
-    name's extended pass, so a stated weight always beats a piece count."""
+    name's extended pass, so a stated weight always beats a piece count. `context` (the name, when the text is the size
+    field) tells a bag listing's gallon range ("12-16 gal") from a pack."""
     if not text:
         return None, None, None
     t = text.replace("\u00d7", "x")
@@ -236,7 +237,7 @@ def parse_quantity(text: str, extended: bool = True):
     pack = None
     m = MULTI.search(t)
     if (m and "-" in t[m.end(1):m.start(2)] and int(m.group(1)) < float(m.group(2)) and _unit(m.group(3)) in ("gal", "qt")
-            and CAPACITY_RX.search(t)):
+            and (CAPACITY_RX.search(t) or (context and CAPACITY_RX.search(context)))):
         # "Can Liners, 7-10 Gallon, 500 Count" is a capacity range on bags, not 7 packs of 10 gallons: the capacity rule
         # below reads the count (2026-10-19; audit F-WU03-001, 2026-10-21). Only a rising range: "100-1-Gallon Mylar
         # Bags" is 100 one-gallon bags
@@ -477,11 +478,11 @@ def normalize(item: dict, dept: dict, cfg: dict):
     size, unit, pack = parse_quantity(name, extended=False)
     flags = []
     src = "name"
-    fs, fu, fp = parse_quantity(item.get("size") or "", extended=False)
+    fs, fu, fp = parse_quantity(item.get("size") or "", extended=False, context=name)   # "12-16 gal" on bags: capacity
     if size is None and fs is None:
         size, unit, pack = parse_quantity(name)
         if size is None:
-            fs, fu, fp = parse_quantity(item.get("size") or "")
+            fs, fu, fp = parse_quantity(item.get("size") or "", context=name)
     if unit == "lb" and PAPER_WEIGHT_RX.search(name):
         size, unit = None, None                   # "Cardstock, 65 lb." is the paper's basis weight, not a size
     if size is None and fs is not None:

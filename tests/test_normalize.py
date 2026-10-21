@@ -297,6 +297,21 @@ class PackListings20261019(unittest.TestCase):
         plain, _ = N.normalize(self.item("Hefty Ultra Strong 13 Gallon Trash Bags, 40 Bags", 10.52), hh, CFG)
         self.assertNotIn("pack_listing", plain["flags"]); self.assertNotIn("listing_price", plain)
 
+    def test_a_gallon_range_in_the_size_field_of_bags_is_not_a_pack(self):
+        # the name supplies the bag context for the size field: "12-16 gal" there was read as a pack of 12 (a falling
+        # "20-1-Gallon" stays 20 one-gallon bags); real listings from the Household crawl
+        hh = next(d for d in CFG["departments"] if d["name"] == "Household Essentials")
+        row, _ = N.normalize(self.item("Heritage Low-Density Coreless Trash Bags,12-16Gal,1 Mil, 32x24, Black,25Bags/Rl,10Rls/CT", 34.07,
+                                       size="12-16 gal"), hh, CFG)
+        self.assertEqual((row["size"], row["unit"], row["pack"]), (25.0, "ct", 1))
+        row, _ = N.normalize(self.item("Heritage Linear Low-Density Trash Bags, 55-60 gal, 2 mil, 36 x 58, Clear, 100/Carton", 91.21,
+                                       size="55-60 gal"), hh, CFG)
+        self.assertEqual(row["pack"], 1)
+        row, _ = N.normalize(self.item("1 Gallon Mylar Bags & 20 Oxygen Absorbers for Dried Food & Long Term Storage by Dry-Packs", 16.99,
+                                       size="20-1-Gallon"), hh, CFG)
+        self.assertEqual(row["pack"], 20)
+        self.assertEqual(N.parse_quantity("12-16 gal"), (16.0, "gal", 12), "without the bag context a hyphen pack stays")
+
     def test_the_caps_and_the_equipment_rule_judge_one_unit(self):
         toys = next(d for d in CFG["departments"] if d["name"] == "Toys")
         bundle = self.item("(12 pack) Play-Doh Modeling Compound, 4 oz Can", 150.0, brand="Play-Doh", upc="035000510099", path="Home Page/Toys/Arts & Crafts")
