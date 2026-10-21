@@ -454,9 +454,35 @@ def gates_vs_previous(rows, stats, prev, prev_stats, cfg, rules=None):
                 unstable.append({"cat": cat, "old": n_prev, "new": n})
     detail = f"largest category change {worst:.1%} (categories with >= {min_rows} published rows)"
     if unstable:
+        _explain_unstable(unstable, rows, prev)
         detail += "; over tolerance: " + ", ".join(f"cat {u['cat']} {u['old']}->{u['new']}" for u in unstable[:15])
     out["category_counts"] = _measured(not unstable, round(worst, 4), tol, detail)
     return out, drift, unstable
+
+
+def _explain_unstable(unstable, rows, prev):
+    """Why a category's count moved (2026-10-21: a hold whose cause took a day to find): for each over-tolerance category,
+    the published rows re-classified into or out of it (`moved`, "from->to": n, with the commonest Walmart path segments
+    under `paths`), the rows new to the candidate (`added`) and the published rows the candidate no longer has (`gone`).
+    A rule change moves rows; a crawl that lost a department loses them."""
+    cats = {str(u["cat"]) for u in unstable}
+    prev_cat = {pid: str(p.get("cat")) for pid, p in prev.items()}
+    moved, paths, new, seen = Counter(), defaultdict(Counter), Counter(), set()
+    for r in rows:
+        c, pc = str(r.get("cat")), prev_cat.get(r["id"])
+        seen.add(r["id"])
+        if pc is None:
+            if c in cats:
+                new[c] += 1
+        elif pc != c and (c in cats or pc in cats):
+            moved[(pc, c)] += 1
+            paths[(pc, c)]["/".join((r.get("path") or "").split("/")[2:4])] += 1
+    gone = Counter(prev_cat[pid] for pid in prev if pid not in seen and prev_cat[pid] in cats)
+    for u in unstable:
+        c = str(u["cat"])
+        u["moved"] = {f"{a}->{b}": n for (a, b), n in sorted(moved.items(), key=lambda kv: -kv[1]) if c in (a, b)}
+        u["paths"] = {f"{a}->{b}": [f"{seg} {n}" for seg, n in paths[(a, b)].most_common(3)] for (a, b) in moved if c in (a, b)}
+        u["added"], u["gone"] = new[c], gone[c]          # rows new to the candidate / published rows it no longer has
 
 
 def gate_review_pending(sr):
@@ -834,7 +860,12 @@ def _report(state, stats, g):
         L += ["", "## Unit-price outliers (worst 25)"]
         L += [f"- {o['id']} {o['name']}: {o['unit_price']}/{o['unit']} vs median {o['median']} (x{o['ratio']}), cat {o['cat']}" for o in ex["unit_outliers"]]
     if ex.get("unstable"):
-        L += ["", "## Category count changes over tolerance"] + [f"- cat {u['cat']}: {u['old']} -> {u['new']}" for u in ex["unstable"]]
+        L += ["", "## Category count changes over tolerance"]
+        for u in ex["unstable"]:
+            L.append(f"- cat {u['cat']}: {u['old']} -> {u['new']}" + (f"; re-classified: " + ", ".join(f"{k} {n}" for k, n in u["moved"].items()) if u.get("moved") else "")
+                     + (f"; new rows {u['added']}" if u.get("added") else "") + (f"; published rows gone {u['gone']}" if u.get("gone") else ""))
+            for k, segs in (u.get("paths") or {}).items():
+                L.append(f"  - {k}: " + "; ".join(segs))
     if ex.get("drift"):
         L += ["", f"## Price changes > 50% (first {len(ex['drift'])})"] + [f"- {d['id']} {d['name']}: {d['old']} -> {d['new']}" for d in ex["drift"]]
     return "\n".join(L) + "\n"

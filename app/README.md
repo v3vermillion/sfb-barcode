@@ -186,8 +186,11 @@ WebKit ignoring the viewport's `interactive-widget` key (kept for Chrome on Andr
 
 - First open online: shell precached (~1.2 MB), the core tier downloaded (69 MB for the real list, 32 MB on the test
   fixture) with a progress bar, the rest in the background; "Add to Home Screen" keeps iOS from evicting storage.
-- Every later open: shell from the service worker, pack from Cache Storage, interactive in well under a second,
-  no network needed. `navigator.storage.persist()` is requested after every successful load (and again when the
+- Every later open: shell from the service worker, pack from Cache Storage, no network needed. The core departments
+  (consumables, 45% of the real list) open first and the app is ready on them; the other departments on the phone open
+  right behind, three shards at a time, and join the search ("Adding more departments" meanwhile; a barcode they hold
+  waits for them once instead of reading as unknown). Measured in throttled Chromium on the real list: ready in about
+  2 s instead of 3.2-6.2 s for everything (`docs/DECISIONS.md` 2026-10-21). `navigator.storage.persist()` is requested after every successful load (and again when the
   app is installed to the Home Screen, which is what makes Chrome on Android grant it); when `navigator.storage.persisted()`
   says best-effort, Settings says the phone may clear the prices and how to keep them.
 - Memory budget: the search worker keeps every open shard in memory (about 131 bytes per item measured on the 760k

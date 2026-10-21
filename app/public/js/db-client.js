@@ -43,6 +43,7 @@ export function fileList(manifest, version) {
   return [f.cols, ...f.strings, f.upc, f.tokens, f.equiv, f.plu].map((x) => ({ url: `${DB_ROOT}${version}/${x.path}`, bytes: x.gzBytes || x.bytes || 0, shard: "all", tier: "core", bucket: CACHE_PREFIX + version }));
 }
 const shardIds = (manifest) => (manifest.shards ? manifest.shards.map((s) => s.id) : ["all"]);
+const coreIds = (manifest) => (manifest.shards || [{ id: "all", tier: "core" }]).filter((s) => (s.tier || "core") === "core").map((s) => s.id);
 
 // ---- how much of the pack this phone can hold open
 // The search worker keeps every open shard in memory (typed arrays over the inflated files plus the word dictionary):
@@ -165,7 +166,7 @@ export class DbClient extends EventTarget {
     const manifest = await this.#manifestOf(version);
     if (!manifest) return null;
     const p = await this.#present(version, manifest);
-    const core = (manifest.shards || [{ id: "all", tier: "core" }]).filter((s) => (s.tier || "core") === "core").map((s) => s.id);
+    const core = coreIds(manifest);
     const want = this.#wanted(manifest);
     return p.base && core.every((id) => p.shards.includes(id)) ? { manifest, shards: p.shards, complete: [...want].every((id) => p.shards.includes(id)) } : null;
   }
@@ -322,7 +323,14 @@ export class DbClient extends EventTarget {
     const p = await this.#present(version, manifest);
     if (!p.base || !p.shards.length) throw new Error("the price database on this phone is incomplete");
     const picked = pickShards(manifest);
-    const only = p.shards.filter((id) => picked.open.includes(id));
+    const present = p.shards.filter((id) => picked.open.includes(id));
+    if (!present.length) throw new Error("the price database on this phone is incomplete");
+    // The core departments (groceries and the other consumables) open first and the app is ready on them; the other
+    // departments on the phone open right after, in the background (#completeMore), and join the search when they do.
+    // Measured on the published list (2.57M items, 14 shards): opening everything before "ready" took 3.2-6.2 s in a
+    // throttled Chromium and 15-20 s on the owner's iPhone; the core is 45% of that work.
+    const core = new Set(coreIds(manifest));
+    const only = present.filter((id) => core.has(id));
     if (!only.length) throw new Error("the price database on this phone is incomplete");
     const stats = await this.call({ type: "load", root: new URL(DB_ROOT, location.href).href, base: new URL(`${DB_ROOT}${version}/`, location.href).href,
       manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only });
@@ -347,18 +355,21 @@ export class DbClient extends EventTarget {
     return pending.length ? { loaded: stats.shards, pending } : null;
   }
 
-  /** The other departments of the open version: download what is missing (when online) and add it to the search. */
+  /** The other departments of the open version: open what is already on the phone, download what is missing (when
+   *  online), and add them to the search. */
   #completeMore() {
     if (this.#moreTask || !this.more || !this.version) return this.#moreTask || Promise.resolve();
     const version = this.version;
     this.#moreTask = (async () => {
-      if (!navigator.onLine) return;
-      await this.#download(version, { background: true, tier: "more" });
+      if (navigator.onLine) await this.#download(version, { background: true, tier: "more" });
       if (this.version !== version) return;
       const p = await this.#present(version, this.manifest);
       const picked = pickShards(this.manifest);
+      const opened = new Set(this.stats?.shards || []);
+      const only = p.shards.filter((id) => picked.open.includes(id));
+      if (!only.some((id) => !opened.has(id))) return;      // nothing new on the phone (offline, the rest not downloaded yet)
       const stats = await this.call({ type: "load", root: new URL(DB_ROOT, location.href).href, base: new URL(`${DB_ROOT}${version}/`, location.href).href,
-        manifest: this.manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only: p.shards.filter((id) => picked.open.includes(id)) });
+        manifest: this.manifest, cacheName: CACHE_PREFIX + version, filesCache: FILES_CACHE, only });
       this.stats = { ...this.stats, ...stats };
       this.skipped = picked.skipped;
       this.more = this.#pendingOf(stats, picked);

@@ -376,8 +376,19 @@ class Gates(StoreCase, unittest.TestCase):
         g = self.gates()
         self.assertFalse(g["gates"]["category_counts"]["pass"]); self.assertTrue(g["gates"]["item_count"]["pass"])
         self.assertAlmostEqual(g["gates"]["category_counts"]["value"], 41 / 201, places=4)
-        self.assertEqual(g["extras"]["unstable"], [{"cat": "6", "old": 201, "new": 160}])
+        u = g["extras"]["unstable"][0]
+        self.assertEqual({k: u[k] for k in ("cat", "old", "new", "added", "gone", "moved")}, {"cat": "6", "old": 201, "new": 160, "added": 0, "gone": 41, "moved": {}},
+                         "rows that left the candidate, none re-classified")
         self.assertIn("Category count changes", (self.qa.CAND / "report.md").read_text())
+        self.assertIn("published rows gone 41", (self.qa.CAND / "report.md").read_text())
+        # the same drop by re-classification (50 Food rows now Pets): the report says where they went, and from which paths
+        moved = [dict(r, cat="19") if 1000 <= r["id"] < 1050 else r for r in big]
+        self.write_candidate(moved)
+        self.assertEqual(self.qa.check(wm=FakeWM(moved)), "hold")
+        u = self.gates()["extras"]["unstable"][0]
+        self.assertEqual((u["cat"], u["old"], u["new"], u["moved"], u["gone"]), ("6", 201, 151, {"6->19": 50}, 0))
+        self.assertEqual(u["paths"]["6->19"], ["Pantry 50"])   # the path segments after "Home Page/<department>"
+        self.assertIn("re-classified: 6->19 50", (self.qa.CAND / "report.md").read_text())
         self.write_gates(category_count_tolerance=None, price_drift_max=None, item_count_min_ratio=None)
         self.assertEqual(self.qa.check(wm=FakeWM(cats)), "review")
 

@@ -749,7 +749,7 @@ async function openRank(rank, { closest = false, source = "search" } = {}) {
 }
 async function openCode(raw, { source = "typed", format, scanned = false, preferId = null } = {}) {
   state.learnFor = null;
-  const res = await resolveCode(db, raw, format, resolveOpts({ scanned, preferId }));
+  const res = await resolveWithPending(raw, format, resolveOpts({ scanned, preferId }), () => toast("Other departments are still loading…", { iconName: "refresh", ms: 2500 }));
   if (!res) { toast("Not a valid barcode number", { iconName: "info" }); return null; }
   openResolution(res, { source });
   return res;
@@ -1606,6 +1606,19 @@ function resumeScan() {
   if (state.scan.zoom) state.scan.setZoom(false).catch(() => {});
   state.scan.resume(); armSmallHelp();
 }
+/** Resolves when the other departments have joined the search (the "more" event), or after `ms`. */
+const moreArrives = (ms) => new Promise((resolve) => { const done = () => { clearTimeout(t); db.removeEventListener("more", done); resolve(); }; const t = setTimeout(done, ms); db.addEventListener("more", done); });
+/** A barcode the open departments do not know, while other departments are still opening (the first seconds after a
+ *  launch): wait once for them, then look again, so a Home item scanned early is not called unknown. */
+async function resolveWithPending(raw, format, opts, onWait) {
+  let res = await resolveCode(db, raw, format, opts);
+  if (res?.kind === "unknown" && db.more?.pending?.length) {
+    onWait?.();
+    await moreArrives(2500);
+    res = await resolveCode(db, raw, format, opts);
+  }
+  return res;
+}
 async function onScanHit(hit) {
   if (anyModalOpen()) { state.scan?.pause(); return; }   // the tally or settings is open over the camera: never stack a result on it
   const t0 = performance.now();
@@ -1614,7 +1627,7 @@ async function onScanHit(hit) {
   el.scanHint.textContent = `Scanned ${formatGtin(hit.gtin?.gtin14 || hit.raw)}`;
   let res = null;
   state.learnFor = null;
-  try { res = await resolveCode(db, hit.raw, hit.format, resolveOpts({ scanned: true })); } catch (err) { console.warn("resolve", err); }
+  try { res = await resolveWithPending(hit.raw, hit.format, resolveOpts({ scanned: true }), () => { el.scanHint.textContent = "Other departments are still loading…"; }); } catch (err) { console.warn("resolve", err); }
   if (!state.scanOpen) return;
   if (!res) { el.scanHint.textContent = "This is not a product barcode"; setTimeout(resumeScan, 900); return; }
   if (res.kind === "not-ready") { el.scanHint.textContent = "The price list is still loading"; setTimeout(resumeScan, 1200); return; }

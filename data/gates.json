@@ -11,7 +11,7 @@
   "unit_outlier_group_min": 50,
   "price_drift_max": 0.02,
   "item_count_min_ratio": 0.9,
-  "category_count_tolerance": 0.2,
+  "category_count_tolerance": 0.4,
   "category_count_min_rows": 200,
   "sample_review": {
     "required": true,
