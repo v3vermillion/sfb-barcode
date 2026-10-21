@@ -542,6 +542,8 @@ function brandCategory(altsList) {
 // baby food and pet food carry the same flavour words as people food ("roasted chicken rice", "sweet corn"): they rank
 // first only when the query says it is for a baby or a pet, or names the item's brand (owner's food-bank photos 16-20)
 const AUDIENCE_CATS = new Map([[13, /^(baby|babies|infant|toddler|newborn|puree|purees|formula|stage|kids?)$/], [19, /^(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|bird|fish|hamster|kibble|treats?|chews?|litter)$/]]);
+const PHRASE_SYN = new Map([["bath tissue", ["toilet", "paper"]], ["bathroom tissue", ["toilet", "paper"]], ["toilet tissue", ["toilet", "paper"]],
+  ["toilet paper", ["bath", "tissue"]], ["paper towel", ["kitchen", "towel"]], ["paper towels", ["kitchen", "towels"]]]);
 function search(q, limit = 40) {
   const t0 = performance.now();
   let tokens = tokenize(q).filter(Boolean);
@@ -553,6 +555,11 @@ function search(q, limit = 40) {
   if (other) { otherBrand = { brand: other.brand, store: other.store }; tokens = [...tokens.slice(0, other.start), ...tokens.slice(other.end)]; }
   const shards = db.shards.filter(Boolean);
   let groups = expand(tokens);
+  // two-word names of the same thing: "bath tissue" (Kirkland, Charmin) is what Walmart's own brand calls "toilet paper"
+  for (let i = 0; i + 1 < groups.length; i++) {
+    const pair = PHRASE_SYN.get(groups[i].src + " " + groups[i + 1].src);
+    if (pair) for (let k = 0; k < 2; k++) if (!groups[i + k].alts.includes(pair[k])) groups[i + k].alts = [...groups[i + k].alts, pair[k]];
+  }
   const joined = [];
   // two typed words that are one brand word in the listings ("red pack" is Redpack, "veg all" Veg-All): the joined word
   // is an alternative of both, so an item carrying it matches the pair. Only a joined word that is mostly a brand, so

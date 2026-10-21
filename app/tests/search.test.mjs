@@ -68,6 +68,9 @@ const ROWS = [
   row("Great Value Ready-to-Heat 90-Second Roasted Chicken Flavored Rice Pouch, 8.8 oz", "Great Value", 1.37, { size: 8.8, unit: "oz", cat: "7", store_brand: true }),
   row("Parents Choice Sweet Potato & Sweet Corn, 4oz Glass Jar", "Parent's Choice", 0.98, { size: 4, unit: "oz", cat: "13", dept: "Baby", store_brand: true }),
   row("Great Value Golden Sweet Whole Kernel Corn, 15.25 oz", "Great Value", 0.72, { size: 15.25, unit: "oz", cat: "6", store_brand: true }),
+  // photos 21-22: Costco calls it bath tissue, Walmart's own brand toilet paper
+  row("Charmin Ultra Soft Bath Tissue 2-Ply 213 Sheets 30 Rolls", "Charmin", 32.98, { size: 30, unit: "ct", cat: "16", dept: "Household" }),
+  row("Great Value Soft & Strong Premium Toilet Paper, 30 Mega Rolls", "Great Value", 18.93, { size: 30, unit: "ct", cat: "16", dept: "Household", store_brand: true }),
 ];
 
 let db;
@@ -216,4 +219,11 @@ test("pet food and baby food come first only when the query is for a pet or a ba
   assert.match(top("dog food roasted chicken").items[0].name, /Dog Food/);
   assert.match(top("sweet corn").items[0].name, /Whole Kernel Corn/, "canned corn, not a baby-food jar");
   assert.match(top("baby sweet corn").items[0].name, /Glass Jar/);
+});
+
+test("bath tissue is toilet paper: Kirkland's 30 rolls are valued as Walmart's own 30 rolls (food-bank photos 21-22)", () => {
+  const r = top("kirkland bath tissue 30 rolls");
+  assert.equal(r.otherBrand?.store, "Costco");
+  assert.match(r.items[0].name, /^Great Value .*Toilet Paper, 30/);
+  assert.ok(top("toilet paper").items.some((x) => /Bath Tissue/.test(x.name)), "and the other way round");
 });

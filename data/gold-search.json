@@ -350,6 +350,7 @@
   {"q": "amazon saver cream of chicken", "all": ["great value", "cream of chicken"]},
   {"q": "puffs plus lotion", "all": ["puffs", "lotion"]},
   {"q": "earthly grains roasted chicken rice", "all": ["great value", "roasted chicken", "rice"]},
-  {"q": "our family sweet corn", "all": ["great value", "corn"]}
+  {"q": "our family sweet corn", "all": ["great value", "corn"]},
+  {"q": "kirkland bath tissue 30 rolls", "all": ["great value", "toilet paper", "30"]}
  ]
 }
