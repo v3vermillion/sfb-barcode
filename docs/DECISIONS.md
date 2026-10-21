@@ -137,6 +137,8 @@ Dated, current decisions; this file wins on conflict. A later entry that replace
 
 - 2026-10-21 — Shelf check, two more photos (the condensed soup aisle again; the toilet paper stack: Amazon Commercial Ultra Plus 24 and 80 rolls, Kirkland Signature Bath Tissue 30 rolls): 21 items, all in the top three. Fixed: "bath tissue" (Costco, Charmin) and "toilet paper" (Walmart's own brand) are now the same two words to the search, both ways ("bathroom tissue" and "toilet tissue" too), so "kirkland bath tissue 30 rolls" leads with Great Value toilet paper, 30 mega rolls, instead of Charmin; Amazon Commercial added to data/brands.json ("commercial" had matched Scott's jumbo commercial rolls). In all, 535 items read off 22 photos, 526 in the top three. Gold set +1 (351; 349 pass, the same two misses).
 
+- 2026-10-21 — `category_count_tolerance` is back to 0.2. The held snapshot 20261020-172046-refresh published on 2026-10-21 at 16:59 UTC with every gate passing under the one-cycle 0.4 (category_counts 39.3%, the re-classified greeting cards and koozies), including the sample review (20 junk in 600, 3.3%, lower bound 2.3% vs the 5% target); issue #44 closed itself. The next refresh is compared with this snapshot, so the 2026-10-13 category fixes no longer show as moves.
+
 ## Open
 
 - 2026-10-07 — UPC-E: `gtin14()` should expand 8-digit codes starting 0/1 to UPC-A when the UPC-E check digit validates (proposed). Done 2026-10-09 (same expansion as the app's barcode.js).
