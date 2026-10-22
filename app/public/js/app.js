@@ -809,7 +809,8 @@ function sheetHtml(res) {
   if (res.kind === "store-label" && res.label.needsConfirm) chips.push("Check against the label");
   const notes = notesFor(res, { priceDateLong: fmtDate(priceDate(), true) });
   const title = res.kind === "exact" || res.kind === "closest" ? boldTitle(it) : res.kind === "live" ? boldTitle({ brand: res.brand, name: res.name }) : esc(res.title);
-  const updated = `Updated ${fmtDate(priceDate(), "mid")}`;
+  // a carried-over row (its department was not in this update) is older than the list's date, by an amount the pack does not record
+  const updated = `Updated ${it?.carried ? "before " : ""}${fmtDate(priceDate(), "mid")}`;
   const checked = res.kind === "live" ? `${liveSource(res.live)} price, checked ${res.live?.checkedAt ? `at ${fmtTime(res.live.checkedAt)}` : "today"}`
     : res.kind === "store-label" ? "Printed by the store's scale"
     : res.kind === "plu" && res.entry.source === "typical" ? "Typical Walmart price"
@@ -872,7 +873,7 @@ function sheetHtml(res) {
     <p class="price-note" id="sheetPriceNote">${checkedHtml}</p>
     <h2 class="item-title" id="sheetTitle">${title}</h2>
     ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="t">${esc(c)}</span>`).join("")}</div>` : ""}
-    ${notes.length ? `<div id="sheetNotes">${notes.map((n) => `<p class="note${n.tone ? ` note--${n.tone}` : ""}">${esc(n.text)}</p>`).join("")}</div>` : ""}
+    ${notes.length ? `<div id="sheetNotes">${notes.map((n) => `<p class="note${n.tone ? ` note--${n.tone}` : ""}">${n.tone === "warn" ? icon("alert", "ico note-ico") : n.tone === "equiv" ? icon("info", "ico note-ico") : ""}<span>${esc(n.text)}</span></p>`).join("")}</div>` : ""}
     ${liveRow}
     </div><div class="sheet-side">
     ${packSeg}

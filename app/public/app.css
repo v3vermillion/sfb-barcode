@@ -163,10 +163,16 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 /* one small-caps label style: section headings, the tally card's label, the walkthrough's step count */
 .h2, .tc-label, .tour-step { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 650; }
 .h2 { margin: 0 0 8px; }
-/* a note: one quiet paragraph on a tinted panel (sheets, settings, the Home Screen card) */
+/* a note: one quiet paragraph on a tinted panel (sheets, settings, the Home Screen card). A toned note (warn: check
+   something; equiv: a value that is not Walmart's plain current listing) leads with an icon, so it is seen by its shape
+   and not by its tint alone (reviewer, 2026-10-22), and its text is full ink */
 .note { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.45; }
+.note:where(.note--warn, .note--equiv) { display: flex; align-items: flex-start; gap: 10px; }   /* icon, then the text in one span; a plain note keeps its inline flow */
+.note .note-ico { width: 18px; height: 18px; flex: none; margin-top: 2px; }
 .note--warn { background: color-mix(in oklab, var(--closest) 12%, transparent); color: var(--ink); }
-.note--equiv { background: color-mix(in oklab, var(--equiv) 14%, transparent); }
+.note--warn .note-ico { color: var(--closest); }
+.note--equiv { background: color-mix(in oklab, var(--equiv) 14%, transparent); color: var(--ink); }
+.note--equiv .note-ico { color: var(--equiv); }
 
 /* ---------- boot screen ---------- */
 /* The first thing on screen: the iOS launch image (splash/) is this layer rendered by tools/icon/make_splash.py, so the
