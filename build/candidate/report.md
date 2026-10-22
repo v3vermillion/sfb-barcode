@@ -1,18 +1,18 @@
 # Snapshot report — 20261021-170108-refresh
 
-Status: **review** (deterministic gates passed; sample review pending)
+Status: **hold** (HOLD - previous snapshot stays live)
 Checked: 2026-10-22T02:01:05+00:00  |  config hash: ddffa24e9d95
 
 ## Gates
+- PASS category_counts — value 0.0895, threshold 0.4: largest category change 8.9% (categories with >= 200 published rows)
 - PASS departments_complete — value 0, threshold 0.3: 1 departments checked; sizing used
-- PASS sentinels — value 0, threshold 0: 114/114 found and priced
+- PASS item_count — value 1.006, threshold 0.9: 2358413 items vs 2359474 published (100.6%, 33366 published rows left by rule: 18965 bundle listings, 14401 above the price ceiling or under an excluded path, against 18821 bundle units kept)
 - PASS live_match — value 0.937, threshold 0.9: 461/492 within 5% (93.7%; exact 431, 87.6%) of the rows Walmart still lists; no longer listed: 8 of 500 (1.6%, not counted as wrong); consumable - of 0, durable 93.7% of 492; 25 calls
+- PASS price_drift — value 0.00013, threshold 0.02: 305 of 2358413 prices moved more than 50% (0.01%)
+- FAIL sample_review — value 0.19, threshold 0.05: junk 114/600 (19.0%), 95% lower bound 16.5% vs 5.0% target, hard cap 10%, systematic junk: yes, 51 examples, 2 batches, model claude-sonnet-5-5: systematic junk; notes: Many Office Supplies rows (about 55) have cryptic abbreviated names like 'MD 1SUB RAZZ WR' or 'PG 2`` DUR BNDR RED'; these are SKU dumps, not shelf labels, and would affect many more rows in the full snapshot. A smaller group is implausibly priced, bulk or marketplace-style, industrial, or magazine (Dotdash MPP) listings, plus a 'Retired' placeholder. | Every row is Office Supplies. There is a rep
+- PASS sentinels — value 0, threshold 0: 114/114 found and priced
 - PASS size_parse — value 0.9253, threshold 0.92: 212180/229315 Food rows sized (92.5%): 207682 with a parsed size, 8 sold by the pound, 4490 sold each
 - PASS unit_outliers — value 0.0021, threshold -: measure-only: 1041 of 494856 unit-priced rows outside [median/10, median*10] of their category+unit group (0.21%); their per-unit prices are dropped and the rows flagged unit_price_suspect
-- PASS price_drift — value 0.00013, threshold 0.02: 305 of 2358413 prices moved more than 50% (0.01%)
-- PASS item_count — value 1.006, threshold 0.9: 2358413 items vs 2359474 published (100.6%, 33366 published rows left by rule: 18965 bundle listings, 14401 above the price ceiling or under an excluded path, against 18821 bundle units kept)
-- PASS category_counts — value 0.0895, threshold 0.4: largest category change 8.9% (categories with >= 200 published rows)
-- PENDING sample_review — value -, threshold 0.05: pending: `python -m crawler.review run`, then `qa finalize`
 
 ## Totals
 - items kept: 2358413  |  UPCs: 2247298  |  carried over: 2181658
@@ -5297,6 +5297,37 @@ Names that identify no product ("Merchandise", a brand alone, "Discontinued", "c
 - 10881207 UPC 00643077625372 Office Supplies: Merchandise -> (name not provided) ($13.58)
 - 12461183 UPC 00743921411233 Office Supplies: Merchandise -> (name not provided) ($23.45)
 - 14164791 UPC 00077711175655 Office Supplies: AVERY -> (name not provided) ($5.17)
+
+## Category labels in the sample review: 5.0% judged wrong
+- 135706571: Toys, Books & Games -> School, Office & Crafts
+- 14123044: Beauty -> School, Office & Crafts
+- 15118619: Personal Care -> School, Office & Crafts
+- 149802221: Home -> School, Office & Crafts
+- 14981571009: Hardware & Tools -> School, Office & Crafts
+- 17506556: Hardware & Tools -> School, Office & Crafts
+- 17081063750: Jewelry & Accessories -> School, Office & Crafts
+- 20855559208: Electronics -> School, Office & Crafts
+- 16296651513: School, Office & Crafts -> Seasonal & Party
+- 42450825: Beverages -> School, Office & Crafts
+- 995683995: Beverages -> School, Office & Crafts
+- 851035900: Pet Food & Supplies -> Home
+- 46058503: Hardware & Tools -> School, Office & Crafts
+- 800962425: Toys, Books & Games -> Electronics
+- 807603354: Toys, Books & Games -> School, Office & Crafts
+- 23068658: Toys, Books & Games -> Home
+- 271414878: Toys, Books & Games -> Home
+- 48688410: Toys, Books & Games -> Home
+- 47220278: Electronics -> School, Office & Crafts
+- 2805679736: Jewelry & Accessories -> School, Office & Crafts
+- 471752656: Household Supplies -> School, Office & Crafts
+- 729247386: School, Office & Crafts -> Auto
+- 784959956: School, Office & Crafts -> Auto
+- 38453801: Hardware & Tools -> School, Office & Crafts
+- 21114815629: Home -> School, Office & Crafts
+- 21116963588: Home -> School, Office & Crafts
+- 22249977: Home -> School, Office & Crafts
+- 26392280: Home -> School, Office & Crafts
+- 366512502: Home -> School, Office & Crafts
 
 ## Live price differences (worst 25 of 500 checked)
 - 914830446 Paper Mate Collection: snapshot 9.97 -> live not found

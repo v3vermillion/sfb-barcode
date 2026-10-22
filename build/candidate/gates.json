@@ -1252,6 +1252,7 @@
     ],
     "unstable": []
   },
+  "finalized": "2026-10-22T02:02:41+00:00",
   "gates": {
     "category_counts": {
       "detail": "largest category change 8.9% (categories with >= 200 published rows)",
@@ -1284,10 +1285,10 @@
       "value": 0.00013
     },
     "sample_review": {
-      "detail": "pending: `python -m crawler.review run`, then `qa finalize`",
-      "pass": null,
+      "detail": "junk 114/600 (19.0%), 95% lower bound 16.5% vs 5.0% target, hard cap 10%, systematic junk: yes, 51 examples, 2 batches, model claude-sonnet-5-5: systematic junk; notes: Many Office Supplies rows (about 55) have cryptic abbreviated names like 'MD 1SUB RAZZ WR' or 'PG 2`` DUR BNDR RED'; these are SKU dumps, not shelf labels, and would affect many more rows in the full snapshot. A smaller group is implausibly priced, bulk or marketplace-style, industrial, or magazine (Dotdash MPP) listings, plus a 'Retired' placeholder. | Every row is Office Supplies. There is a rep",
+      "pass": false,
       "threshold": 0.05,
-      "value": null
+      "value": 0.19
     },
     "sentinels": {
       "detail": "114/114 found and priced",
@@ -1310,7 +1311,7 @@
   },
   "passed_deterministic": true,
   "run_id": "20261021-170108-refresh",
-  "status": "review",
+  "status": "hold",
   "thresholds": {
     "audit_match_min": null,
     "audit_per_department": 30,
