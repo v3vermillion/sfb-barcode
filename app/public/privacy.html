@@ -2,30 +2,68 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>SFB Value — Privacy</title>
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f5f0">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0d0b">
   <link rel="icon" href="./icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="preload" href="./fonts/geist-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <!-- the app's own stylesheet: its colours, fonts and dark mode, so this page matches the screen it was opened from -->
+  <link rel="stylesheet" href="./app.css">
+  <script>
+    // the app's Appearance setting (Settings › Appearance; app.js applyTheme) before the first paint, so a phone set to
+    // dark in the app sees this page dark even when the system is light
+    try {
+      const theme = JSON.parse(localStorage.getItem("sfb.prefs") || "{}").theme;
+      if (theme === "light" || theme === "dark") {
+        document.documentElement.dataset.theme = theme;
+        for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.content = theme === "dark" ? "#0a0d0b" : "#f7f5f0";
+      }
+    } catch { /* no storage: the system scheme */ }
+  </script>
   <style>
-    body { margin: 0; padding: 24px 20px 48px; max-width: 640px; font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1c1c1a; background: #f7f5f0; }
-    @media (prefers-color-scheme: dark) { body { color: #ece9e2; background: #0a0d0b; } a { color: #9ad1a8; } }
-    h1 { font-size: 24px; margin: 0 0 16px; } h2 { font-size: 18px; margin: 24px 0 8px; } p, li { margin: 0 0 10px; }
+    .doc { width: 100%; max-width: 640px; margin: 0 auto; padding: calc(var(--safe-t) + 6px) 20px calc(var(--safe-b) + 48px); }
+    .doc-top { display: flex; align-items: center; min-height: 52px; margin: 0 0 4px -10px; }
+    .back { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 14px 0 8px; border-radius: 12px; color: var(--accent); font-weight: 600; font-size: 17px; text-decoration: none; }
+    .back:active { background: var(--surface-2); }
+    .back .ico { width: 22px; height: 22px; }
+    .doc h1 { margin: 6px 0 4px; font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -.015em; }
+    .doc .eyebrow { margin: 0 0 20px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 650; color: var(--ink-3); }
+    .doc h2 { margin: 26px 0 8px; font-size: 17px; font-weight: 650; }
+    .doc p, .doc li { margin: 0 0 10px; font-size: 16.5px; line-height: 1.5; font-weight: 450; color: var(--ink-2); }
+    .doc b { font-weight: 650; color: var(--ink); }
+    .doc ul { margin: 0; padding-left: 22px; }
+    .doc a { color: var(--accent); }
   </style>
 </head>
 <body>
-  <h1>SFB Value — Privacy</h1>
-  <p>SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. It has no accounts, no sign-in, no advertising and no analytics.</p>
-  <h2>What stays on the phone</h2>
-  <p>The price list, the donation tally, Recent items, settings and the barcode matches remembered on the phone are stored in the browser's storage on the phone itself. Reset app data in Settings removes them.</p>
-  <h2>What leaves the phone</h2>
-  <ul>
-    <li><b>Price list downloads</b> and app updates: ordinary web requests to the app's own address.</li>
-    <li><b>Live price check</b> (can be turned off in Settings): when the phone is online, the barcode of a scanned or typed item is sent to the food bank's price service, which asks Walmart for the current price. Only the barcode is sent.</li>
-    <li><b>Shared barcode matches</b>: when a volunteer matches an unknown barcode to a Walmart item by searching for it, the pair (barcode, Walmart item) is shared with the food bank's other phones through the same service, so the next volunteer sees it at once. No name, device or location is attached.</li>
-  </ul>
-  <h2>Camera</h2>
-  <p>The camera is used only to read barcodes, on the phone, while the scanner is open. No image is stored or sent anywhere.</p>
-  <h2>Contact</h2>
-  <p>Strongsville Emergency Food Bank, Strongsville, Ohio.</p>
+  <main class="doc">
+    <header class="doc-top">
+      <a class="back" id="back" href="./" aria-label="Back to the app"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Back</a>
+    </header>
+    <p class="eyebrow">SFB Value</p>
+    <h1>Privacy</h1>
+    <p>SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. It has no accounts, no sign-in, no advertising and no analytics.</p>
+    <h2>What stays on the phone</h2>
+    <p>The price list, the donation tally, Recent items, settings and the barcode matches remembered on the phone are stored in the browser's storage on the phone itself. Reset app data in Settings removes them.</p>
+    <h2>What leaves the phone</h2>
+    <ul>
+      <li><b>Price list downloads</b> and app updates: ordinary web requests to the app's own address.</li>
+      <li><b>Live price check</b> (can be turned off in Settings): when the phone is online, the barcode of a scanned or typed item is sent to the food bank's price service, which asks Walmart for the current price. Only the barcode is sent.</li>
+      <li><b>Shared barcode matches</b>: when a volunteer matches an unknown barcode to a Walmart item by searching for it, the pair (barcode, Walmart item) is shared with the food bank's other phones through the same service, so the next volunteer sees it at once. No name, device or location is attached.</li>
+    </ul>
+    <h2>Camera</h2>
+    <p>The camera is used only to read barcodes, on the phone, while the scanner is open. No image is stored or sent anywhere.</p>
+    <h2>Contact</h2>
+    <p>Strongsville Emergency Food Bank, Strongsville, Ohio.</p>
+  </main>
+  <script>
+    // Back returns to the screen this page was opened from when the app is behind it in history (an iOS Home Screen app
+    // opens the page in its own window), else to the app itself
+    document.getElementById("back").addEventListener("click", (e) => {
+      if (history.length > 1 && document.referrer.startsWith(location.origin)) { e.preventDefault(); history.back(); }
+    });
+  </script>
 </body>
 </html>

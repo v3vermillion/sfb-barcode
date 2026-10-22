@@ -1652,7 +1652,7 @@ function armSmallHelp() {
     const scan = state.scan;
     if (!state.scanOpen || !scan?.running || !el.scanTypeForm.hidden) return;
     if (scan.hasZoom && !scan.zoom && await scan.setZoom(true) && scan === state.scan && scan.running) el.scanHint.textContent = "Zoomed in for a small barcode. Hold it 4 to 6 inches away";
-    else if (scan === state.scan && scan.running) el.scanHint.textContent = "Small barcode? Hold it 4 to 6 inches away and keep it flat";
+    else if (scan === state.scan && scan.running) el.scanHint.textContent = "Small barcode: hold it 4 to 6 inches away and keep it flat";
   }, SMALL_HELP_MS);
 }
 async function startCamera(gen) {

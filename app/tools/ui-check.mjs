@@ -653,6 +653,27 @@ await scenario(["F64"], "boot screen: ?splash=1 holds it still (the launch-image
   check("F64", "under prefers-reduced-motion nothing moves either", motion === "boot-breathe" && still === "none", `${motion} -> ${still}`);
 });
 
+await scenario(["F65"], "privacy page: the app's Appearance setting and a Back control (owner, 2026-10-22)", async (set) => {
+  // the app set to dark while the system is light: the page must be dark too, and offer a way back besides the edge swipe
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: "light" });
+  await ctx.addInitScript(() => { try { localStorage.setItem("sfb.prefs", JSON.stringify({ theme: "dark" })); } catch { /* none */ } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  set({ ctx, page, errors, cdp: null });
+  await page.goto(new URL("privacy.html", BASE).href, { waitUntil: "load" }); await settle(page, 300);
+  const got = await page.evaluate(() => {
+    // the background is an oklch() string: a canvas turns it into the bytes the screen shows
+    const g = document.createElement("canvas").getContext("2d"); g.fillStyle = getComputedStyle(document.body).backgroundColor; g.fillRect(0, 0, 1, 1); const bg = Array.from(g.getImageData(0, 0, 1, 1).data);
+    const back = document.getElementById("back"), r = back?.getBoundingClientRect();
+    return { theme: document.documentElement.dataset.theme, dark: bg[0] < 40 && bg[1] < 40 && bg[2] < 40, font: getComputedStyle(document.body).fontFamily.split(",")[0], back: !!back && r.height >= 44 && r.width >= 44 && back.textContent.trim() === "Back" && back.getAttribute("href") === "./", reset: /Reset app data in Settings removes them/.test(document.body.textContent) };
+  });
+  check("F65", "with the app set to dark on a light system, the page is dark, in the app's own face", got.theme === "dark" && got.dark && /Geist/.test(got.font), JSON.stringify(got));
+  check("F65", "a Back control at the top (44 px, the app's accent) leads to the app", got.back, JSON.stringify(got));
+  check("F65", "the privacy text still says Reset app data removes the remembered matches", got.reset);
+  check("F65", "no page errors", errors.length === 0, errors.join(" | "));
+});
+
 await scenario(["F58"], "a box: one of its pieces, and the product's other sizes in the sheet (owner, 2026-10-21)", async (set) => {
   const env = set(await open({ w: 390, h: 844 }));
   const { page } = env;
