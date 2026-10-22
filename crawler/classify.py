@@ -1,6 +1,6 @@
 """What an item is: its store category, whether it is carried at all, and whether its listing names a product.
 
-docs/CATEGORIES.md is the labelling guide; tests/fixtures/category-gold.jsonl is the hand-labelled sample these rules are
+docs/CATEGORIES.md is the labelling guide; tests/fixtures/category-gold.jsonl.gz is the hand-labelled sample these rules are
 measured against (tests/test_classify.py). Walmart's category path is a hint, never the answer: its feed files clothing
 under Meat & Seafood, cookbooks under Baking and CDs under Beverages.
 

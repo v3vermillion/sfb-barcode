@@ -218,10 +218,11 @@ def _consumable_depts():
         return set()
 
 
-def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=None):
+def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=None, scope=None):
     """Barcode rows (primary listing, not a placeholder) inside the store-price scope (tiers) whose store price is
     missing or older than their tier's refresh_every_days: lower tier first, never checked before checked long ago,
-    then by id (stable). `meta` (optional dict) receives {id: (department, online price)} for the due rows."""
+    then by id (stable). `meta` (optional dict) receives {id: (department, online price)} for the due rows; `scope`
+    (optional dict) receives {id: tier refresh_every_days} for every row in the scope, due or not (_marker's next_due)."""
     cfg = cfg if cfg is not None else (config() or {})
     if every_days is not None and not cfg.get("tiers"):
         cfg = dict(cfg, refresh_every_days=every_days)
@@ -237,6 +238,8 @@ def due_ids(rows, recs, now, every_days=None, consumable=None, cfg=None, meta=No
         if tier is None:
             continue
         rank, every = tier
+        if scope is not None:
+            scope[r["id"]] = every
         rec = recs.get(r["id"])
         age = _age_days(rec["t"], now) if rec else None
         if age is not None and age < _interval(rec, every, cfg):
@@ -315,8 +318,8 @@ def refresh(wm, budget_min, now=None, cfg=None):
     now = now or _now()
     sid = str(cfg["store_id"])
     recs = load(sid)
-    meta = {}
-    ids = due_ids(source_rows(), recs, now, cfg=cfg, meta=meta)
+    meta, scope = {}, {}
+    ids = due_ids(source_rows(), recs, now, cfg=cfg, meta=meta, scope=scope)
     deadline = time.time() + budget_min * 60
     last_save = time.time()
     done = calls = got = gone = 0
@@ -376,7 +379,7 @@ def refresh(wm, budget_min, now=None, cfg=None):
                                   f"(last: {'HTTP %d' % last if isinstance(last, int) else 'network error'}); "
                                   f"{len(ids) - done} rows left for a later run")
             if time.time() - last_save > SAVE_EVERY_S:
-                save(sid, recs); _marker(sid, len(ids) - done, now, recs, cfg, by_dept)
+                save(sid, recs); _marker(sid, len(ids) - done, now, recs, cfg, by_dept, scope)
                 store.checkpoint(f"store prices {sid}: {done}/{len(ids)}")
                 last_save = time.time()
     except Throttled:
@@ -384,20 +387,40 @@ def refresh(wm, budget_min, now=None, cfg=None):
         raise
     finally:
         save(sid, recs)
-        latest = _marker(sid, len(ids) - done, now, recs, cfg, by_dept)
+        latest = _marker(sid, len(ids) - done, now, recs, cfg, by_dept, scope)
         store.checkpoint(f"store prices {sid}: {done}/{len(ids)} ({outcome})")
     return {"status": outcome, "store_id": sid, "due": len(ids), "checked": done, "priced": got, "gone": gone,
             "errors": failed, "calls": calls, "remaining": latest["due"], "by_dept": by_dept}
 
 
-def _marker(sid, remaining, now, recs, cfg, by_dept=None):
-    """store_prices/latest.json: rows still due, when the next pass is due (the oldest record of each tier plus the
-    tier's cadence), the scope, and this pass's per-department comparison with Walmart.com's price."""
+def _marker(sid, remaining, now, recs, cfg, by_dept=None, scope=None):
+    """store_prices/latest.json: rows still due, when the next pass is due, the scope, and this pass's per-department
+    comparison with Walmart.com's price.
+
+    With `scope` ({id: tier refresh_every_days} from due_ids), next_due is the day the first row of the price list comes
+    due by due_ids' own rule: its record's date plus _interval (the tier's cadence, 90 days for a row the store does not
+    carry, 7 for a server error). A row with no record is due now and counted in `remaining`. Records of rows that left
+    the list are not counted. (The oldest record of each tier plus the cadence, used before and still the rule without a
+    scope, counted both: once the backlog was cleared it kept a store run due every half hour with nothing to do; audit
+    W2-013, 2026-10-21.)"""
     next_due = None
-    for rank, depts, every, _ in tiers(cfg):
-        oldest = min((r["t"] for r in recs.values() if r.get("t") and r.get("d") in depts), default=None)
-        nd = (datetime.fromisoformat(oldest) + timedelta(days=every)).date().isoformat() if oldest else _day(now)
-        next_due = nd if next_due is None or nd < next_due else next_due
+    if scope is not None:
+        seen = {}
+        for iid, every in scope.items():
+            rec = recs.get(iid)
+            if not rec or not rec.get("t"):
+                continue
+            k = (rec["t"], _interval(rec, every, cfg))
+            nd = seen.get(k)
+            if nd is None:
+                nd = seen[k] = (datetime.fromisoformat(k[0]) + timedelta(days=k[1])).date().isoformat()
+            if next_due is None or nd < next_due:
+                next_due = nd
+    else:
+        for rank, depts, every, _ in tiers(cfg):
+            oldest = min((r["t"] for r in recs.values() if r.get("t") and r.get("d") in depts), default=None)
+            nd = (datetime.fromisoformat(oldest) + timedelta(days=every)).date().isoformat() if oldest else _day(now)
+            next_due = nd if next_due is None or nd < next_due else next_due
     latest = {"store_id": sid, "checked": now.isoformat(timespec="seconds"), "due": max(0, remaining),
               "records": len(recs), "next_due": next_due or _day(now),
               "scope": [{"departments": sorted(d), "refresh_every_days": e, "max_age_days": m} for _, d, e, m in tiers(cfg)]}

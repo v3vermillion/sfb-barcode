@@ -3,7 +3,7 @@
 
 import { DbClient } from "./db-client.js";
 import { classifyCode, formatGtin } from "./barcode.js";
-import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, piecesOf, countText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned } from "./resolve.js";
+import { resolveCode, fromItem, kindLabel, titleOf, splitTitle, sizeText, piecesOf, countText, fmtNum, notesFor, livePlausible, packListingOf, liveUnitCents, whoseBrand, mergeLearned, pruneOwnMatches, liveCheckable } from "./resolve.js";
 import { tokenize } from "./tokenize.js";
 import { stalenessLevel, stalenessText, ageText, daysSince } from "./staleness.js";
 
@@ -44,8 +44,7 @@ const resolveOpts = (o = {}) => ({ ...o, prefixes: db.manifest?.prefixes || null
 function rememberMatch(gtin, item) {
   if (!gtin || !item?.upc) return;
   learned[gtin] = { key: Number(item.upc), title: titleOf(item), at: Date.now() };
-  const keys = Object.keys(learned);
-  if (keys.length > LEARNED_MAX) for (const k of keys.sort((a, b) => (learned[a].at || 0) - (learned[b].at || 0)).slice(0, keys.length - LEARNED_MAX)) delete learned[k];
+  learned = pruneOwnMatches(learned, LEARNED_MAX);
   writeJson(LEARNED_KEY, learned);
   shareMatch(gtin, item);
 }
@@ -517,7 +516,19 @@ window.addEventListener("online", () => {
   syncLearned();
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncLearned(); });
-window.addEventListener("offline", () => { renderStatus(); renderStale(); toast("Offline. Scanning and search continue to work.", { iconName: "wifi-off" }); });
+// Two open copies of the app (a browser tab beside the installed app on Android) share this storage but each keeps its own
+// copy in memory: a line added in one would be overwritten by the other's next add. A change made in the other copy is read
+// back here at once (the "storage" event fires only in the other copies, never in the one that wrote). Audit P2-002.
+window.addEventListener("storage", (e) => {
+  if (e.key === TALLY_KEY || e.key === null) { tally = readJson(TALLY_KEY, []); renderTallyPill(); refreshTally(); }
+  if (e.key === RECENT_KEY || e.key === null) { recent = readJson(RECENT_KEY, []); renderRecent(); }
+  if (e.key === LEARNED_KEY || e.key === null) { const l = readJson(LEARNED_KEY, {}); learned = l && typeof l === "object" && !Array.isArray(l) ? l : {}; }
+});
+window.addEventListener("offline", () => {
+  renderStatus(); renderStale();
+  // with no prices on the phone yet (a first download cut short) search cannot work offline: say what happens instead
+  toast(db.version ? "Offline. Scanning and search continue to work." : "Offline. Prices download when the connection returns.", { iconName: "wifi-off" });
+});
 // an installed app (Android's "Add to Home screen") is what makes Chrome grant persistent storage: ask again right then
 window.addEventListener("appinstalled", () => { db.requestPersistence({ force: true }).catch(() => {}); hideInstallHint(); });
 
@@ -817,7 +828,7 @@ function sheetHtml(res) {
     : it && piecesOf(it) > 1 && res.unit !== "lb" && res.priceCents != null
     ? `<div class="seg pack-seg" role="group" aria-label="Price the whole pack or one item"><button type="button" data-pack="whole" data-cents="${res.priceCents}" aria-pressed="${res.unitCents == null || res.unitCents === res.priceCents}">Whole pack · ${money(res.priceCents)}</button><button type="button" data-pack="one" data-cents="${Math.round(res.priceCents / piecesOf(it))}" aria-pressed="${res.unitCents != null && res.unitCents !== res.priceCents}">1 of ${piecesOf(it)} · ${money(Math.round(res.priceCents / piecesOf(it)))}</button></div>`
     : "";
-  const liveRow = (LIVE_URL && prefs.live && res.gtin && res.kind !== "store-label" && res.kind !== "plu" && res.kind !== "not-ready") ? `<div class="live-row" data-state="idle" hidden></div>` : "";
+  const liveRow = (LIVE_URL && prefs.live && liveCheckable(res.gtin) && res.kind !== "store-label" && res.kind !== "plu" && res.kind !== "not-ready") ? `<div class="live-row" data-state="idle" hidden></div>` : "";
 
   const stepper = res.priceCents == null ? "" : res.unit === "lb"
     ? `<div class="stepper" role="group" aria-label="Weight"><button class="st-btn" type="button" data-step="-0.25" aria-label="Decrease weight">${icon("minus")}</button><span class="st-val counting" aria-live="polite" aria-atomic="true"><span id="qtyVal">${fmtNum(state.qty)}</span> <small>lb</small></span><button class="st-btn" type="button" data-step="0.25" aria-label="Increase weight">${icon("plus")}</button></div>`
@@ -860,7 +871,7 @@ function sheetHtml(res) {
     <div class="price-block">${priceBlockHtml(res)}</div>
     <p class="price-note" id="sheetPriceNote">${checkedHtml}</p>
     <h2 class="item-title" id="sheetTitle">${title}</h2>
-    ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="t">${c}</span>`).join("")}</div>` : ""}
+    ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="t">${esc(c)}</span>`).join("")}</div>` : ""}
     ${notes.length ? `<div id="sheetNotes">${notes.map((n) => `<p class="note${n.tone ? ` note--${n.tone}` : ""}">${esc(n.text)}</p>`).join("")}</div>` : ""}
     ${liveRow}
     </div><div class="sheet-side">
@@ -1279,7 +1290,7 @@ function settingsHtml() {
   const seg = [["auto", "System"], ["light", "Light"], ["dark", "Dark"]].map(([t, l]) => `<button type="button" data-theme="${t}" aria-pressed="${prefs.theme === t}">${l}</button>`).join("");
   const notes = [];
   if (db.pendingUpdate) notes.push(`<p class="data-note">A newer price list (${esc(fmtDate(db.pendingUpdate.manifest?.priceDate, true))}) has been downloaded and will be applied when the app is not in use.</p>`);
-  if (db.skipped?.length) notes.push(`<p class="data-note">Not stored on this phone (memory limit): ${esc(db.skipped.map((s) => s.name).join(", "))}. Those items are priced live when online.</p>`);
+  if (db.skipped?.length) notes.push(`<p class="data-note">Not stored on this phone (memory limit): ${esc(db.skipped.map((s) => s.name).join(", "))}. A search by name does not find those items on this phone; a scanned barcode from them is checked live when online.</p>`);
   notes.push(`<p class="data-note" id="storageNote"${state.persisted === false ? "" : " hidden"}>The phone may clear saved prices to free space; they download again when online. Adding the app to the Home Screen keeps them.</p>`);
   // no price list open: the same words as the home card, plus the technical reason when there is one
   const st = priceStatus();
@@ -1313,7 +1324,7 @@ function settingsHtml() {
     <details class="about">
       <summary><span>About</span>${icon("back", "ico chev")}</summary>
       <ul class="legend-list" aria-label="What the labels mean">${legend}</ul>
-      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. Each department is refreshed on its own schedule (food and household most often), and the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0). Runs on iPhone (iOS 16.4 or later) and Android (Chrome 111 or later, Samsung Internet, Firefox); nothing leaves the phone except the live price check and the shared barcode matches (<a href="./privacy.html" target="_blank" rel="noopener">privacy</a>).</p>
+      <p class="fine">SFB Value is the donation valuation tool of the Strongsville Emergency Food Bank. Prices are the Strongsville Walmart Supercenter's shelf prices (8585 Pearl Rd) where Walmart reports one, otherwise Walmart.com prices; the note under each price says which. The price list is refreshed every month, and the store's shelf prices for food, household, personal care and health items about every four weeks; the app updates itself when online. Barcodes Walmart does not sell are identified with USDA FoodData Central Branded Foods data (U.S. Department of Agriculture, public domain) and Open Food Facts, Open Beauty Facts and Open Products Facts data (ODbL), and with the matches volunteers make by searching by name, shared between the food bank's phones. Barcode reading by zxing-cpp (Apache-2.0). Runs on iPhone (iOS 16.4 or later) and Android (Chrome 111 or later, Samsung Internet, Firefox); nothing leaves the phone except the live price check and the shared barcode matches (<a href="./privacy.html" target="_blank" rel="noopener">privacy</a>).</p>
       <p class="fine verse-full">“We love because he first loved us.” — 1 John 4:19</p>
       <p class="fine mono">Version ${esc(BUILD)}${m ? `<br>Price list ${esc(m.version)}` : ""}</p>
       <details class="diag"><summary>Diagnostics</summary><pre class="fine mono diag-log">${esc(diagnostics())}</pre><button class="btn btn--ghost btn--sm" type="button" data-act="copy-diag">Copy</button></details>
@@ -1349,14 +1360,14 @@ el.settings.addEventListener("click", async (e) => {
   else if (act === "reset") {
     // an in-app confirmation, not the browser's dialog
     const area = el.settings.querySelector("#resetArea");
-    area.innerHTML = `<div class="confirm-row" role="group" aria-labelledby="resetQ"><p id="resetQ">Remove the saved prices, the tally and Recent from this phone? Prices download again when online.</p><div class="actions"><button class="btn btn--ghost" type="button" data-act="reset-no">Cancel</button><button class="btn btn--danger-solid" type="button" data-act="reset-yes">${icon("trash")}<span>Reset</span></button></div></div>`;
+    area.innerHTML = `<div class="confirm-row" role="group" aria-labelledby="resetQ"><p id="resetQ">Remove the saved prices, the tally, Recent and the barcode matches remembered on this phone? Prices download again when online.</p><div class="actions"><button class="btn btn--ghost" type="button" data-act="reset-no">Cancel</button><button class="btn btn--danger-solid" type="button" data-act="reset-yes">${icon("trash")}<span>Reset</span></button></div></div>`;
     area.querySelector("[data-act=reset-no]").focus({ preventScroll: true });
     area.scrollIntoView({ block: "nearest" });
   }
   else if (act === "reset-no") { refreshSettings(); el.settings.querySelector("[data-act=reset]")?.focus({ preventScroll: true }); }
   else if (act === "reset-yes") {
-    await db.reset(); tally = []; recent = [];
-    for (const k of [TALLY_KEY, RECENT_KEY, PREFS_KEY, TOUR_KEY]) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
+    await db.reset(); tally = []; recent = []; learned = {};
+    for (const k of [TALLY_KEY, RECENT_KEY, PREFS_KEY, TOUR_KEY, LEARNED_KEY]) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
     location.reload();   // the app shell stays cached, so this works offline too
   }
 });

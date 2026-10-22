@@ -27,13 +27,15 @@ this order of priority:
    never receives, are left out.
 4. **Gate** the candidate (`crawler/qa.py`, thresholds in `data/gates.json`): every department finished, every sentinel
    item priced, a live check of sampled prices against Walmart, size parsing, per-unit outliers, item and category counts
-   against the previous snapshot, price drift, the 351-query search gold set, and a sample review of the rows the last
-   reviewed snapshot did not have, judged on evidence. A held snapshot opens a `[gates-hold]` issue with the report;
-   the previous snapshot stays live.
+   against the previous snapshot, price drift, and a sample review of the rows the last reviewed snapshot did not have,
+   judged on evidence. A held snapshot opens a `[gates-hold]` issue with the report; the previous snapshot stays live.
+   The 351-query search gold set is checked after a publish, on the app's built pack (deploy-app): below 95% it opens
+   `[search-gold]`, below 90% the deploy stops and the live site keeps the previous build.
 5. **Publish** to `data-store:build/published/` with a manifest; the price history records what changed
    (docs/HISTORY.md); the newest three publishes are kept as GitHub Releases for rollback. The app deploys itself next.
-6. **Audit** the published prices against Walmart every week, per department; the measured drift sets each department's
-   refresh interval (`crawler/cadence.py`) within the Walmart quota.
+6. **Audit** the published prices against Walmart every week, per department, and record each department's drift.
+   Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19); the measured
+   per-department intervals (`crawler/cadence.py`) apply only when that is set to 0.
 7. **Identify** barcodes Walmart does not sell (`crawler/identify.py`, monthly) from USDA FoodData Central's Branded Foods
    (the other chains' brands in `data/brands.json`: label data from the barcode registry) and Open Food, Beauty and Products
    Facts (everything else), matched to the closest Walmart item for an equivalent value with a confidence level; what both
@@ -47,8 +49,8 @@ this order of priority:
 - Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19), so each refresh is a full
   crawl of a few days; the measured per-department planner is bypassed while that is set.
 - Store prices: food, household, personal care and health every 28 days; baby, pets, beauty and pharmacy every 56.
-- The pipeline slows to 3 calls a minute on weekday mornings (`volunteer_hours`), when volunteers may be using the live
-  check that shares the same Walmart key.
+- The pipeline is meant to slow to 3 calls a minute on weekday mornings (`volunteer_hours`), when volunteers may be
+  using the live check that shares the same Walmart key; not applied yet (docs/DECISIONS.md 2026-10-21).
 
 ## How the app resolves an item (decision 2026-10-06)
 1. **Barcode → exact Walmart item**, retired barcodes and single units from multipacks included.
@@ -63,7 +65,7 @@ this order of priority:
    store brand in the query (Kirkland, Clancy's, Market District, Happy Belly...) is set aside and Walmart's own brand
    ranks first: the same price tier, and the sheet says so.
 5. **Live check**: when the phone is online, an unknown barcode is priced through the Worker; a live price above the
-   list's ceiling ($150 consumable, $100 durable) is not believed.
+   list's ceiling (one figure for every item, the higher department ceiling: $150; the pack manifest's `priceCeiling`) is not believed.
 6. **Last resort**: the same product type at the same size, per unit, flagged. Never blank, never unpriced.
 
 Used goods show the new retail price; whether to adjust for condition is food-bank policy.

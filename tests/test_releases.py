@@ -148,6 +148,8 @@ class Releases(PlanBase):
         self.assertEqual(self.read("state/run.json"), crawl_state)
         self.assertEqual(sorted(p.name for p in (self.root / "build" / "candidate").iterdir()), cand)
         self.assertIn("Rolled back", Path(os.environ["GITHUB_STEP_SUMMARY"]).read_text())
+        # the pause the summary names is the one decide() keeps (audit W2-014, 2026-10-21: it said core_every_days, 30)
+        self.assertIn(f"New crawls pause for {ci.schedule()['rollback_pause_days']} days", Path(os.environ["GITHUB_STEP_SUMMARY"]).read_text())
         self.assertEqual(o.get("next"), "")
         # rolling "previous" again goes forward to the newest kept snapshot
         self.run_plan("--plan", "rollback")

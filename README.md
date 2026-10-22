@@ -22,7 +22,8 @@ own shelf price.
 The app never answers with a blank. A barcode finds the exact item (retired barcodes included, since donors give old
 stock); a store-printed price label is decoded on the spot; a produce sticker gives the price per pound; a barcode Walmart
 does not sell is valued at the closest Walmart equivalent and labelled as such; a typed search that has to drop a word says
-which one. When the phone is online, an unknown barcode is also checked live. Every result shows the date of its price.
+which one. When the phone is online, an unknown barcode is also checked live. Every result says where its price comes from:
+prices from the price list carry its date, a live price the time it was checked, a store label its own printed price.
 
 It is a progressive web app: volunteers open it once, add it to the Home Screen (iPhone: Share › Add to Home Screen;
 Android: the browser's Install button), and it then works offline on the phone already in their hand, iPhone (iOS 16.4 or
@@ -39,7 +40,7 @@ Play listing of the same app is possible (docs/RUNBOOK.md "Google Play").
 | Scope and rules | `data/` | Which departments are crawled, how items are categorised, the sentinel items every snapshot must contain, the acceptance thresholds, the refresh cadence, the search gold set. |
 | Documentation | `docs/` | [RUNBOOK](docs/RUNBOOK.md) (operations), [DECISIONS](docs/DECISIONS.md) (every decision, dated), [WORKFLOW](docs/WORKFLOW.md) (how data flows), [SCHEMA](docs/SCHEMA.md), [CATEGORIES](docs/CATEGORIES.md), [HISTORY](docs/HISTORY.md), [READINESS](docs/READINESS.md), [PLAN](docs/PLAN.md). |
 
-The snapshot in use holds about 2.6 million Walmart listings with 2.4 million barcodes across 15 departments: food,
+The snapshot in use holds about 2.4 million Walmart listings with 2.2 million barcodes across 15 departments: food,
 health and medicine, pharmacy, personal care, beauty, baby, pets and household essentials, then party goods, seasonal,
 home, toys, office supplies and emergency supplies. Clothing, footwear, alcohol, tobacco, media, vehicle parts and
 wholesale lots are left out (see [CATEGORIES](docs/CATEGORIES.md)).
@@ -51,10 +52,12 @@ scheduler is unreliable) checks what is due and does one job: crawl, build, audi
 
 - **Acceptance gates** hold a snapshot that would make the app worse: every department finished, every sentinel item
   priced, a live check of sampled prices against Walmart, size parsing, per-unit outliers, item and category counts
-  against the previous snapshot, price drift, a 351-query search gold set, and a sample review of newly added rows judged
-  on evidence. A held snapshot opens a GitHub issue; the previous snapshot stays live.
-- **A weekly live audit** samples the published prices against Walmart, per department, and the measured drift sets
-  how often each department is re-crawled, within the Walmart quota.
+  against the previous snapshot, price drift, and a sample review of newly added rows judged on evidence. A held snapshot
+  opens a GitHub issue; the previous snapshot stays live. After a publish, the app's deploy checks a 351-query search gold
+  set on the built pack (below 95% opens an issue, below 90% the deploy stops and the live site keeps the previous build).
+- **A weekly live audit** samples the published prices against Walmart and measures each department's price drift.
+  Every department is re-crawled 30 days after its last crawl (`refresh.fixed_days`, 2026-10-19); the measured
+  per-department planner (`crawler/cadence.py`) stays in the code, bypassed while that is set.
 - **Store prices** for consumables come from the Strongsville Supercenter itself and are refreshed on their own cycle.
 - **Alerts** are GitHub issues labelled `pipeline-alert`, one per condition, closed automatically when it clears. The
   [RUNBOOK](docs/RUNBOOK.md) lists every one and what it needs.
@@ -86,7 +89,7 @@ address for the app, a test on real phones from that address, and the two one-ti
 ## License
 
 [MIT](LICENSE). Use it for your own food bank; see "Another food bank" in [docs/READINESS.md](docs/READINESS.md) for
-what to change. Bundled third-party components keep their own licences (zxing-wasm Apache-2.0, Geist OFL); the Open
+what to change. Bundled third-party components keep their own licences (zxing-wasm MIT, wrapping zxing-cpp Apache-2.0; Geist OFL); the Open
 Food Facts data is ODbL.
 
 ## Acknowledgements
@@ -95,5 +98,5 @@ Prices from the [Walmart I/O Affiliate API](https://walmart.io/). Barcodes Walma
 [USDA FoodData Central](https://fdc.nal.usda.gov/) Branded Foods (U.S. Department of Agriculture, Agricultural Research
 Service; public domain), [Open Food Facts](https://world.openfoodfacts.org/), [Open Beauty Facts](https://world.openbeautyfacts.org/) and
 [Open Products Facts](https://world.openproductsfacts.org/) (ODbL). The scanner uses
-[zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (Apache-2.0) where the browser has no barcode detector of its own; the
+[zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (MIT), a WebAssembly build of [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) (Apache-2.0), where the browser has no barcode detector of its own; the
 typeface is [Geist](https://vercel.com/font) (OFL). Built for and with the Strongsville Emergency Food Bank.

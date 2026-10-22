@@ -158,17 +158,26 @@ def summary(text):
 # ----------------------------------------------------------------------------- inputs
 
 def schedule():
-    """data/schedule.json over the defaults; an unreadable file falls back to the defaults."""
+    """data/schedule.json over the defaults; an unreadable file falls back to the defaults. The `refresh` object is
+    passed through as it is (crawler/cadence.py config() validates it): without it the owner's fixed monthly interval
+    (refresh.fixed_days, 2026-10-19) never reached decide() or the audit, and the measured planner re-crawled
+    departments every 5 to 11 days (audit W2-001, 2026-10-21). `volunteer_hours` is not passed yet: the pace cap it
+    sets needs the crawl's pace analysis to tell a capped run from a clean one first (see docs/DECISIONS.md 2026-10-21)."""
     cfg = dict(SCHEDULE_DEFAULTS)
     try:
         raw = json.loads(SCHEDULE.read_text()) if SCHEDULE.exists() else {}
     except (OSError, ValueError) as e:
         print(f"warning: {SCHEDULE} unreadable ({e}); using defaults")
         raw = {}
+    if not isinstance(raw, dict):
+        print(f"warning: {SCHEDULE} is not an object; using defaults")
+        raw = {}
     for k in SCHEDULE_DEFAULTS:
         v = raw.get(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0:
             cfg[k] = v
+    if isinstance(raw.get("refresh"), dict):
+        cfg["refresh"] = raw["refresh"]
     return cfg
 
 
@@ -348,9 +357,11 @@ def due_departments(manifest, cadence, cfg, scope, now):
         entry = dates.get(name)
         when = entry.get("crawled") if isinstance(entry, dict) else None
         if when is None:
-            # a manifest from before per-department dates: a consumable department is as old as the last publish of any
-            # kind (core publishes refreshed it), the rest as old as the last full publish
-            when = manifest.get("published") if d.get("consumable") else fallback_full
+            # a department with no date of its own was last crawled before per-department dates existed, so no later
+            # than the last full publish. (It used to be dated by the last publish of any kind when consumable, for the
+            # old core publishes; every publish now stamps the departments it crawled, so each refresh moved that date
+            # on and Food, Pharmacy, Personal Care and Pets never came due: audit W2-001, 2026-10-21.)
+            when = fallback_full
         age = age_days(when, now)
         if age is None or age > cad.interval_for(name, cadence, bool(d.get("consumable")), cfg):
             due.append(name)
@@ -367,7 +378,8 @@ def decide(state, manifest, sizing, audit_latest, gates, cfg, now, *, current_ha
     identify_latest (identify/latest.json, written by the identify plan), departments (ids that sizing must cover).
     Missing or unreadable inputs bias towards doing work, never towards "none".
 
-    Returns one of: size, crawl, build, recheck, start-full, start-core, audit, identify, none.
+    Returns one of: size, crawl, build, recheck, start-full, start-refresh, start-core, audit, identify, store, none
+    (ci.KINDS).
      1. crawling: "size" when sizing is missing/stale, else "crawl"
      2. crawled: "build"
      3. a candidate exists (built / needs_review / legacy awaiting_approval) and was not published for this run_id:
@@ -375,14 +387,18 @@ def decide(state, manifest, sizing, audit_latest, gates, cfg, now, *, current_ha
         or it does not record a hold (an unfinished review/publish); a hold that qa marked `transient` (the live
         check or the sample review could not run) is rechecked once its stamp is TRANSIENT_RETRY_HOURS old;
         otherwise "none" (the hold stands until the config changes or the candidate is approved)
-     4. no crawl in progress: "start-full" when there is no manifest or the last full publish (manifest
-        full_published, else published) is older than full_every_days (or a date is unreadable); "start-core" when
-        the last publish of any kind is older than core_every_days
+     4. no crawl in progress, and no rollback within rollback_pause_days:
+        with the department scope (data/categories.json, always in production): "start-full" when there is no manifest,
+        a date is unreadable or every department is due, "start-refresh" when some are (due_departments: a department's
+        last crawl older than refresh.fixed_days, else its planned interval, else the legacy floors below);
+        without it (legacy): "start-full" when the last full publish (manifest full_published, else published) is older
+        than full_every_days (or a date is unreadable); "start-core" when the last publish of any kind is older than
+        core_every_days
      5. "audit" when a manifest exists and audit/latest.json is missing or older than audit_every_days
         (TRANSIENT_RETRY_HOURS after a failed attempt)
      6. "identify" when a manifest exists and identify/latest.json is missing or older than identify_every_days
      7. "store" when a manifest exists and store prices are due (crawler/storeprice.due: rows left from the last pass,
-        or the oldest store price older than data/store.json refresh_every_days); data/store.json absent: never
+        or the day the first row of the list comes due again, next_due); data/store.json absent: never
      8. "none"
     """
     cfg = {**SCHEDULE_DEFAULTS, **(cfg or {})}
@@ -730,7 +746,8 @@ def _archive_published():
 
 def _rollback(target):
     """Put a kept snapshot back as build/published; the pipeline's completion triggers deploy-app, which ships it.
-    The crawl state and any candidate are left alone. New crawls pause for schedule.core_every_days after a rollback."""
+    The crawl state and any candidate are left alone. New crawls pause for schedule.rollback_pause_days after a rollback
+    (decide(); this text said core_every_days, a month, until audit W2-014, 2026-10-21)."""
     from . import releases
     if not releases.available():
         raise SystemExit("rollback needs the gh CLI with GH_TOKEN and GITHUB_REPOSITORY (run it from the pipeline workflow)")
@@ -757,7 +774,7 @@ def _rollback(target):
     resolve("snapshot-archive")
     summary(f"**Rolled back** to snapshot `{snap['version']}` ({man.get('items')} items, prices of "
             f"{str(man.get('published'))[:10]}); was `{cur}`. deploy-app ships it to the app next. New crawls pause for "
-            f"{schedule()['core_every_days']} days; run plan=core or full to start one sooner.")
+            f"{schedule()['rollback_pause_days']} days; run plan=core or full to start one sooner.")
 
 
 def _hold(state):

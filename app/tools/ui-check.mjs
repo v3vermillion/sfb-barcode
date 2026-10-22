@@ -450,7 +450,9 @@ for (const [w, h] of [[320, 568], [360, 780], [390, 844], [430, 932]]) {
 
 await scenario(["F28", "F27"], "other departments cannot download", async (set) => {
   // the core shards download; every file of a "more" shard fails, so the background download stops (more-paused)
-  const manifest = JSON.parse(fs.readFileSync(path.resolve("dist/db", JSON.parse(fs.readFileSync("dist/db/current.json", "utf8")).version, "manifest.json"), "utf8"));
+  // read from the served site, so the check works from any directory and against --url (audit W10-08)
+  const cur = await (await fetch(new URL("db/current.json", BASE))).json();
+  const manifest = await (await fetch(new URL(`db/${cur.version}/manifest.json`, BASE))).json();
   const moreFiles = new Set(manifest.shards.filter((s) => s.tier === "more").flatMap((s) => [s.files.cols, s.files.upc, s.files.tokens, ...s.files.strings]).map((f) => f.path.split("/").pop()));
   const env = set(await open({ routes: [["**/db/files/**", (route) => (moreFiles.has(route.request().url().split("/").pop()) ? route.abort("failed") : route.continue())]] }));
   const { page } = env;
@@ -558,6 +560,61 @@ await scenario(["F57"], "download that stops making progress: the card says so, 
   await Promise.all([page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => null), page.clock.runFor(95_000)]);
   await settle(page, 500);
   check("F57", "after two minutes the page reloaded itself once", (await page.evaluate(() => sessionStorage.getItem("sfb.bootRetry"))) === "1");
+});
+
+// ---------------------------------------------------------------- audit follow-ups (2026-10-21)
+await scenario(["F59"], "Reset app data also removes the barcode matches remembered on this phone (privacy page)", async (set) => {
+  const seed = { "00096619261574": { key: 78742054261, title: "Great Value Corn", at: 1 } };
+  const env = set(await open({ init: { fn: (s) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("sfb.learned.v1", JSON.stringify(s)); } }, arg: seed } }));
+  const { page } = env;
+  check("F59", "the seeded match is on the phone before Reset", await page.evaluate(() => !!JSON.parse(localStorage.getItem("sfb.learned.v1") || "{}")["00096619261574"]));
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 500);
+  await page.click("#settings [data-act=reset]"); await settle(page, 300);
+  const q = await visibleText(page, "#resetQ");
+  check("F59", "the confirmation names the remembered matches", /barcode matches/.test(q), q);
+  await Promise.all([page.waitForNavigation({ waitUntil: "domcontentloaded" }), page.click("#settings [data-act=reset-yes]")]);
+  await page.waitForSelector("html[data-ready='1']", { timeout: 60000 });
+  const own = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem("sfb.learned.v1") || "{}")).filter((m) => !m.shared).length);
+  check("F59", "after Reset no match made on this phone remains", own === 0, `${own} left`);
+});
+await scenario(["F60"], "two open copies of the app keep each other's tally lines", async (set) => {
+  const env = set(await open());
+  const { page, ctx } = env;
+  const b = await ctx.newPage();
+  const u = new URL(BASE.href); u.search = "nosw=1&tour=0";
+  await b.goto(u.href, { waitUntil: "domcontentloaded" }); await b.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(b);
+  const add = async (p, rank) => { await p.evaluate((r) => window.__sfb.openRank(r), rank); await p.waitForSelector("#sheet[open]"); await settle(p, 400); await p.click("#sheet [data-act=add]"); await settle(p, 600); };
+  await add(page, 0);
+  await add(b, 1);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("sfb.tally") || "[]").length);
+  check("F60", "both lines are stored", stored === 2, `${stored} stored`);
+  const card = await visibleText(page, "#tallyCardSub");
+  check("F60", "the first copy shows the line the second added", /2 items/.test(card), card);
+  await b.close();
+});
+await scenario(["F61"], "offline with no prices yet: the toast does not promise search", async (set) => {
+  const env = set(await open({ wait: false, routes: [["**/db/**", (r) => r.abort()]] }));
+  const { page } = env;
+  await settle(page, 1500);
+  await page.evaluate(() => dispatchEvent(new Event("offline"))); await settle(page, 400);
+  const t = await visibleText(page, ".toast");
+  check("F61", "no pack: the offline toast says prices download when the connection returns", /download when the connection returns/.test(t) && !/search continue/.test(t), t);
+});
+await scenario(["F61"], "offline with prices: scanning and search keep working", async (set) => {
+  const env = set(await open());
+  const { page } = env;
+  await page.evaluate(() => dispatchEvent(new Event("offline"))); await settle(page, 400);
+  const t = await visibleText(page, ".toast");
+  check("F61", "with a pack: the offline toast says search keeps working", /search continue to work/.test(t), t);
+});
+await scenario(["F62"], "Settings: departments left out by the memory limit are described as they work", async (set) => {
+  const env = set(await open());
+  const { page } = env;
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 500);
+  await page.evaluate(() => { window.__sfb.db.skipped = [{ id: "home", name: "Home", items: 1 }]; window.__sfb.refreshSettings(); });
+  await settle(page, 300);
+  const t = await visibleText(page, "#settings");
+  check("F62", "the note says search by name does not find them and a scanned barcode is checked live", /search by name does not find/.test(t) && /scanned barcode/.test(t) && !/priced live when online/.test(t), (t.match(/Not stored on this phone[^.]*\.[^.]*\./) || [""])[0]);
 });
 
 await scenario(["F58"], "a box: one of its pieces, and the product's other sizes in the sheet (owner, 2026-10-21)", async (set) => {

@@ -210,19 +210,32 @@ export class DbClient extends EventTarget {
         try { await this.#load(pending); this.#writeKey(KEY, { version: pending, installedAt: Date.now() }); this.#writeKey(PENDING_KEY, null); installed = pending; }
         catch (err) { console.warn("pending pack failed to open, keeping the installed one", err); this.#writeKey(PENDING_KEY, null); await caches.delete(CACHE_PREFIX + pending).catch(() => {}); }
       }
+      // A pack that fails to open (a worker or memory failure, a read error, an open past LOAD_TIMEOUT_MS) is kept until a
+      // new copy can be fetched: an offline phone retries it at the next launch, tap or "online" event instead of losing its
+      // prices (audit W9-02, 2026-10-21; it used to be deleted first, and an offline phone then had none)
+      let broken = null;
       if (installed && !this.version) {
         try { await this.#load(installed); this.#writeKey(KEY, { version: installed, installedAt: Date.now() }); }
         catch (err) {
-          console.warn("installed pack failed to load, reinstalling", err);
-          await caches.delete(CACHE_PREFIX + installed).catch(() => {});
-          this.#writeKey(KEY, null);
-          installed = null;
+          console.warn("installed pack failed to load", err);
+          this.note(`installed ${installed} failed to open: ${String(err?.message || err).slice(0, 160)}`);
+          broken = installed;
         }
       }
       if (!this.version) {
-        if (!navigator.onLine) { this.#setState("offline-empty"); return; }
+        if (!navigator.onLine) {
+          if (broken) this.#setState("error", { message: "The prices on this phone could not be opened. They are tried again when the app reopens or the connection returns." });
+          else this.#setState("offline-empty");
+          return;
+        }
         try {
           const cur = await this.#fetchCurrent();
+          if (broken) {
+            // the server answers: replace the pack that would not open (its shard files stay in the shared bucket)
+            await caches.delete(CACHE_PREFIX + broken).catch(() => {});
+            this.#writeKey(KEY, null);
+            this.note(`reinstalling ${cur.version} in place of ${broken}`);
+          }
           this.note(`current ${cur.version}: downloading the core`);
           await this.#download(cur.version, { background: false, tier: "core" });
           this.note("core downloaded");

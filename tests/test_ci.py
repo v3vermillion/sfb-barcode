@@ -209,6 +209,42 @@ class Decide(unittest.TestCase):
         self.assertEqual(ci.decide(state("published"), rolled, None, fresh["audit"], None, CFG, NOW, current_hash=HASH,
                                    identify_latest=fresh["identify"], scope=scope, store_latest=STORE_FRESH), "none")
 
+    def test_the_owners_fixed_interval_reaches_the_decision(self):
+        # audit W2-001, 2026-10-21: schedule() dropped `refresh`, so refresh.fixed_days (30) never applied and the measured
+        # plan (5 to 11 days) re-crawled departments every few days
+        from crawler import cadence as cad
+        raw = json.loads((REPO / "data" / "schedule.json").read_text())
+        cfg = ci.schedule()
+        self.assertEqual(cad.config(cfg)["fixed_days"], raw["refresh"]["fixed_days"])
+        self.assertEqual(cad.interval_for("Food", {"departments": {"Food": {"interval_days": 6}}}, True, cfg), float(raw["refresh"]["fixed_days"]))
+        scope = [{"name": "Food", "consumable": True}, {"name": "Home", "consumable": False}]
+        plan = {"departments": {"Food": {"interval_days": 6}, "Home": {"interval_days": 6}}}
+        man = {**manifest(7), "full_published": iso(7), "departments": {"Food": {"crawled": iso(7)}, "Home": {"crawled": iso(7)}}}
+        work = ci.decide(state("published"), man, None, {"checked": iso(1)}, None, cfg, NOW, current_hash=HASH,
+                         identify_latest={"refreshed": iso(1)}, scope=scope, cadence=plan, store_latest=STORE_FRESH)
+        self.assertEqual(work, "none", "a week after a crawl nothing is due under the monthly interval")
+        self.assertEqual(ci.due_departments(man, plan, cfg, scope, NOW + timedelta(days=24)), (["Food", "Home"], True))
+        with tempfile.TemporaryDirectory() as d:                     # a schedule file that is not an object: the defaults
+            p = Path(d) / "schedule.json"; p.write_text("[1, 2]")
+            with mock.patch.object(ci, "SCHEDULE", p):
+                self.assertEqual(ci.schedule(), ci.SCHEDULE_DEFAULTS)
+
+    def test_the_decision_documents_every_kind_it_returns(self):
+        # audit F-WU05-003, 2026-10-21: the docstring left out start-refresh and store
+        listed = ci.decide.__doc__.split("Returns one of:")[1].split(" 1. ")[0]
+        for kind in ci.KINDS:
+            self.assertIn(kind, listed, kind)
+
+    def test_a_department_without_a_date_is_as_old_as_the_last_full_publish(self):
+        # audit W2-001, 2026-10-21: an undated consumable department was dated by the last publish of any kind, which every
+        # refresh moves on, so Food (last crawled before per-department dates existed) never came due
+        scope = [{"name": "Food", "consumable": True}, {"name": "Baby", "consumable": True}]
+        fixed = {**CFG, "refresh": {"fixed_days": 30}}
+        man = {**manifest(0), "full_published": iso(31), "departments": {"Baby": {"crawled": iso(1)}}}
+        self.assertEqual(ci.due_departments(man, None, fixed, scope, NOW), (["Food"], False))
+        man["full_published"] = iso(20)
+        self.assertEqual(ci.due_departments(man, None, fixed, scope, NOW), ([], False))
+
     def test_volunteer_hours_cap_the_pipeline_pace(self):
         cfg = {"volunteer_hours": {"tz": "America/New_York", "days": [1, 2, 3, 4, 5], "from": "08:00", "to": "17:00", "per_min": 3}}
         wed_noon_ny = datetime(2026, 10, 14, 16, 0, tzinfo=timezone.utc)      # 12:00 in New York (EDT)
@@ -1083,10 +1119,9 @@ class OtherPlans(PlanBase):
         self.assertIn("review grace", Path(os.environ["GITHUB_STEP_SUMMARY"]).read_text())
 
     def test_finish_without_finalize_is_a_clear_error(self):
+        # qa.finalize always exists now, so the guard is exercised by taking it away (it used to skip itself; audit F-W11-13)
         self.write("state/run.json", state("built"))
-        if hasattr(self.qa, "finalize"):
-            self.skipTest("qa.finalize present")
-        with self.assertRaises(SystemExit) as cm:
+        with mock.patch.object(ci.qa, "finalize", None), self.assertRaises(SystemExit) as cm:
             self.run_plan("--plan", "finish")
         self.assertIn("finalize", str(cm.exception))
 

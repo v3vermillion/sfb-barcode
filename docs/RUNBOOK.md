@@ -78,9 +78,9 @@ budget_min 300).
 
 ### Acceptance gates (`data/gates.json`; a null threshold = measure only)
 departments_complete (every department done, kept > 0, pages within 30% of `sizing.json`), sentinels (every one of data/sentinels.json found and priced; 114 since Electronics and the Rain-X auto-care sentinel left on 2026-10-12),
-live_match (500 random items re-checked live in 25 calls: ≥ 90% of the rows Walmart still lists within 5% of the snapshot price, consumable and durable rates reported; rows no longer listed are counted separately and never a wrong price, `live_missing_max` null), size_parse (≥ 92% of Food rows sized: a parsed size, sold by the pound, or sold each; 92.7% measured 2026-10-08),
-unit_outliers (< 0.5% of unit-priced rows outside 10× of their category median), the existing drift and count gates, and
-sample_review (300 random rows judged against `data/review-criteria.md`; systematic junk or > 5% junk holds). All pass → publish;
+live_match (500 random in-stock items — primary listing, UPC, no promo price — re-checked live in 25 calls: ≥ 90% of the rows Walmart still lists within 5% of the snapshot price, consumable and durable rates reported; rows no longer listed are counted separately and never a wrong price, `live_missing_max` null), size_parse (≥ 92% of Food rows sized: a parsed size, sold by the pound, or sold each; 92.7% measured 2026-10-08),
+unit_outliers (rows outside 10× of their category median: measured and reported, `unit_outliers_max` null, never holds), the existing drift and count gates, and
+sample_review (up to 600 rows the last reviewed snapshot did not have, in two calls of 300, judged against `data/review-criteria.md`; fewer than 50 new rows: no review; holds on systematic junk, when the 95% lower bound of the junk rate is above 5%, or at 10% raw). All pass → publish;
 otherwise hold + `[gates-hold]` issue with the report. `plan=approve` publishes a held candidate after the owner has read the report.
 Editing `data/gates.json`, `data/sentinels.json` or `data/categories.json` makes the next run re-evaluate a held candidate.
 
@@ -150,7 +150,8 @@ their shelf price refreshed sooner. After a publish, when no crawl, build, audit
 `store` job: `crawler/storeprice.py refresh` asks Walmart for the store's own price and stock of every barcode row of the
 snapshot, 20 per call, consumable departments first and the oldest check first, within the crawl budget, and chains the
 next run while rows remain (`store_prices/2266.jsonl.gz`, `store_prices/latest.json`). The next build shows the store
-price of every row checked within `max_age_days` (21), keeps Walmart.com's in `online_price`, and flags it `store_price`;
+price of every row checked within its tier's `max_age_days` (42 for Food, Household Essentials, Personal Care and Health
+and Medicine; 70 for Baby, Pets, Beauty, Premium Beauty and Pharmacy; `data/store.json` tiers), keeps Walmart.com's in `online_price`, and flags it `store_price`;
 the app labels it "Strongsville Walmart shelf price". The live_match gate and the weekly audit compare store-priced rows
 with the store's live price. Manual: Actions → pipeline → plan `store`. At about 8 calls a minute a pass over a million
 rows takes several days of pipeline time; consumable departments come first so food and household items are covered
@@ -227,7 +228,8 @@ Optional repository variable: LIVE_CHECK_URL — the pipeline Worker URL (e.g. `
 Without it the app hides the live check and says "Not configured" in Settings.
 
 Data source: the published snapshot on `data-store` (`build/published/items.jsonl.gz` + `identify/equivalents.jsonl.gz`).
-If none is published yet the workflow builds the synthetic 760k fixture and the app shows "sample data".
+If none is published yet the workflow builds the synthetic 760k fixture (nothing in the interface says so; tally lines
+and Recent items priced from it are dropped when a real price list opens).
 Manual run: Actions → deploy-app → Run workflow → data = auto | fixture | snapshot, deploy = true/false.
 
 After the first deploy the app is at `https://sfb-value.<account>.workers.dev` (rename or add a custom domain in the
@@ -266,8 +268,9 @@ evidence it is never crawled more often than the legacy cadence (consumable 7 da
 crawled four times a year, not six). The run summary of
 every audit prints the plan; `[accuracy-budget]` opens when the target does not fit the quota. `plan=core` and
 `plan=full` from the Actions tab still crawl by hand. `volunteer_hours` in data/schedule.json (time zone, days, from, to,
-per_min) caps the pipeline's pace while volunteers may be using the app's live check, which shares the Walmart key:
-set the food bank's real hours there.
+per_min) is meant to cap the pipeline's pace while volunteers may be using the app's live check, which shares the
+Walmart key: set the food bank's real hours there. Not applied yet: the pipeline never read the setting, and turning it
+on needs the pace analysis to tell a capped run from a clean one first (docs/DECISIONS.md 2026-10-21).
 
 Store prices (data/store.json `tiers`): only the listed departments are priced, on their tier's cycle, and only Walmart's
 own in-stock offer counts; `store_prices/latest.json` `by_dept` shows how often the store price differed from
@@ -280,8 +283,8 @@ pipeline → Run workflow → plan `rollback`, `rollback_to` = `previous` (the n
 again to go forward) or a version from the repo's Releases page. The run downloads it, checks the manifest and that every
 item reads back, replaces `data-store:build/published/` (manifest gains `rolled_back` {from, to, at}) and pushes; deploy-app
 then ships it, and phones treat any live version other than their own as an update (older or newer), so it arrives through
-the normal "Update now" banner. The crawl state and any candidate are untouched. After a rollback, new crawls (start-core /
-start-full) wait `core_every_days` so the restored prices stay live while the cause is fixed; a crawl already running
+the normal "Update now" banner. The crawl state and any candidate are untouched. After a rollback, new crawls (start-refresh /
+start-core / start-full) wait `rollback_pause_days` (7) so the restored prices stay live while the cause is fixed; a crawl already running
 continues, and its publish would replace the rollback, so fix the cause (rules, thresholds) first or run plan=core/full when
 ready. A refused rollback (unknown version, incomplete download) changes nothing.
 
@@ -289,7 +292,8 @@ ready. A refused rollback (unknown version, incomplete download) changes nothing
 GitHub rejects any pushed file over 100 MB and warns over 50 MB. `store.write_jsonl_gz` writes any `.jsonl.gz` whose
 compressed size passes 45 MB as shards `<name>.s000`, `<name>.s001`, ... (each a complete gzip stream; concatenated they
 are one valid stream), and every reader (`store.iter_jsonl_gz`, `app/tools/build-db.mjs`) accepts either form. The first
-real snapshot (773k items) is already 57 MB, so it is sharded from the first publish. `store.checkpoint` refuses to commit
+candidate (773k items, 2026-10-08) was already 57 MB, and published lists hold 2.4-2.6 million items (four shards on
+2026-10-21), so the items file is always sharded. `store.checkpoint` refuses to commit
 or push when any file passes 95 MB and names it. Every pipeline run prints the branch size by top-level folder in its
 summary and opens `[data-store-size]` past 1 GB.
 

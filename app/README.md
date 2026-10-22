@@ -3,7 +3,7 @@
 Scan or type a donated item, see its exact Walmart price. Works with no network after the first open,
 on the phone already in the volunteer's hand. Lives in `app/`; deployed to Cloudflare Workers static assets
 by `.github/workflows/deploy-app.yml`; the price data is the pipeline's published snapshot (`data-store` branch).
-A full-size synthetic fixture stands in for it in tests and local builds; the app labels it "sample data".
+A full-size synthetic fixture stands in for it in tests and local builds; the interface never mentions it, and tally lines and Recent items priced from it are dropped when a real price list opens.
 
 ```
 app/
@@ -19,7 +19,7 @@ app/
     js/resolve.js    resolution engine (exact → label → PLU → equivalent → closest)
     js/scanner.js    camera (1080p, full-resolution decode, try-harder) + native BarcodeDetector (self-tested) or zxing-cpp wasm in a worker; zooms in by itself after 4 s without a read where the camera can; UPC-E in every form a detector reports it
     js/staleness.js  how old the prices are (fresh / amber from 40 days / red from 60) in a volunteer's words
-    vendor/          zxing-wasm reader (ESM + wasm, Apache-2.0)   fonts/  Geist + Geist Mono (OFL)
+    vendor/          zxing-wasm 3.1.5 reader (ESM, MIT; the wasm is zxing-cpp, Apache-2.0: both licence texts alongside)   fonts/  Geist + Geist Mono (OFL)
   tools/
     make_fixture.py  760k-row synthetic snapshot in the crawler's row format (through crawler/normalize.py); its
                      version is a hash of the inputs, so unchanged inputs never make phones re-download
@@ -84,7 +84,7 @@ accessibility and design rules (docs/UI-AUDIT.md).
 
 Warm paper in light mode, warm near-black in dark mode, following the phone. Geist for text, Geist Mono for
 barcodes. One accent (deep green) for the primary action; the five resolution kinds have their own hues, used
-only as labels with a dot and text, never as the only signal. Type is 14 px minimum, prices 20 px in lists and
+only as labels with a dot and text, never as the only signal. Text is 13 px minimum, prices 20 px in lists and
 52–64 px in the sheet, targets 44 px minimum. Motion is a 320 ms rise on the rows nearest the thumb and a spring
 on the sheet; `prefers-reduced-motion` turns it off and `prefers-contrast: more` lifts the secondary greys.
 

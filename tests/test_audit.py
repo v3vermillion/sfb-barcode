@@ -134,7 +134,8 @@ class Run(StoreCase, unittest.TestCase):
     def test_each_department_is_measured_and_the_ledger_and_plan_are_written(self):
         self.write_published(self.rows)
         man = self.store.read_json(self.qa.PUB / "manifest.json")
-        man["departments"] = {"Food": {"crawled": (NOW - timedelta(days=10)).isoformat()}}   # Pets: the publish date
+        man["departments"] = {"Food": {"crawled": (NOW - timedelta(days=10)).isoformat()}}   # Pets: the last full publish
+        man["published"] = (NOW - timedelta(days=2)).isoformat(); man["full_published"] = (NOW - timedelta(days=45)).isoformat()
         self.store.write_json(self.qa.PUB / "manifest.json", man)
         self.write_gates(audit_sample=20, audit_per_department=10)
         changed = {r["id"]: r["price"] * 2 for r in self.rows if r["dept"] == "Food"}        # every Food price moved
@@ -147,7 +148,7 @@ class Run(StoreCase, unittest.TestCase):
         self.assertEqual(set(bd), {"Food", "Pets"})
         self.assertEqual(bd["Food"]["close"], 0); self.assertGreaterEqual(bd["Food"]["found"], 10)
         self.assertEqual(bd["Food"]["age_days"], 10.0); self.assertEqual(bd["Food"]["rows"], 121)
-        self.assertEqual(bd["Pets"]["close"], bd["Pets"]["found"]); self.assertGreater(bd["Pets"]["age_days"], 40)
+        self.assertEqual(bd["Pets"]["close"], bd["Pets"]["found"]); self.assertEqual(bd["Pets"]["age_days"], 45.0)   # not the last publish (audit W2-001)
         self.assertEqual(bd["Pets"]["missing"] + sum(1 for c in wm.requested for i in c if i == "2000"), bd["Pets"]["missing"] * 2 if bd["Pets"]["missing"] else 0)
         ledger = self.store.read_json(self.store.ROOT / "audit" / "drift.json")
         self.assertEqual([p["dept"] for p in ledger["points"]], ["Food", "Pets"])

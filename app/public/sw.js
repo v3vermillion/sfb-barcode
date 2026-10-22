@@ -34,7 +34,20 @@ self.addEventListener("fetch", (e) => {
     if (url.pathname.endsWith("/current.json")) e.respondWith(networkFirst(req));
     return;                                                       // pack files: handled by db-client
   }
-  if (req.mode === "navigate") { e.respondWith(caches.match(INDEX, { ignoreSearch: true }).then((r) => r || fetch(req))); return; }
+  if (req.mode === "navigate") {
+    // The privacy page is a page of its own (linked from About; the Play listing's privacy policy). Cloudflare answers
+    // /privacy.html with a redirect to /privacy (html_handling "auto-trailing-slash"), so the precached copy is a
+    // redirected response, which a navigation must not be answered with: it is re-wrapped. Every other navigation is
+    // the app. (Audit W9-01, 2026-10-21: the app opened instead of the privacy page.)
+    const rel = url.pathname.slice(scope.pathname.length);
+    if (rel === "privacy.html" || rel === "privacy") {
+      e.respondWith(caches.match(new URL("privacy.html", scope).href, { ignoreSearch: true })
+        .then((r) => (r ? new Response(r.body, { status: 200, statusText: "OK", headers: r.headers }) : fetch(req))));
+      return;
+    }
+    e.respondWith(caches.match(INDEX, { ignoreSearch: true }).then((r) => r || fetch(req)));
+    return;
+  }
   e.respondWith(caches.match(req, { ignoreSearch: true }).then((r) => r || fetch(req)));
 });
 

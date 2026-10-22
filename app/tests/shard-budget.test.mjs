@@ -42,7 +42,7 @@ test("pickShards: core opens even when it alone exceeds the budget", () => {
   assert.equal(r.skipped.length, 4);
 });
 
-test("pickShards: a generous budget opens everything; a format-2 pack is one core shard", () => {
-  assert.deepEqual(pickShards(manifest, 2200 * MB * 0 + manifest.shards.reduce((a, s) => a + s.items, 0) * BYTES_PER_ITEM).skipped, []);
+test("pickShards: a budget that exactly fits opens everything (the boundary is <=); a format-2 pack is one core shard", () => {
+  assert.deepEqual(pickShards(manifest, manifest.shards.reduce((a, s) => a + s.items, 0) * BYTES_PER_ITEM).skipped, []);
   assert.deepEqual(pickShards({ items: 760_000, files: {} }, 1), { open: ["all"], skipped: [] });
 });
