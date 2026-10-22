@@ -38,7 +38,7 @@
   "plan": "refresh",
   "run_id": "20261021-170108-refresh",
   "started": "2026-10-21T17:01:08+00:00",
-  "status": "crawled",
+  "status": "built",
   "throttle_base": 117,
   "throttle_wait_s": 198,
   "updated": "2026-10-22T01:40:58+00:00"
