@@ -1,14 +1,14 @@
 {
-  "calls": 2849,
+  "calls": 2949,
   "calls_base": 1964,
   "departments": [
     {
       "id": "1229749",
-      "items": 564200,
+      "items": 584000,
       "name": "Office Supplies",
-      "next": "/api-proxy/service/affil/product/v2/paginated/items?category=1229749&soldByWmt=true&count=200&lastDoc=918883087&remainingHits=107574",
-      "pages": 2821,
-      "parts": 29,
+      "next": "/api-proxy/service/affil/product/v2/paginated/items?category=1229749&soldByWmt=true&count=200&lastDoc=953389554&remainingHits=87774",
+      "pages": 2920,
+      "parts": 30,
       "status": "crawling",
       "total_pages": 3359
     }
@@ -38,6 +38,6 @@
   "started": "2026-10-21T17:01:08+00:00",
   "status": "crawling",
   "throttle_base": 117,
-  "throttle_wait_s": 169,
-  "updated": "2026-10-22T00:17:53+00:00"
+  "throttle_wait_s": 175,
+  "updated": "2026-10-22T00:32:56+00:00"
 }
