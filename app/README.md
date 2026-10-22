@@ -242,6 +242,7 @@ app.js) and checked by `tools/ui-check.mjs` F55/F56 with an Android user agent.
 | Back | The sheet's own close and swipe | The system Back closes the top layer (every sheet and the scanner push a history entry) |
 | Orientation | Rotates with the phone | Rotates with the phone (manifest `orientation: any`, like iOS) |
 | Status bar | `black-translucent`, content under it with safe-area insets | Coloured by `theme-color` per colour scheme |
+| Launch screen | The app icon on the page's own background, light or dark (`apple-touch-startup-image`, one per screen size: `tools/icon/make_splash.py` writes `public/splash/` and the links in index.html; not precached). iOS ignores the manifest for this and appears to read the images when the app is added to the Home Screen, so an app added before 2026-10-22 may show them only after it is removed and added again | Chrome draws it from the manifest: `background_color` and the 512 px icon |
 
 **Google Play.** The same PWA can be listed on Google Play as a Trusted Web Activity (an Android app that opens the site
 full screen): docs/RUNBOOK.md "Google Play" has the steps. The site's half is in place: the manifest, the privacy page
