@@ -84,6 +84,8 @@
   <!-- splash:end -->
   <link rel="preload" href="./fonts/geist-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./fonts/geist-mono-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/manrope-600-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/manrope-700-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./app.css">
   <link rel="modulepreload" href="./js/app.js">
   <link rel="modulepreload" href="./js/db-client.js">
@@ -92,6 +94,18 @@
 </head>
 <body>
   <a class="skip" href="#q">Skip to search</a>
+
+  <!-- boot screen: the iOS launch image (splash/, rendered from this very markup by tools/icon/make_splash.py) turns into
+       this layer without a jump; app.js takes it down when the price list is open (app.css "boot screen") -->
+  <div id="boot" class="boot" aria-hidden="true">
+    <div class="boot-bloom"></div>
+    <div class="boot-stack">
+      <img class="boot-icon" src="./icons/icon-512.png" alt="" width="120" height="120" decoding="sync" draggable="false">
+      <div class="boot-bar"><i></i></div>
+      <p class="boot-name">SFB <b>Value</b></p>
+    </div>
+    <p class="boot-org">Strongsville Emergency Food Bank</p>
+  </div>
 
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>

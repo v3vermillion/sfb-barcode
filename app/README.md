@@ -19,7 +19,7 @@ app/
     js/resolve.js    resolution engine (exact → label → PLU → equivalent → closest)
     js/scanner.js    camera (1080p, full-resolution decode, try-harder) + native BarcodeDetector (self-tested) or zxing-cpp wasm in a worker; zooms in by itself after 4 s without a read where the camera can; UPC-E in every form a detector reports it
     js/staleness.js  how old the prices are (fresh / amber from 40 days / red from 60) in a volunteer's words
-    vendor/          zxing-wasm 3.1.5 reader (ESM, MIT; the wasm is zxing-cpp, Apache-2.0: both licence texts alongside)   fonts/  Geist + Geist Mono (OFL)
+    vendor/          zxing-wasm 3.1.5 reader (ESM, MIT; the wasm is zxing-cpp, Apache-2.0: both licence texts alongside)   fonts/  Geist + Geist Mono, Manrope for the boot screen wordmark (all OFL)
   tools/
     make_fixture.py  760k-row synthetic snapshot in the crawler's row format (through crawler/normalize.py); its
                      version is a hash of the inputs, so unchanged inputs never make phones re-download
@@ -30,6 +30,7 @@ app/
     shots.mjs        phone-size screenshots (light/dark) + accessibility audit; --browser webkit too
     scroll-check.mjs the scrolling rules (best match by the search box, wheel, keyboard pan, sheets); --browser webkit too
     ui-check.mjs     layout, price-status, walkthrough, accessibility and design rules, one id per defect (docs/UI-AUDIT.md)
+    icon/make_splash.py   the iOS launch images: the page's boot screen rendered at every screen size by icon/render-splash.mjs (Chromium), Floyd-Steinberg dithered to 256 colours
     make-barcode-clip.mjs  a UPC-A .y4m clip for Chromium's fake camera (measure.mjs --video)
     perf-table.mjs   markdown tables of measure/shots results: one browser, or Chromium vs WebKit (app-browsers.yml)
   tests/             node --test: barcode maths, tokenizer, resolution engine, staleness thresholds, storage persistence policy,
@@ -242,7 +243,7 @@ app.js) and checked by `tools/ui-check.mjs` F55/F56 with an Android user agent.
 | Back | The sheet's own close and swipe | The system Back closes the top layer (every sheet and the scanner push a history entry) |
 | Orientation | Rotates with the phone | Rotates with the phone (manifest `orientation: any`, like iOS) |
 | Status bar | `black-translucent`, content under it with safe-area insets | Coloured by `theme-color` per colour scheme |
-| Launch screen | The app icon on the page's own background, light or dark (`apple-touch-startup-image`, one per screen size: `tools/icon/make_splash.py` writes `public/splash/` and the links in index.html; not precached). iOS ignores the manifest for this and appears to read the images when the app is added to the Home Screen, so an app added before 2026-10-22 may show them only after it is removed and added again | Chrome draws it from the manifest: `background_color` and the 512 px icon |
+| Launch screen | The page's boot screen (`#boot`: the app icon over its glow on a deep-green field, a progress bar and the wordmark in Manrope), light or dark, as an `apple-touch-startup-image` per screen size: `tools/icon/make_splash.py` renders the layer in Chromium (`render-splash.mjs`, `?splash=1` holds it still), writes `public/splash/` and the links in index.html; not precached. The page paints the same layer first and fades it when the prices open, so the launch is one picture. iOS ignores the manifest for this and appears to read the images when the app is added to the Home Screen, so an app added before 2026-10-22 may show them only after it is removed and added again | Chrome draws its splash from the manifest (`background_color` and the 512 px icon), then the page's boot screen takes over the same way |
 
 **Google Play.** The same PWA can be listed on Google Play as a Trusted Web Activity (an Android app that opens the site
 full screen): docs/RUNBOOK.md "Google Play" has the steps. The site's half is in place: the manifest, the privacy page

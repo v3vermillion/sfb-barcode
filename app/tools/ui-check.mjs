@@ -629,6 +629,30 @@ await scenario(["F63"], "iOS launch screens: served with the page, not precached
   check("F63", "the service worker precaches none of them (iOS fetches its own once, when the app is added)", !/splash\//.test(sw) && /icons\/icon-512\.png/.test(sw), sw.match(/splash\/[^"]+/)?.[0] || "none listed");
 });
 
+await scenario(["F64"], "boot screen: the launch image carries on as a layer until the price list is open (owner, 2026-10-22)", async (set) => {
+  const env = set(await open({ wait: false }));
+  const { page } = env;
+  const first = await page.evaluate(() => { const b = document.getElementById("boot"); if (!b) return null; const cs = getComputedStyle(b); return { shown: b.getClientRects().length > 0, hidden: b.getAttribute("aria-hidden"), z: Number(cs.zIndex), pos: cs.position, sweep: getComputedStyle(b.querySelector(".boot-bar i")).animationName, icon: b.querySelector(".boot-icon")?.getAttribute("src") }; });
+  check("F64", "the layer is on screen before the price list opens: fixed, above everything, hidden from screen readers, the app icon itself", !!first?.shown && first.hidden === "true" && first.pos === "fixed" && first.z >= 1000 && /icon-512\.png$/.test(first.icon), JSON.stringify(first));
+  check("F64", "its progress bar moves while it is up", first?.sweep === "boot-sweep", first?.sweep);
+  await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 1500);
+  const after = await page.evaluate(() => ({ boot: !!document.getElementById("boot"), why: window.__sfb.perf.boot.splashWhy, at: window.__sfb.perf.boot.splashMs }));
+  check("F64", "once the prices are open the layer is gone from the page (not just hidden), and the boot log says why", !after.boot && typeof after.why === "string" && after.at >= 650, JSON.stringify(after));
+  check("F64", "no page errors", env.errors.length === 0, env.errors.join(" | "));
+});
+await scenario(["F64"], "boot screen: ?splash=1 holds it still (the launch-image renderer, a preview on a phone); reduced motion holds its motion too", async (set) => {
+  const env = set(await open({ query: "tour=0&splash=1" }));
+  const { page } = env;
+  await settle(page, 1200);
+  const held = await page.evaluate(() => { const b = document.getElementById("boot"); return { boot: !!b, flag: document.documentElement.dataset.splash, sweep: b && getComputedStyle(b.querySelector(".boot-bar i")).animationName, bloom: b && getComputedStyle(b.querySelector(".boot-bloom")).animationName }; });
+  check("F64", "with ?splash=1 the layer stays after the prices open, with nothing moving", held.boot && held.flag === "1" && held.sweep === "none" && held.bloom === "none", JSON.stringify(held));
+  // let go of the hold: the motion starts; then prefers-reduced-motion stops it again
+  const motion = await page.evaluate(() => { delete document.documentElement.dataset.splash; return getComputedStyle(document.querySelector("#boot .boot-bloom")).animationName; });
+  await page.emulateMedia({ reducedMotion: "reduce" }); await settle(page, 200);
+  const still = await page.evaluate(() => getComputedStyle(document.querySelector("#boot .boot-bloom")).animationName);
+  check("F64", "under prefers-reduced-motion nothing moves either", motion === "boot-breathe" && still === "none", `${motion} -> ${still}`);
+});
+
 await scenario(["F58"], "a box: one of its pieces, and the product's other sizes in the sheet (owner, 2026-10-21)", async (set) => {
   const env = set(await open({ w: 390, h: 844 }));
   const { page } = env;

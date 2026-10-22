@@ -1375,6 +1375,32 @@ el.settingsBtn.addEventListener("click", openSettings);
 el.status.addEventListener("click", openSettings);
 el.readyCard.addEventListener("click", () => { if (state.bootStuck && !db.version) retryBoot("tap"); else openSettings(); });
 
+// ------------------------------------------------------------------ boot screen
+// The launch image continues as #boot (index.html, app.css "boot screen") until the price list is open, so a launch is
+// one picture that resolves into the app rather than a logo, then a header, then a list. It leaves at once when the
+// home screen has something to say instead (a first download, offline, a problem) and never later than
+// BOOT_SCREEN_MAX_MS; it stays at least BOOT_SCREEN_MIN_MS from navigation so a warm launch does not flash it.
+// ?splash=1 keeps it up with its motion held (html[data-splash]): the launch-image renderer, and a preview on a phone.
+const BOOT_SCREEN_MIN_MS = 650, BOOT_SCREEN_MAX_MS = 8000;
+const bootScreen = $("boot");
+const splashHeld = new URLSearchParams(location.search).get("splash") === "1";
+if (splashHeld) document.documentElement.dataset.splash = "1";
+let bootScreenClosing = false;
+function closeBootScreen(why) {
+  if (!bootScreen || bootScreenClosing || splashHeld) return;
+  bootScreenClosing = true;   // the first reason wins; the fade itself waits out the minimum
+  setTimeout(() => {
+    bootScreen.classList.add("is-out");
+    perf.boot.splashMs = Math.round(performance.now()); perf.boot.splashWhy = why;
+    const gone = () => bootScreen.remove();
+    bootScreen.addEventListener("transitionend", (e) => { if (e.target === bootScreen && e.propertyName === "opacity") gone(); });
+    setTimeout(gone, 700);   // reduced motion (no transition), or an engine that never fires the event
+  }, Math.max(0, BOOT_SCREEN_MIN_MS - performance.now()));
+}
+db.addEventListener("ready", () => closeBootScreen("ready"));
+db.addEventListener("state", (e) => { if (e.detail.state !== "loading" && e.detail.state !== "ready") closeBootScreen(e.detail.state); });
+setTimeout(() => closeBootScreen("timeout"), BOOT_SCREEN_MAX_MS);
+
 // ------------------------------------------------------------------ boot watchdog
 // The first open on the owner's iPhone (added to the Home Screen, which starts with its own empty storage on iOS) sat on
 // "Loading" for over three minutes until Settings > Check for new prices was tapped, which worked at once. Whatever
@@ -1804,6 +1830,7 @@ if (tooOld) {
     : isAndroid ? "This browser is too old to keep prices offline. Update Chrome (or the phone's browser) from the Play Store, then open the app again."
     : "This browser is too old to keep prices offline. Update it, then open the app again.";
   db.state = "error";
+  closeBootScreen("unsupported");
 } else db.start();
 renderStatus();
 syncLearned();
