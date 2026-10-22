@@ -72,7 +72,9 @@ def screens():
 
 
 def name(w, h, r, orient, theme):
-    return f"{w}x{h}@{r}x-{orient}{'-dark' if theme == 'dark' else ''}.png"
+    # letters, digits, "x" and "-" only: Cloudflare redirects a path with "@" to its %40 form (307), and iOS fetching a
+    # launch image should get the image itself, not a redirect
+    return f"{w}x{h}-{r}x-{orient}{'-dark' if theme == 'dark' else ''}.png"
 
 
 def image(kind, w, h, r, orient, theme, icon):

@@ -40,6 +40,9 @@ test("every launch screen has the exact pixels its media query names, on the pag
   }
   const files = fs.readdirSync(path.join(PUB, "splash"));
   assert.equal(files.length, links.length, "no image without a link");
+  // Cloudflare answers a path with "@" (or another character it re-encodes) with a 307 to the encoded form; a launch
+  // image must be served directly (2026-10-22: the first deploy named them 402x874@3x-portrait.png)
+  for (const l of links) assert.match(l.href, /^splash\/[a-z0-9-]+\.png$/, `${l.href}: a plain file name`);
 });
 
 test("current and older iPhones are covered, in portrait; iPads in both orientations", () => {
