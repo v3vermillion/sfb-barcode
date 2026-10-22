@@ -809,8 +809,7 @@ function sheetHtml(res) {
   if (res.kind === "store-label" && res.label.needsConfirm) chips.push("Check against the label");
   const notes = notesFor(res, { priceDateLong: fmtDate(priceDate(), true) });
   const title = res.kind === "exact" || res.kind === "closest" ? boldTitle(it) : res.kind === "live" ? boldTitle({ brand: res.brand, name: res.name }) : esc(res.title);
-  // a carried-over row (its department was not in this update) is older than the list's date, by an amount the pack does not record
-  const updated = `Updated ${it?.carried ? "before " : ""}${fmtDate(priceDate(), "mid")}`;
+  const updated = `Updated ${fmtDate(priceDate(), "mid")}`;   // the price list's date, as the pill shows it (owner, 2026-10-17); a carried-over row says so in its note
   const checked = res.kind === "live" ? `${liveSource(res.live)} price, checked ${res.live?.checkedAt ? `at ${fmtTime(res.live.checkedAt)}` : "today"}`
     : res.kind === "store-label" ? "Printed by the store's scale"
     : res.kind === "plu" && res.entry.source === "typical" ? "Typical Walmart price"
