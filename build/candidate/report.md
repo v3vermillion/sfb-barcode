@@ -1,18 +1,18 @@
 # Snapshot report — 20261021-170108-refresh
 
 Status: **hold** (HOLD - previous snapshot stays live)
-Checked: 2026-10-22T02:01:05+00:00  |  config hash: ddffa24e9d95
+Checked: 2026-10-22T16:16:57+00:00  |  config hash: a8f31d8e5acf
 
 ## Gates
-- PASS category_counts — value 0.0895, threshold 0.4: largest category change 8.9% (categories with >= 200 published rows)
 - PASS departments_complete — value 0, threshold 0.3: 1 departments checked; sizing used
-- PASS item_count — value 1.006, threshold 0.9: 2358413 items vs 2359474 published (100.6%, 33366 published rows left by rule: 18965 bundle listings, 14401 above the price ceiling or under an excluded path, against 18821 bundle units kept)
-- PASS live_match — value 0.937, threshold 0.9: 461/492 within 5% (93.7%; exact 431, 87.6%) of the rows Walmart still lists; no longer listed: 8 of 500 (1.6%, not counted as wrong); consumable - of 0, durable 93.7% of 492; 25 calls
-- PASS price_drift — value 0.00013, threshold 0.02: 305 of 2358413 prices moved more than 50% (0.01%)
-- FAIL sample_review — value 0.19, threshold 0.05: junk 114/600 (19.0%), 95% lower bound 16.5% vs 5.0% target, hard cap 10%, systematic junk: yes, 51 examples, 2 batches, model claude-sonnet-5-5: systematic junk; notes: Many Office Supplies rows (about 55) have cryptic abbreviated names like 'MD 1SUB RAZZ WR' or 'PG 2`` DUR BNDR RED'; these are SKU dumps, not shelf labels, and would affect many more rows in the full snapshot. A smaller group is implausibly priced, bulk or marketplace-style, industrial, or magazine (Dotdash MPP) listings, plus a 'Retired' placeholder. | Every row is Office Supplies. There is a rep
 - PASS sentinels — value 0, threshold 0: 114/114 found and priced
+- FAIL live_match — value 0.8963, threshold 0.9: 441/492 within 5% (89.6%; exact 409, 83.1%) of the rows Walmart still lists; no longer listed: 8 of 500 (1.6%, not counted as wrong); consumable - of 0, durable 89.6% of 492; 25 calls
 - PASS size_parse — value 0.9253, threshold 0.92: 212180/229315 Food rows sized (92.5%): 207682 with a parsed size, 8 sold by the pound, 4490 sold each
 - PASS unit_outliers — value 0.0021, threshold -: measure-only: 1041 of 494856 unit-priced rows outside [median/10, median*10] of their category+unit group (0.21%); their per-unit prices are dropped and the rows flagged unit_price_suspect
+- PASS price_drift — value 0.00013, threshold 0.02: 305 of 2358413 prices moved more than 50% (0.01%)
+- PASS item_count — value 1.006, threshold 0.9: 2358413 items vs 2359474 published (100.6%, 33366 published rows left by rule: 18965 bundle listings, 14401 above the price ceiling or under an excluded path, against 18821 bundle units kept)
+- PASS category_counts — value 0.0895, threshold 0.2: largest category change 8.9% (categories with >= 200 published rows)
+- PENDING sample_review — value -, threshold 0.05: pending: `python -m crawler.review run`, then `qa finalize`
 
 ## Totals
 - items kept: 2358413  |  UPCs: 2247298  |  carried over: 2181658
@@ -56,7 +56,7 @@ Checked: 2026-10-22T02:01:05+00:00  |  config hash: ddffa24e9d95
 
 ## Flags
 - carried_over: 3527149
-- no_size: 1390942
+- no_size: 1390941
 - store_price: 33664
 - sold_each: 27593
 - unit_price_suspect: 22100
@@ -5298,37 +5298,6 @@ Names that identify no product ("Merchandise", a brand alone, "Discontinued", "c
 - 12461183 UPC 00743921411233 Office Supplies: Merchandise -> (name not provided) ($23.45)
 - 14164791 UPC 00077711175655 Office Supplies: AVERY -> (name not provided) ($5.17)
 
-## Category labels in the sample review: 5.0% judged wrong
-- 135706571: Toys, Books & Games -> School, Office & Crafts
-- 14123044: Beauty -> School, Office & Crafts
-- 15118619: Personal Care -> School, Office & Crafts
-- 149802221: Home -> School, Office & Crafts
-- 14981571009: Hardware & Tools -> School, Office & Crafts
-- 17506556: Hardware & Tools -> School, Office & Crafts
-- 17081063750: Jewelry & Accessories -> School, Office & Crafts
-- 20855559208: Electronics -> School, Office & Crafts
-- 16296651513: School, Office & Crafts -> Seasonal & Party
-- 42450825: Beverages -> School, Office & Crafts
-- 995683995: Beverages -> School, Office & Crafts
-- 851035900: Pet Food & Supplies -> Home
-- 46058503: Hardware & Tools -> School, Office & Crafts
-- 800962425: Toys, Books & Games -> Electronics
-- 807603354: Toys, Books & Games -> School, Office & Crafts
-- 23068658: Toys, Books & Games -> Home
-- 271414878: Toys, Books & Games -> Home
-- 48688410: Toys, Books & Games -> Home
-- 47220278: Electronics -> School, Office & Crafts
-- 2805679736: Jewelry & Accessories -> School, Office & Crafts
-- 471752656: Household Supplies -> School, Office & Crafts
-- 729247386: School, Office & Crafts -> Auto
-- 784959956: School, Office & Crafts -> Auto
-- 38453801: Hardware & Tools -> School, Office & Crafts
-- 21114815629: Home -> School, Office & Crafts
-- 21116963588: Home -> School, Office & Crafts
-- 22249977: Home -> School, Office & Crafts
-- 26392280: Home -> School, Office & Crafts
-- 366512502: Home -> School, Office & Crafts
-
 ## Live price differences (worst 25 of 500 checked)
 - 914830446 Paper Mate Collection: snapshot 9.97 -> live not found
 - 47219056 Regency Classroom Chair Collection: snapshot 45.47 -> live not found
@@ -5340,21 +5309,21 @@ Names that identify no product ("Merchandise", a brand alone, "Discontinued", "c
 - 14926871567 Floortex® Desktex® Black Vinyl Rectangular Desk Pad - 19" x 24": snapshot 24.75 -> live not found
 - 5390726609 Manatee Sticky Note Holder 3.25 in x 5.25 in: snapshot 9.99 -> live 21.99
 - 23760455 Loctite Super Glue Ultra Liquid Control, Pack of 1, Clear 0.14 fl oz Bottle: snapshot 5.04 -> live 8.65
+- 19427824189 ZIPIT: 2 Compartment Recycled Box - Butterflies - Large Capacity Pencil Case, Plastic Stationery Organizer, School Supplies-Toys Holder, Kids Girl-Boy: snapshot 7.99 -> live 11.99
 - 16795173 3m 06404 Scotch Plastic Tape 471, Blue, 1/8" X 36 Yd.: snapshot 23.52 -> live 14.4
-- 12602013436 Carson Dellosa Education Rolled Scalloped Bulletin Board Border, Dusty Rose, 65 Feet, Pack of 3: snapshot 38.94 -> live 24.96
 - 115281446 Paper Mate InkJoy Pens, Gel Pens, Medium Point (0.7 mm), Assorted, 30 Count: snapshot 22.88 -> live 30.31
+- 6193407293 JAM Paper Plastic 2 Pocket School POP Folders, Teal Blue, 6/Pack: snapshot 9.99 -> live 12.99
 - 15436502317 KFFKFF 16" Broad Under-Desk Drawer Glide, Under-Desk Fixated Slide-In Drawer Accessory, Concealed Tabletop Storage Solution, Under-Table Pen Holder for Home Office Sit-Stand Workspace, 17x9x4 in: snapshot 41.9 -> live 29.49
 - 264179081 Musgrave Pencil Company Kindness Kounts Motivational Pencil, 12 Per Pack, 12 Packs: snapshot 67.79 -> live 47.96
+- 12602013436 Carson Dellosa Education Rolled Scalloped Bulletin Board Border, Dusty Rose, 65 Feet, Pack of 3: snapshot 38.94 -> live 27.65
 - 179198035 Bostitch Flat Clinch Stapler, 40 Sheets, Metallic Purple: snapshot 13.71 -> live 17.68
+- 152603421 Teacher Created Resources Superhero Cityscape Bulletin Board Display, 26 Pieces: snapshot 13.99 -> live 17.95
 - 16125871919 Canson XL Series Drawing Pad, Top Wire Binding, 60 Sheet, 11x14 inch, Pack of 2: snapshot 38.4 -> live 30.04
+- 16379408407 Teacher Created Resources Fruit Pop Smelly Stickers, 582 Stickers: snapshot 18.17 -> live 21.91
 - 53134654 JAM Paper Plastic Clipboards with Low Profile Metal Clip, 9 x 12 1/2, Clear, 12 Clip Boards/Pack: snapshot 74.88 -> live 59.99
 - 21951817 Business Source Side-loading Stackable Letter Trays Desktop - Recycled - Black - 1 / Each: snapshot 18.82 -> live 15.65
 - 252097296 TREND Rainbow & Stars Terrific Trimmers, 39 Feet Per Pack, 6 Packs: snapshot 34.48 -> live 28.87
-- 490058761 Flipside Products Two-Sided Dry Erase Boards, Red & Blue Ruled/Plain, 9" x 12", with Colored Pens & Student Erasers, Class Pack 12: snapshot 86.64 -> live 74.27
-- 17556450458 Jessie James Decker for Blue Sky Monthly Weekly Planner, 5" x 8", Jess Pink 15-Month (April 2026 - June 2027): snapshot 9.73 -> live 11.0
-- 310766097 JAM Paper Foldover Cards, 3 1/2 x 4 7/8, 25/Pack, White Panel: snapshot 10.74 -> live 11.99
-- 46698487 JAM Paper 13 Pocket Expanding File, Blue, 1/Pack, Legal Size, 10 x 15: snapshot 17.99 -> live 19.99
-- 5468735686 SKYSHALO DM-ABS-110 Indoor and Outdoor Use Tripod Mount 110" Maximum Screen Size Projector Screen: snapshot 54.99 -> live 48.99
+- 46204002 JAM Paper #10 Envelopes, 4.1x9.5, Dark Purple, 50/Pack: snapshot 14.29 -> live 16.56
 
 ## Unit-price outliers (worst 25)
 - 26958762 Avalon Organics Lavender Nourishing Conditioner, 32 Ounce Bottle: 0.3494/oz vs median 36.5 (x0.009573), cat 30

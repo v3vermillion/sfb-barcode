@@ -1,6 +1,6 @@
 {
-  "checked": "2026-10-22T02:01:05+00:00",
-  "config_hash": "ddffa24e9d959865689247c49d7a9365438de55a661ace49c03e21f6baaf68ed",
+  "checked": "2026-10-22T16:16:57+00:00",
+  "config_hash": "a8f31d8e5acf3779aa937a531de5ce0f195de36d9e54565c0ff2513cecb5e492",
   "extras": {
     "drift": [
       {
@@ -359,7 +359,7 @@
         "1446949976": "exact",
         "1468187456": "close",
         "1468984382": "exact",
-        "1474777613": "exact",
+        "1474777613": "far",
         "14914587": "exact",
         "14926871567": "missing",
         "14927478": "exact",
@@ -381,8 +381,8 @@
         "1515832922": "exact",
         "15172602466": "exact",
         "15191456310": "exact",
-        "15196417615": "exact",
-        "152603421": "exact",
+        "15196417615": "far",
+        "152603421": "far",
         "15436502317": "far",
         "15549158451": "exact",
         "158221356": "exact",
@@ -397,9 +397,9 @@
         "16125871919": "far",
         "161590170": "exact",
         "161692335": "exact",
-        "16338662571": "exact",
+        "16338662571": "far",
         "1637600766": "exact",
-        "16379408407": "exact",
+        "16379408407": "far",
         "1639304654": "exact",
         "16393613196": "close",
         "16497549": "exact",
@@ -412,7 +412,7 @@
         "169061075": "exact",
         "1701984268": "exact",
         "170874588": "exact",
-        "171264021": "exact",
+        "171264021": "close",
         "1716740900": "exact",
         "1718494047": "exact",
         "1740224814": "exact",
@@ -446,7 +446,7 @@
         "19208764893": "exact",
         "193251241": "exact",
         "1939842535": "exact",
-        "19427824189": "exact",
+        "19427824189": "far",
         "19475762706": "exact",
         "19481300193": "exact",
         "19520804240": "exact",
@@ -462,7 +462,7 @@
         "19826572937": "exact",
         "19845662332": "exact",
         "19959653706": "exact",
-        "199766505": "exact",
+        "199766505": "far",
         "20062915959": "exact",
         "20067304002": "exact",
         "2009860915": "exact",
@@ -482,7 +482,7 @@
         "20712801245": "exact",
         "20724423112": "exact",
         "20728074960": "exact",
-        "20737170660": "close",
+        "20737170660": "exact",
         "20744758024": "close",
         "20753215355": "exact",
         "20754050904": "exact",
@@ -559,7 +559,7 @@
         "28159410": "exact",
         "2819516472": "exact",
         "2819890294": "exact",
-        "282740402": "exact",
+        "282740402": "close",
         "2832936944": "exact",
         "28687158": "exact",
         "2909729643": "exact",
@@ -599,7 +599,7 @@
         "3501476887": "exact",
         "3601571590": "exact",
         "3619242139": "exact",
-        "363313807": "close",
+        "363313807": "far",
         "36372038": "exact",
         "36372039": "exact",
         "3637485787": "exact",
@@ -622,12 +622,12 @@
         "387998179": "exact",
         "390832110": "exact",
         "392071252": "close",
-        "394187694": "exact",
+        "394187694": "close",
         "3942308542": "exact",
         "396205411": "exact",
         "3967530248": "exact",
         "408390896": "exact",
-        "409493242": "exact",
+        "409493242": "far",
         "41222262": "exact",
         "425721221": "close",
         "428648840": "exact",
@@ -640,16 +640,16 @@
         "45865562": "exact",
         "459515686": "exact",
         "46203751": "exact",
-        "46204002": "exact",
+        "46204002": "far",
         "46204031": "close",
         "46204348": "close",
-        "46204614": "exact",
+        "46204614": "far",
         "46204678": "exact",
-        "46207981": "exact",
+        "46207981": "far",
         "46207983": "exact",
         "46208051": "exact",
         "46208145": "exact",
-        "46208203": "exact",
+        "46208203": "far",
         "46208279": "exact",
         "46208359": "exact",
         "46538286": "close",
@@ -658,7 +658,7 @@
         "47182317": "exact",
         "47214419": "exact",
         "47219056": "missing",
-        "47837039": "exact",
+        "47837039": "far",
         "47837832": "exact",
         "482621399": "exact",
         "485174359": "exact",
@@ -670,7 +670,7 @@
         "49912314": "exact",
         "5000131299": "exact",
         "5089315413": "exact",
-        "51443912": "exact",
+        "51443912": "far",
         "5161199719": "exact",
         "516994210": "exact",
         "5170438251": "exact",
@@ -715,7 +715,7 @@
         "5469163389": "close",
         "547737440": "exact",
         "55074786": "missing",
-        "551473479": "exact",
+        "551473479": "far",
         "5518669125": "exact",
         "5519623552": "exact",
         "5522055239": "exact",
@@ -733,7 +733,7 @@
         "55475749": "exact",
         "55682912": "exact",
         "55682917": "exact",
-        "556852525": "exact",
+        "556852525": "close",
         "55935554": "exact",
         "560406556": "exact",
         "572343117": "exact",
@@ -748,7 +748,7 @@
         "602456372": "exact",
         "606720388": "exact",
         "6177463918": "exact",
-        "6193407293": "exact",
+        "6193407293": "far",
         "620119664": "exact",
         "622324481": "exact",
         "643300040": "exact",
@@ -758,7 +758,7 @@
         "6661950549": "exact",
         "6672313845": "exact",
         "669616530": "exact",
-        "679993554": "exact",
+        "679993554": "far",
         "689909457": "missing",
         "708934707": "exact",
         "712378686": "exact",
@@ -767,7 +767,7 @@
         "753561525": "exact",
         "756322197": "exact",
         "759964550": "exact",
-        "764240087": "exact",
+        "764240087": "far",
         "769558788": "exact",
         "782787272": "exact",
         "784775176": "exact",
@@ -788,7 +788,7 @@
         "850406234": "exact",
         "852261180": "exact",
         "853119708": "close",
-        "859994004": "exact",
+        "859994004": "close",
         "8700211515": "exact",
         "878217361": "exact",
         "891535177": "close",
@@ -797,9 +797,9 @@
         "909914537": "exact",
         "910084827": "exact",
         "914830446": "missing",
-        "932129119": "close",
+        "932129119": "exact",
         "937537605": "exact",
-        "953789213": "exact",
+        "953789213": "far",
         "953932286": "missing",
         "954041340": "exact",
         "960784610": "exact",
@@ -816,19 +816,19 @@
           "missing": 0
         },
         "durable": {
-          "close": 461,
-          "close_rate": 0.937,
-          "exact": 431,
+          "close": 441,
+          "close_rate": 0.8963,
+          "exact": 409,
           "found": 492,
           "missing": 8
         }
       },
       "calls": 25,
       "checked": 500,
-      "close": 461,
-      "close_rate": 0.937,
+      "close": 441,
+      "close_rate": 0.8963,
       "error": null,
-      "exact": 431,
+      "exact": 409,
       "examples": [
         {
           "id": 914830446,
@@ -891,22 +891,28 @@
           "snapshot": 5.04
         },
         {
+          "id": 19427824189,
+          "live": 11.99,
+          "name": "ZIPIT: 2 Compartment Recycled Box - Butterflies - Large Capacity Pencil Case, Plastic Stationery Organizer, School Supplies-Toys Holder, Kids Girl-Boy",
+          "snapshot": 7.99
+        },
+        {
           "id": 16795173,
           "live": 14.4,
           "name": "3m 06404 Scotch Plastic Tape 471, Blue, 1/8\" X 36 Yd.",
           "snapshot": 23.52
         },
         {
-          "id": 12602013436,
-          "live": 24.96,
-          "name": "Carson Dellosa Education Rolled Scalloped Bulletin Board Border, Dusty Rose, 65 Feet, Pack of 3",
-          "snapshot": 38.94
-        },
-        {
           "id": 115281446,
           "live": 30.31,
           "name": "Paper Mate InkJoy Pens, Gel Pens, Medium Point (0.7 mm), Assorted, 30 Count",
           "snapshot": 22.88
+        },
+        {
+          "id": 6193407293,
+          "live": 12.99,
+          "name": "JAM Paper Plastic 2 Pocket School POP Folders, Teal Blue, 6/Pack",
+          "snapshot": 9.99
         },
         {
           "id": 15436502317,
@@ -921,16 +927,34 @@
           "snapshot": 67.79
         },
         {
+          "id": 12602013436,
+          "live": 27.65,
+          "name": "Carson Dellosa Education Rolled Scalloped Bulletin Board Border, Dusty Rose, 65 Feet, Pack of 3",
+          "snapshot": 38.94
+        },
+        {
           "id": 179198035,
           "live": 17.68,
           "name": "Bostitch Flat Clinch Stapler, 40 Sheets, Metallic Purple",
           "snapshot": 13.71
         },
         {
+          "id": 152603421,
+          "live": 17.95,
+          "name": "Teacher Created Resources Superhero Cityscape Bulletin Board Display, 26 Pieces",
+          "snapshot": 13.99
+        },
+        {
           "id": 16125871919,
           "live": 30.04,
           "name": "Canson XL Series Drawing Pad, Top Wire Binding, 60 Sheet, 11x14 inch, Pack of 2",
           "snapshot": 38.4
+        },
+        {
+          "id": 16379408407,
+          "live": 21.91,
+          "name": "Teacher Created Resources Fruit Pop Smelly Stickers, 582 Stickers",
+          "snapshot": 18.17
         },
         {
           "id": 53134654,
@@ -951,44 +975,20 @@
           "snapshot": 34.48
         },
         {
-          "id": 490058761,
-          "live": 74.27,
-          "name": "Flipside Products Two-Sided Dry Erase Boards, Red & Blue Ruled/Plain, 9\" x 12\", with Colored Pens & Student Erasers, Class Pack 12",
-          "snapshot": 86.64
-        },
-        {
-          "id": 17556450458,
-          "live": 11.0,
-          "name": "Jessie James Decker for Blue Sky Monthly Weekly Planner, 5\" x 8\", Jess Pink 15-Month (April 2026 - June 2027)",
-          "snapshot": 9.73
-        },
-        {
-          "id": 310766097,
-          "live": 11.99,
-          "name": "JAM Paper Foldover Cards, 3 1/2 x 4 7/8, 25/Pack, White Panel",
-          "snapshot": 10.74
-        },
-        {
-          "id": 46698487,
-          "live": 19.99,
-          "name": "JAM Paper 13 Pocket Expanding File, Blue, 1/Pack, Legal Size, 10 x 15",
-          "snapshot": 17.99
-        },
-        {
-          "id": 5468735686,
-          "live": 48.99,
-          "name": "SKYSHALO DM-ABS-110 Indoor and Outdoor Use Tripod Mount 110\" Maximum Screen Size Projector Screen",
-          "snapshot": 54.99
+          "id": 46204002,
+          "live": 16.56,
+          "name": "JAM Paper #10 Envelopes, 4.1x9.5, Dark Purple, 50/Pack",
+          "snapshot": 14.29
         }
       ],
       "found": 492,
-      "match_rate": 0.876,
+      "match_rate": 0.8313,
       "missing": 8,
       "missing_rate": 0.016,
       "sample": 500,
       "tolerance": 0.05,
-      "within_5pct": 461,
-      "within_5pct_rate": 0.937
+      "within_5pct": 441,
+      "within_5pct_rate": 0.8963
     },
     "review_pool": {
       "eligible": 2333772,
@@ -1252,12 +1252,11 @@
     ],
     "unstable": []
   },
-  "finalized": "2026-10-22T02:02:41+00:00",
   "gates": {
     "category_counts": {
       "detail": "largest category change 8.9% (categories with >= 200 published rows)",
       "pass": true,
-      "threshold": 0.4,
+      "threshold": 0.2,
       "value": 0.0895
     },
     "departments_complete": {
@@ -1273,10 +1272,10 @@
       "value": 1.0058
     },
     "live_match": {
-      "detail": "461/492 within 5% (93.7%; exact 431, 87.6%) of the rows Walmart still lists; no longer listed: 8 of 500 (1.6%, not counted as wrong); consumable - of 0, durable 93.7% of 492; 25 calls",
-      "pass": true,
+      "detail": "441/492 within 5% (89.6%; exact 409, 83.1%) of the rows Walmart still lists; no longer listed: 8 of 500 (1.6%, not counted as wrong); consumable - of 0, durable 89.6% of 492; 25 calls",
+      "pass": false,
       "threshold": 0.9,
-      "value": 0.937
+      "value": 0.8963
     },
     "price_drift": {
       "detail": "305 of 2358413 prices moved more than 50% (0.01%)",
@@ -1285,10 +1284,10 @@
       "value": 0.00013
     },
     "sample_review": {
-      "detail": "junk 114/600 (19.0%), 95% lower bound 16.5% vs 5.0% target, hard cap 10%, systematic junk: yes, 51 examples, 2 batches, model claude-sonnet-5-5: systematic junk; notes: Many Office Supplies rows (about 55) have cryptic abbreviated names like 'MD 1SUB RAZZ WR' or 'PG 2`` DUR BNDR RED'; these are SKU dumps, not shelf labels, and would affect many more rows in the full snapshot. A smaller group is implausibly priced, bulk or marketplace-style, industrial, or magazine (Dotdash MPP) listings, plus a 'Retired' placeholder. | Every row is Office Supplies. There is a rep",
-      "pass": false,
+      "detail": "pending: `python -m crawler.review run`, then `qa finalize`",
+      "pass": null,
       "threshold": 0.05,
-      "value": 0.19
+      "value": null
     },
     "sentinels": {
       "detail": "114/114 found and priced",
@@ -1309,7 +1308,7 @@
       "value": 0.0021
     }
   },
-  "passed_deterministic": true,
+  "passed_deterministic": false,
   "run_id": "20261021-170108-refresh",
   "status": "hold",
   "thresholds": {
@@ -1317,7 +1316,7 @@
     "audit_per_department": 30,
     "audit_sample": 500,
     "category_count_min_rows": 200,
-    "category_count_tolerance": 0.4,
+    "category_count_tolerance": 0.2,
     "dept_size_tolerance": 0.3,
     "item_count_min_ratio": 0.9,
     "live_match_min": 0.9,
