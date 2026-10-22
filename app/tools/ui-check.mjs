@@ -617,6 +617,18 @@ await scenario(["F62"], "Settings: departments left out by the memory limit are 
   check("F62", "the note says search by name does not find them and a scanned barcode is checked live", /search by name does not find/.test(t) && /scanned barcode/.test(t) && !/priced live when online/.test(t), (t.match(/Not stored on this phone[^.]*\.[^.]*\./) || [""])[0]);
 });
 
+await scenario(["F63"], "iOS launch screens: served with the page, not precached by the service worker (owner, 2026-10-22)", async (set) => {
+  const env = set(await open());
+  const { page } = env;
+  const links = await page.evaluate(() => [...document.querySelectorAll('link[rel="apple-touch-startup-image"]')].map((l) => ({ href: l.href, media: l.media })));
+  check("F63", "the page names a launch image for every iPhone and iPad size, light and dark", links.length === 62 && links.filter((l) => /prefers-color-scheme: dark/.test(l.media)).length === 31, `${links.length} links`);
+  const sample = [links[0], links.find((l) => /device-width: 402px/.test(l.media) && /dark/.test(l.media))].filter(Boolean);
+  const got = await Promise.all(sample.map(async (l) => { const r = await fetch(l.href); return `${r.status} ${r.headers.get("content-type")}`; }));
+  check("F63", "the launch images are served as PNG", got.length === 2 && got.every((g) => /^200 image\/png/.test(g)), got.join(", "));
+  const sw = await (await fetch(new URL("sw.js", BASE))).text();
+  check("F63", "the service worker precaches none of them (iOS fetches its own once, when the app is added)", !/splash\//.test(sw) && /icons\/icon-512\.png/.test(sw), sw.match(/splash\/[^"]+/)?.[0] || "none listed");
+});
+
 await scenario(["F58"], "a box: one of its pieces, and the product's other sizes in the sheet (owner, 2026-10-21)", async (set) => {
   const env = set(await open({ w: 390, h: 844 }));
   const { page } = env;

@@ -49,8 +49,9 @@ fs.writeFileSync(jsPath, fs.readFileSync(jsPath, "utf8").replace("__SHELL_BUILD_
 
 // sw.js: version + precache list (everything in the shell except the worker itself). The page is cached under
 // its root URL "./" only: Cloudflare's auto-trailing-slash handling redirects /index.html to /, and a redirected
-// response must never be served for a navigation.
-const assets = ["./", ...files.filter((f) => f !== "sw.js" && f !== "index.html" && !f.endsWith(".LICENSE")).map((f) => `./${f}`)];
+// response must never be served for a navigation. The iOS launch screens (splash/, 62 images) are not precached:
+// iOS fetches only its own device's image, once, when the app is added to the Home Screen.
+const assets = ["./", ...files.filter((f) => f !== "sw.js" && f !== "index.html" && !f.endsWith(".LICENSE") && !f.startsWith("splash/")).map((f) => `./${f}`)];
 const swPath = path.join(OUT, "sw.js");
 fs.writeFileSync(swPath, fs.readFileSync(swPath, "utf8").replace("__BUILD__", BUILD).replace("__ASSETS__", JSON.stringify(assets)));
 
@@ -89,6 +90,8 @@ if (links) {
 `);
 }
 
-const shellBytes = files.filter((f) => f !== "sw.js").reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+const shellFiles = files.filter((f) => f !== "sw.js" && !f.startsWith("splash/"));     // what a phone downloads (precache)
+const shellBytes = shellFiles.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+const splash = files.filter((f) => f.startsWith("splash/"));
 const hasDb = fs.existsSync(path.join(OUT, "db", "current.json"));
-console.log(`site: ${files.length} shell files, ${(shellBytes / 1024).toFixed(0)} KB (incl. ${(fs.statSync(path.join(OUT, "vendor", "zxing_reader.wasm")).size / 1024).toFixed(0)} KB wasm), build ${BUILD}, live-check ${LIVE || "(off)"}, asset links ${links ? "written" : "(off)"}, db ${hasDb ? "present" : "MISSING — run build:db"} -> ${path.relative(APP, OUT)}`);
+console.log(`site: ${shellFiles.length} shell files, ${(shellBytes / 1024).toFixed(0)} KB (incl. ${(fs.statSync(path.join(OUT, "vendor", "zxing_reader.wasm")).size / 1024).toFixed(0)} KB wasm), build ${BUILD}, ${splash.length} iOS launch screens (not precached), live-check ${LIVE || "(off)"}, asset links ${links ? "written" : "(off)"}, db ${hasDb ? "present" : "MISSING — run build:db"} -> ${path.relative(APP, OUT)}`);
