@@ -1,0 +1,67 @@
+name: walmart-probe
+
+# Manual check of the Walmart I/O key and of the lookups the pipeline Worker's live price check makes (status only):
+# the same /items query four ways, so a live check that always says "unavailable" can be told apart as a key problem
+# (401/403 on every form), a query Walmart refuses (400 on one form), or a barcode Walmart does not list (404).
+# Four Walmart calls. The key and the signature are never printed; the job summary shows one row per form.
+
+on:
+  workflow_dispatch:
+    inputs:
+      gtin:
+        description: "Barcode to look up (12-digit UPC-A or 13/14-digit GTIN)"
+        default: "045300001210"
+      item_id:
+        description: "A Walmart item id to look up by id with storeId (control)"
+        default: "10416824"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r requirements.txt
+      - name: Four lookups, status only
+        env:
+          WM_CONSUMER_ID: ${{ secrets.WM_CONSUMER_ID }}
+          WM_PRIVATE_KEY: ${{ secrets.WM_PRIVATE_KEY }}
+          WM_KEY_VERSION: ${{ vars.WM_KEY_VERSION || '1' }}
+          GTIN: ${{ inputs.gtin }}
+          ITEM_ID: ${{ inputs.item_id }}
+          STORE_ID: "2266"
+        run: |
+          set -u
+          if [ -z "${WM_CONSUMER_ID:-}" ] || [ -z "${WM_PRIVATE_KEY:-}" ]; then
+            echo "::error::Add repository secrets WM_CONSUMER_ID and WM_PRIVATE_KEY"; exit 1
+          fi
+          python3 - <<'PY'
+          import json, os, re, time
+          import requests
+          from crawler import wm
+          w = wm.Walmart()
+          raw = re.sub(r"\D", "", os.environ["GTIN"]); gtin = raw.zfill(14); upc = re.sub(r"^0+(?=\d{12}$)", "", gtin)
+          store, item = os.environ["STORE_ID"], os.environ["ITEM_ID"]
+          forms = [("upc", f"/items?upc={upc}"), ("upc+storeId (the Worker's form)", f"/items?upc={upc}&storeId={store}"),
+                   ("gtin+storeId", f"/items?gtin={gtin}&storeId={store}"), ("ids+storeId (control)", f"/items?ids={item}&storeId={store}")]
+          rows = []
+          for name, path in forms:
+              r = requests.get(w.url(path), headers=w._headers(), timeout=60)
+              body = r.text[:200].replace("|", "/").replace("\n", " ")
+              try:
+                  d = r.json(); items = d.get("items") or []
+                  meaning = f"{len(items)} item(s)" + (f", first: {items[0].get('name', '')[:50]} ${items[0].get('salePrice')}" if items else "") if r.status_code == 200 else body
+              except Exception:
+                  meaning = body
+              rows.append((name, r.status_code, meaning)); print(f"{r.status_code}  {name}  {path}  -> {meaning}")
+              time.sleep(1.5)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(f"### Walmart lookup probe (key version {os.environ['WM_KEY_VERSION']})\n\n| Form | HTTP | Answer |\n|---|---|---|\n")
+              for name, code, meaning in rows: f.write(f"| {name} | {code} | {meaning} |\n")
+          PY
