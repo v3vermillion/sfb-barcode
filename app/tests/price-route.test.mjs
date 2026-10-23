@@ -53,6 +53,19 @@ test("marketplace-only, not found, throttled and failed upstreams are distinguis
   assert.equal((await h.hit("/v1/price/096385074")).status, 400);   // not a valid code
 });
 
+test("Walmart's 400 \"UPC not found\" / \"GTIN not found\" is a plain not-found answer, cached like one", async () => {
+  const notFound = (code, msg) => new Response(JSON.stringify({ errors: [{ code, message: msg }] }), { status: 400 });
+  const h = harness({ walmart: (u) => u.includes("upc=") ? notFound(4023, "UPC not found") : u.includes("gtin=05000112637922") ? notFound(4037, "GTIN not found") : notFound(4003, "Results not found") });
+  const a = await h.hit("/v1/price/045300001210");
+  assert.equal(a.status, 200); assert.deepEqual(a.body, { ok: false, reason: "not found", gtin: "00045300001210" });
+  assert.equal((await h.hit("/v1/price/045300001210")).cache, "hit", "an unlisted barcode is remembered, not asked again");
+  const g = await h.hit("/v1/price/5000112637922");
+  assert.deepEqual(g.body, { ok: false, reason: "not found", gtin: "05000112637922" });
+  assert.equal(h.calls.length, 2);
+  const other = await h.hit("/v1/price/10045300001217");   // any other 400 is still an outage, not cached
+  assert.equal(other.status, 502); assert.equal(other.body.reason, "walmart unavailable");
+});
+
 test("rate limits, validation, CORS preflight and the admin gate", async () => {
   const h = harness({ walmart: () => ok([corn]), limits: { per: 2, all: Infinity } });
   assert.equal((await h.hit("/v1/price/078742054261")).status, 200);
