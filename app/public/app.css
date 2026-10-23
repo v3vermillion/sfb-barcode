@@ -118,6 +118,11 @@
 
 /* ---------- base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
+/* While the keyboard is up (html[data-kb], app.js keyboardInset) the browser's own pan gesture is off everywhere that
+   does not scroll: with the keyboard up iOS lets a drag pan the visual viewport inside the layout viewport, which
+   moved the header, the dock and the page as one; the two panels keep their vertical pan, so lists still scroll. */
+html[data-kb] body { touch-action: none; }
+html[data-kb] .main, html[data-kb] .results, html[data-kb] .sheet-inner { touch-action: pan-y; }
 /* the overscroll area is never white; a sheet, the tally, settings or the scanner open: the page behind never scrolls */
 html { height: 100%; background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scrollbar-gutter: stable;
   /* the page never bounces: on iOS a rubber-band of the page drags the fixed header and search bar with it. Only the
@@ -405,7 +410,7 @@ html:not([data-splash]) .boot { animation: boot-expire .5s ease 12s forwards; }
 .results {
   position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--top-h) + var(--banner-h)); bottom: calc(var(--dock-h) + var(--kb));
   overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-  display: flex; flex-direction: column-reverse; justify-content: flex-start; flex: 1; padding: 12px 16px 10px; margin: 0;
+  display: flex; flex-direction: column-reverse; justify-content: flex-start; padding: 12px 16px 10px; margin: 0;
 }
 /* the result count / "Closest matches" flag sits at the thumb end of the list and stays visible while scrolling */
 /* whole-pixel line boxes: a fractional height left the bottom-anchored list 1px short of its best match */
@@ -447,8 +452,7 @@ html:not([data-splash]) .boot { animation: boot-expire .5s ease 12s forwards; }
 .row--code .code-title { font-weight: 500; }
 /* only the rows by the thumb rise in, and only when a search opens (a refinement must not blink the whole list) */
 .list .row { animation: none; }
-.list > li:nth-child(-n+8) .row { animation: rise .32s var(--ease-out) both; }
-.results .list:not(.is-entering) .row { animation: none; }
+.results .list.is-entering > li:nth-child(-n+8) .row { animation: rise .32s var(--ease-out) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .empty { list-style: none; padding: 28px 8px; text-align: center; color: var(--ink-3); }
 .empty p { margin: 0; }
@@ -461,7 +465,8 @@ html:not([data-splash]) .boot { animation: boot-expire .5s ease 12s forwards; }
   /* the keyboard covers the home indicator: --dock-safe-b is 0 while the dock sits on the keyboard (app.js) */
   padding: 10px 16px calc(10px + var(--dock-safe-b, var(--safe-b))); background: color-mix(in oklab, var(--bg) 88%, transparent);
   backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); border-top: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
-  transition: bottom .12s var(--ease-out);
+  /* no transition on its position: iOS animates the keyboard itself and the dock is re-read every frame (app.js
+     pollKeyboard); an eased position trailed every step of a drag-pan and swam against the keyboard's own motion */
 }
 .search {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 8px 0 14px; border-radius: var(--r-m);

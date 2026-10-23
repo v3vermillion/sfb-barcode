@@ -64,7 +64,7 @@ const IOS_VV = () => {
       });
     },
     /** The user drags: the visual viewport pans within the layout viewport, as far as the keyboard's height. */
-    pan(dy) { const max = H() - fake.height; st.top = Math.max(0, Math.min(max, st.top + dy)); log.push(["pan", st.top]); fire("scroll"); },
+    pan(dy) { const max = Math.max(0, H() - fake.height); st.top = Math.max(0, Math.min(Math.max(max, dy), st.top + dy)); log.push(["pan", st.top]); fire("scroll"); },
   };
   // WebKit: window.scrollTo moves the visual viewport when the layout viewport has nowhere to go
   const scrollTo = window.scrollTo.bind(window);
@@ -95,7 +95,7 @@ const geometry = (page) => page.evaluate(() => {
   const rows = [...document.querySelectorAll("#list .row")].map((e) => { const b = e.getBoundingClientRect(); return { t: b.top - pan, b: b.bottom - pan }; });
   return { pan, vvh, ih: innerHeight, kb: cs.getPropertyValue("--kb").trim(), vvTop: cs.getPropertyValue("--vv-top").trim(),
     top: r("#top"), dock: r("#dock"), results: r("#results"), home: r("#home"), main: r("#main"), empty: r("#home .empty, #home .prompt, #home h2, #home .empty-title"), input: r("#q"),
-    rows, bestRow: rows.length ? rows.reduce((a, b) => (b.b > a.b ? b : a)) : null, active: document.activeElement?.id || document.activeElement?.tagName };
+    rows, bestRow: rows.length ? rows.reduce((a, b) => (b.b > a.b ? b : a)) : null, scrollTop: document.getElementById("results").scrollTop, active: document.activeElement?.id || document.activeElement?.tagName };
 });
 const near = (a, b, tol = 1) => a != null && b != null && Math.abs(a - b) <= tol;
 /** The invariants that hold whenever the keyboard is up (kb > 0) in every scenario. */
@@ -105,7 +105,7 @@ function invariants(id, label, g) {
   check(id, `${label}: the dock's bottom edge is the keyboard's top`, g.dock && near(g.dock.b, g.vvh), `dock bottom ${g.dock?.b} keyboard top ${g.vvh} (--kb ${g.kb}, --vv-top ${g.vvTop})`);
   check(id, `${label}: the search box is on screen above the keyboard`, g.input && g.input.b <= g.vvh + 0.5 && g.input.t >= (g.top?.b ?? 0) - 0.5, `input ${g.input?.t}-${g.input?.b}`);
   check(id, `${label}: the panel between header and dock fills exactly that room`, panel && near(panel.t, g.top.b, 1.5) && near(panel.b, g.dock.t, 1.5), `panel ${panel?.t}-${panel?.b} header bottom ${g.top?.b} dock top ${g.dock?.t}`);
-  if (g.results) check(id, `${label}: the best match is drawn inside the results box, by the dock`, g.bestRow && g.bestRow.b <= g.results.b + 0.5 && g.bestRow.t >= g.results.t - 0.5, `best row ${g.bestRow?.t}-${g.bestRow?.b} box ${g.results?.t}-${g.results?.b}`);
+  if (g.results && g.scrollTop === 0) check(id, `${label}: the best match is drawn inside the results box, by the dock`, g.bestRow && g.bestRow.b <= g.results.b + 0.5 && g.bestRow.t >= g.results.t - 0.5, `best row ${g.bestRow?.t}-${g.bestRow?.b} box ${g.results?.t}-${g.results?.b}`);
 }
 
 const scenarios = [];
@@ -165,6 +165,46 @@ scenario("S7", "the keyboard stays up while no field has the focus (the accessor
   await page.evaluate(() => window.__ios.open(336)); await settle(page, 300);
   await page.evaluate(() => document.activeElement.blur()); await settle(page, 300);
   invariants("S7", "keyboard up, nothing focused", await geometry(page));
+});
+
+scenario("S8", "results scrolled up, then the keyboard opens: the row under the thumb stays, nothing is pushed above the screen", async (page) => {
+  await page.focus("#q"); await page.type("#q", "pea"); await page.waitForSelector("#results:not([hidden]) .row", { timeout: 20000 }); await settle(page, 400);
+  await page.evaluate(() => document.activeElement.blur()); await settle(page, 200);
+  const scrolled = await page.evaluate(() => { const r = document.getElementById("results"); r.scrollTop = -400; return r.scrollTop; });
+  check("S8", "the list can be scrolled up away from the best match", scrolled < -100, `scrollTop ${scrolled}`);
+  const anchor = () => page.evaluate(() => { const box = document.getElementById("results").getBoundingClientRect(); const row = [...document.querySelectorAll("#list .row")].filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > box.top && b.top < box.bottom; }).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0]; return row ? { id: row.dataset.rank ?? row.textContent.slice(0, 30), top: Math.round(row.getBoundingClientRect().top - box.top) } : null; });
+  const before = await anchor();
+  await page.focus("#q"); await settle(page, 100);
+  await page.evaluate(() => window.__ios.open(336)); await settle(page, 600);
+  const after = await anchor();
+  invariants("S8", "keyboard up over scrolled results", await geometry(page));
+  check("S8", "the row the reader was on is still where it was, relative to the box", before && after && before.id === after.id && Math.abs(before.top - after.top) <= 2, JSON.stringify({ before, after }));
+});
+scenario("S9", "a drag on the results puts the keyboard away: the rows do not run from the finger", async (page) => {
+  await page.focus("#q"); await settle(page, 100);
+  await page.evaluate(() => window.__ios.open(336)); await settle(page, 300);
+  await page.type("#q", "pea"); await page.waitForSelector("#results:not([hidden]) .row", { timeout: 20000 }); await settle(page, 400);
+  await page.evaluate(() => { document.getElementById("results").scrollTop = -700; });   // further up than the keyboard is tall, so the list has room to hold the row
+  const anchor = () => page.evaluate(() => { const box = document.getElementById("results").getBoundingClientRect(); const row = [...document.querySelectorAll("#list .row")].filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > box.top && b.top < box.bottom; }).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0]; return row ? { id: row.textContent.slice(0, 30), top: Math.round(row.getBoundingClientRect().top - box.top) } : null; });
+  const before = await anchor();
+  // the drag: a touch that moves 40px (the app blurs the field after 12px); iOS then takes the keyboard down
+  await page.evaluate(() => { const r = document.getElementById("results"); const t = (type, y) => r.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: type === "touchend" ? [] : [new Touch({ identifier: 1, target: r, clientX: 180, clientY: y })] })); t("touchstart", 300); t("touchmove", 280); t("touchmove", 260); t("touchend", 260); });
+  await settle(page, 100);
+  const blurred = await page.evaluate(() => document.activeElement !== document.getElementById("q"));
+  check("S9", "the drag took the focus off the field", blurred);
+  await page.evaluate(() => window.__ios.close()); await settle(page, 600);
+  const after = await anchor();
+  const g = await geometry(page);
+  check("S9", "the keyboard is gone and the dock is back on the bottom edge", near(g.dock.b, g.ih) && g.kb === "0px", JSON.stringify({ dock: g.dock, kb: g.kb }));
+  check("S9", "the row the reader was on is still where it was, relative to the box", before && after && before.id === after.id && Math.abs(before.top - after.top) <= 2, JSON.stringify({ before, after }));
+});
+scenario("S10", "the keyboard closes but iOS leaves the page panned (iOS 26.0 left 24 px): the pan is undone", async (page) => {
+  await page.focus("#q"); await settle(page, 100);
+  await page.evaluate(() => window.__ios.open(336, { pan: 336 })); await settle(page, 500);
+  await page.evaluate(() => document.activeElement.blur());
+  await page.evaluate(() => window.__ios.close({ frames: 3 })); await page.evaluate(() => window.__ios.pan(24)); await settle(page, 600);
+  const g = await geometry(page);
+  check("S10", "no pan is left behind, and the dock and header sit on the screen's edges", g.pan === 0 && near(g.dock.b, g.ih) && near(g.top.t, 0), JSON.stringify({ pan: g.pan, dock: g.dock, top: g.top }));
 });
 
 for (const s of scenarios) {

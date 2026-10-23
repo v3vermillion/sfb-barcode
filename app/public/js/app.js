@@ -107,9 +107,12 @@ const icon = (name, cls = "ico") => `<svg class="${cls}" aria-hidden="true"><use
 // in a home-screen app; these guards cover the browser tab, where iOS ignores the meta: a second tap within 350 ms on
 // anything that is not a control is swallowed, and the pinch gesture is refused.
 {
-  let lastTap = 0;
+  let lastTap = 0, moved = false;
+  document.addEventListener("touchstart", () => { moved = false; }, { passive: true });
+  document.addEventListener("touchmove", () => { moved = true; }, { passive: true });
   document.addEventListener("touchend", (e) => {
     const now = Date.now();
+    if (moved) { lastTap = 0; return; }   // the end of a drag or a flick is not a tap
     if (now - lastTap < 350 && !e.target.closest("button, input, select, textarea, a, [role=button], [role=switch], [contenteditable]")) e.preventDefault();
     lastTap = now;
   }, { passive: false });
@@ -210,28 +213,69 @@ const safeTop = () => safeProbe.offsetHeight;
 // by the keyboard, 260-400 px with its accessory bar); Safari's collapsing toolbars and a rubber-band scroll are far
 // smaller, and a page not installed reports them in innerHeight too.
 const KEYBOARD_MIN_PX = 100;
-let kbLast = { inset: 0, top: 0 };
+const KEYBOARD_SETTLE_MS = 150;   // no change of the visible height for this long: the keyboard's animation is over
+let kbLast = { inset: 0, top: 0, height: 0, heightAt: 0, pinAt: 0 };
 const vvTrace = [];   // the last viewport readings, for Diagnostics (Settings › About)
+const traceVv = (text) => { vvTrace.push(`${(performance.now() / 1000).toFixed(1)}s ${text}`); if (vvTrace.length > 24) vvTrace.shift(); };
 function keyboardInset() {
   // Read from the visual viewport's geometry, not from the focus: the keyboard can be up with nothing focused (the
   // accessory bar's arrows, a tap that blurred the field a moment before the keyboard goes), and a field can be
   // focused with no keyboard (a hardware keyboard, the desktop). A pinch-zoomed page is never a keyboard.
   const zoomed = !!vv && vv.scale > 1.01;
-  const shrink = vv ? window.innerHeight - vv.height : 0;
+  const vvh = vv ? Math.round(vv.height) : window.innerHeight;
+  const now = performance.now();
+  if (vvh !== kbLast.height) { kbLast.height = vvh; kbLast.heightAt = now; }
+  const settled = now - kbLast.heightAt >= KEYBOARD_SETTLE_MS;
+  const shrink = window.innerHeight - vvh;
   const keyboard = !!vv && !zoomed && (shrink >= KEYBOARD_MIN_PX || (typing() && shrink > 0));
-  const inset = keyboard ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
-  // iOS opens the keyboard by panning the page up (offsetTop) instead of resizing it, and a drag with the keyboard up
-  // pans it further: everything fixed follows the visible area, so the pan moves nothing on screen.
-  const top = keyboard ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+  let pan = vv ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+  // iOS opens the keyboard by panning the page up (offsetTop) to reveal the field, and a drag with the keyboard up can
+  // pan it further. While the keyboard animates, everything fixed follows the pan (--vv-top) so nothing on screen
+  // moves; once it has settled the pan is undone (window.scrollTo moves the visual viewport in WebKit) with the
+  // layout already written for pan 0 in the same frame, so the page never has a reason to slide again: the dock is
+  // above the keyboard by --kb, which is all iOS wanted. A residual pan after the keyboard has gone (iOS 26.0 left
+  // 24 px) is undone the same way.
+  let undo = false;
+  if (pan > 0 && settled && now - kbLast.pinAt > 120) { undo = true; pan = 0; kbLast.pinAt = now; }
+  const inset = keyboard ? Math.max(0, Math.round(window.innerHeight - vvh - pan)) : 0;
+  const top = keyboard ? pan : 0;
   if (inset !== kbLast.inset || top !== kbLast.top) {
-    kbLast = { inset, top };
-    vvTrace.push(`${(performance.now() / 1000).toFixed(1)}s kb ${inset} pan ${top} (vv ${Math.round(vv?.height || 0)}/${window.innerHeight}${typing() ? ", typing" : ""})`);
-    if (vvTrace.length > 24) vvTrace.shift();
+    traceVv(`kb ${inset} pan ${top} (vv ${vvh}/${window.innerHeight}${typing() ? ", typing" : ""}${undo ? ", pan undone" : ""})`);
+    kbLast.inset = inset; kbLast.top = top;
   }
-  rootStyle.setProperty("--kb", `${inset}px`);
-  rootStyle.setProperty("--vv-top", `${top}px`);
-  // the keyboard covers the home indicator: the dock drops its safe-area padding while it sits on the keyboard
-  if (inset > 0) rootStyle.setProperty("--dock-safe-b", "0px"); else rootStyle.removeProperty("--dock-safe-b");
+  withResultsRowHeld(() => {
+    rootStyle.setProperty("--kb", `${inset}px`);
+    rootStyle.setProperty("--vv-top", `${top}px`);
+    // The keyboard covers the home indicator: the dock drops its safe-area padding while it sits on the keyboard. Keyed
+    // on the keyboard being there, never on the inset: when iOS reveals the field by panning the whole keyboard height
+    // the inset is 0 while the keyboard is up, and the padding came back as a blank band under the search box (the
+    // gap in the owner's screenshot, 2026-10-23). The bar heights are re-measured in the same frame, so nothing that
+    // reads --dock-h lags the dock by a frame.
+    const safeWas = rootStyle.getPropertyValue("--dock-safe-b");
+    if (keyboard) rootStyle.setProperty("--dock-safe-b", "0px"); else rootStyle.removeProperty("--dock-safe-b");
+    if (safeWas !== rootStyle.getPropertyValue("--dock-safe-b")) syncBars();
+    // html[data-kb]: app.css turns the browser's pan gesture off on everything that does not scroll while the keyboard
+    // is up, so a drag on the header, the dock or the empty home cannot pan the visual viewport in the first place
+    if (keyboard) document.documentElement.dataset.kb = "1"; else delete document.documentElement.dataset.kb;
+    if (undo) window.scrollTo(0, 0);
+  });
+}
+/** Runs a layout change that can move the results box (the keyboard, the banner, the pan) while keeping the row the
+ *  volunteer is looking at where it is: the list is anchored to its bottom (the best match by the thumb), so a change
+ *  of its height moved every row the reader had scrolled to, by the whole keyboard (rows "above the screen"). At the
+ *  best match (scrollTop 0) nothing is held: the best match rides with the dock, as it should. */
+function withResultsRowHeld(apply) {
+  const box = el.results;
+  if (box.hidden || !box.scrollTop) { apply(); return; }
+  const b0 = box.getBoundingClientRect();
+  // the top-most visible row: it stays in view whether the box loses or gains room at its bottom (the keyboard)
+  let row = null, rowTop = Infinity;
+  for (const r of el.list.querySelectorAll(".row")) { const b = r.getBoundingClientRect(); if (b.bottom > b0.top && b.top < b0.bottom && b.top < rowTop) { row = r; rowTop = b.top; } }
+  const before = row ? row.getBoundingClientRect().top - b0.top : 0;
+  apply();
+  if (!row) return;
+  const after = row.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  if (Math.abs(after - before) >= 1) box.scrollTop += after - before;
 }
 // iOS animates the keyboard over about a third of a second and does not promise a resize event for every step, or a
 // last one: after anything that can move the keyboard, the viewport is read every frame for a while, so a missed
@@ -250,7 +294,7 @@ vv?.addEventListener("scroll", onViewport);
 window.addEventListener("resize", onViewport);
 window.addEventListener("pageshow", onViewport);
 document.addEventListener("focusin", onViewport);
-document.addEventListener("focusout", () => { setTimeout(keyboardInset, 0); pollKeyboard(); });
+document.addEventListener("focusout", () => { setTimeout(keyboardInset, 0); pollKeyboard(); setTimeout(() => { if (!typing()) maybeApplyPending(); }, 2000); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) onViewport(); });
 // while a field has the focus the keyboard can come and go without an event reaching here (iOS): a slow safety net
 setInterval(() => { if (typing() || kbLast.inset) keyboardInset(); }, 500);
@@ -653,15 +697,27 @@ async function checkNow(btn = null) {
 
 // ------------------------------------------------------------------ search
 const PLACEHOLDER = el.q.placeholder;
+// One search per animation frame: a burst of keystrokes (or backspaces) searches and renders once, for the text as it
+// stands when the frame comes, instead of once per key with every intermediate list drawn and thrown away.
+let searchFrame = 0;
 el.q.addEventListener("input", () => {
   const q = el.q.value;
   if (el.q.placeholder !== PLACEHOLDER) el.q.placeholder = PLACEHOLDER;
   el.clearBtn.hidden = !q;
   state.query = q;
-  if (!q.trim()) { showHome(); return; }
+  if (!q.trim()) { cancelAnimationFrame(searchFrame); searchFrame = 0; showHome(); return; }
   cancelMore();
-  runSearch(q);
+  if (searchFrame) return;
+  searchFrame = requestAnimationFrame(() => { searchFrame = 0; if (state.query.trim() && state.query === el.q.value) runSearch(state.query); });
 });
+// A finger on the results, or a list still coasting, is never moved by a render: the answer waits for the quiet
+// (keyboard-check S9; results audit, 2026-10-23). The best match re-anchors only for a new query.
+let resultsTouching = false, resultsScrollTimer = 0, deferredRender = null;
+const resultsBusy = () => resultsTouching || resultsScrollTimer !== 0;
+function renderWhenQuiet() { if (!resultsBusy() && deferredRender) { const d = deferredRender; deferredRender = null; if (d.seq === state.seq) renderResults(d.res, d.code, d.q); } }
+el.results.addEventListener("touchstart", () => { resultsTouching = true; }, { passive: true });
+for (const ev of ["touchend", "touchcancel"]) el.results.addEventListener(ev, () => { resultsTouching = false; setTimeout(renderWhenQuiet, 0); }, { passive: true });
+el.results.addEventListener("scroll", () => { clearTimeout(resultsScrollTimer); resultsScrollTimer = setTimeout(() => { resultsScrollTimer = 0; renderWhenQuiet(); }, 120); }, { passive: true });
 el.clearBtn.addEventListener("click", () => { el.q.value = ""; el.clearBtn.hidden = true; state.query = ""; showHome(); el.q.focus(); });
 el.searchForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -687,10 +743,12 @@ function showHome() {
   state.last = null; state.codeHit = null; state.pending = null; state.shownQuery = null;
   renderRecent();
   homeToTop();
-  maybeApplyPending();
+  if (!typing()) maybeApplyPending();   // backspacing to nothing is not an idle moment: the swap waits for the keyboard to go
 }
 /** Home reads top-down (the food bank, a status card when there is one, the tally, Recent) and always comes back at the top. */
-function homeToTop() { requestAnimationFrame(() => { if (!el.home.hidden) { el.main.scrollTop = 0; window.scrollTo(0, 0); } }); }
+/** The home panel scrolls on its own (it is fixed against the visible area); the page itself never scrolls, and nothing
+ *  here asks it to: a window.scrollTo while the keyboard is up made iOS re-pan the page to keep the field in view. */
+function homeToTop() { requestAnimationFrame(() => { if (!el.home.hidden) el.main.scrollTop = 0; }); }
 /** The best match sits at the bottom of the bottom-anchored results. scrollHeight lands there whether the engine counts
  *  a column-reverse scroller's offset from the bottom (0, negative upward) or from the top. */
 function resultsToBest() { el.results.scrollTop = el.results.scrollHeight; }
@@ -741,6 +799,8 @@ let moreTimer = 0;
 function cancelMore() { if (!moreTimer) return; ("cancelIdleCallback" in window ? cancelIdleCallback : clearTimeout)(moreTimer); moreTimer = 0; }
 function renderResults(res, code, q) {
   const entering = el.results.hidden;
+  if (!entering && resultsBusy()) { deferredRender = { res, code, q, seq: state.seq }; return; }
+  deferredRender = null;
   setView("results");
   const toks = tokenize(q);
   // a number that is a priced code is shown as the first row; an unknown code is not shouted over real matches
@@ -755,7 +815,7 @@ function renderResults(res, code, q) {
     const seq = state.seq;
     const append = () => { moreTimer = 0; if (seq !== state.seq) return; el.list.insertAdjacentHTML("beforeend", rest.map((it) => rowHtml(it, toks)).join("")); };
     // the remaining rows arrive when the main thread is idle, so a fast typist never pays for them between keystrokes
-    moreTimer = "requestIdleCallback" in window ? requestIdleCallback(append, { timeout: 400 }) : setTimeout(append, 150);
+    moreTimer = "requestIdleCallback" in window ? requestIdleCallback(append, { timeout: 400 }) : setTimeout(append, 50);   // Safari has no idle callback
   }
   let meta = "";
   if (res.notReady) meta = "Opening prices…";
@@ -1234,9 +1294,13 @@ function refreshRecent() {
   })().finally(() => { refreshingRecent = null; if (refreshAgain) { refreshAgain = false; refreshRecent(); } });
   return refreshingRecent;
 }
+let recentDrawn = "";
 function renderRecent() {
   el.recent.hidden = recent.length === 0;
   el.homeEmpty.hidden = recent.length > 0;
+  const sig = JSON.stringify(recent.slice(0, 4));
+  if (sig === recentDrawn) return;   // the same four rows: nothing to redraw (a return to home while typing)
+  recentDrawn = sig;
   // each row slides left to uncover Remove (a swipe, or the keyboard: the button sits before the row and reveals it on focus)
   el.recentList.innerHTML = recent.slice(0, 4).map((r, i) => `<li class="swipe"><button class="swipe-remove" type="button" data-recent-remove="${i}" aria-label="Remove ${esc(r.title)} from Recent">${icon("trash")}<span>Remove</span></button><div class="swipe-face"><button class="row" type="button" data-recent="${i}"><span class="name">${esc(r.title)}</span><span class="price">${money(r.priceCents)}${r.unit === "lb" ? "<small>per lb</small>" : ""}</span><span class="meta"><span class="tag">${esc(kindLabel({ kind: r.kind }))}</span></span></button></div></li>`).join("");
 }
@@ -1480,7 +1544,7 @@ setInterval(() => {
 document.querySelector(".brand").addEventListener("click", (e) => {
   e.preventDefault();
   if (state.query || !el.results.hidden) { el.q.value = ""; el.clearBtn.hidden = true; state.query = ""; showHome(); }
-  else window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  else el.main.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 });
 
 // ------------------------------------------------------------------ layers: the walkthrough and the scanner
