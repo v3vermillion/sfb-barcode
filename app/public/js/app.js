@@ -206,29 +206,54 @@ safeProbe.style.cssText = "position:fixed;left:0;top:0;width:0;visibility:hidden
 document.body.append(safeProbe);
 const safeTop = () => safeProbe.offsetHeight;
 
+// A keyboard-sized loss of visible height (iOS never resizes the window for the keyboard; the visual viewport shrinks
+// by the keyboard, 260-400 px with its accessory bar); Safari's collapsing toolbars and a rubber-band scroll are far
+// smaller, and a page not installed reports them in innerHeight too.
+const KEYBOARD_MIN_PX = 100;
+let kbLast = { inset: 0, top: 0 };
+const vvTrace = [];   // the last viewport readings, for Diagnostics (Settings › About)
 function keyboardInset() {
-  // The inset and the pan are read from the visual viewport ONLY while a text field is focused. Safari in the browser
-  // (not installed) also shrinks and shifts the visual viewport when its toolbars collapse, on a rubber-band scroll and
-  // after a rotation: with nothing to type into, those are not a keyboard, and following them moved the header down the
-  // page and lifted the dock off the bottom. A pinch-zoomed page is not a keyboard either.
+  // Read from the visual viewport's geometry, not from the focus: the keyboard can be up with nothing focused (the
+  // accessory bar's arrows, a tap that blurred the field a moment before the keyboard goes), and a field can be
+  // focused with no keyboard (a hardware keyboard, the desktop). A pinch-zoomed page is never a keyboard.
   const zoomed = !!vv && vv.scale > 1.01;
-  const keyboard = !!vv && typing() && !zoomed;
+  const shrink = vv ? window.innerHeight - vv.height : 0;
+  const keyboard = !!vv && !zoomed && (shrink >= KEYBOARD_MIN_PX || (typing() && shrink > 0));
   const inset = keyboard ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
-  // iOS opens the keyboard by panning the page up (offsetTop) instead of resizing it: the fixed header and the top of the
-  // results would sit above the screen, out of reach of any scroll. Everything fixed follows the visible area instead.
+  // iOS opens the keyboard by panning the page up (offsetTop) instead of resizing it, and a drag with the keyboard up
+  // pans it further: everything fixed follows the visible area, so the pan moves nothing on screen.
   const top = keyboard ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+  if (inset !== kbLast.inset || top !== kbLast.top) {
+    kbLast = { inset, top };
+    vvTrace.push(`${(performance.now() / 1000).toFixed(1)}s kb ${inset} pan ${top} (vv ${Math.round(vv?.height || 0)}/${window.innerHeight}${typing() ? ", typing" : ""})`);
+    if (vvTrace.length > 24) vvTrace.shift();
+  }
   rootStyle.setProperty("--kb", `${inset}px`);
   rootStyle.setProperty("--vv-top", `${top}px`);
   // the keyboard covers the home indicator: the dock drops its safe-area padding while it sits on the keyboard
   if (inset > 0) rootStyle.setProperty("--dock-safe-b", "0px"); else rootStyle.removeProperty("--dock-safe-b");
 }
-vv?.addEventListener("resize", keyboardInset);
-vv?.addEventListener("scroll", keyboardInset);
-window.addEventListener("resize", keyboardInset);
-window.addEventListener("pageshow", keyboardInset);
-document.addEventListener("focusin", keyboardInset);
-document.addEventListener("focusout", () => setTimeout(keyboardInset, 0));
-document.addEventListener("visibilitychange", () => { if (!document.hidden) keyboardInset(); });
+// iOS animates the keyboard over about a third of a second and does not promise a resize event for every step, or a
+// last one: after anything that can move the keyboard, the viewport is read every frame for a while, so a missed
+// event cannot leave the dock under the keyboard or above it (keyboard-check S3).
+let kbPollUntil = 0, kbPolling = false;
+function pollKeyboard(ms = 800) {
+  kbPollUntil = Math.max(kbPollUntil, performance.now() + ms);
+  if (kbPolling) return;
+  kbPolling = true;
+  const tick = () => { keyboardInset(); if (performance.now() < kbPollUntil) requestAnimationFrame(tick); else kbPolling = false; };
+  requestAnimationFrame(tick);
+}
+const onViewport = () => { keyboardInset(); pollKeyboard(); };
+vv?.addEventListener("resize", onViewport);
+vv?.addEventListener("scroll", onViewport);
+window.addEventListener("resize", onViewport);
+window.addEventListener("pageshow", onViewport);
+document.addEventListener("focusin", onViewport);
+document.addEventListener("focusout", () => { setTimeout(keyboardInset, 0); pollKeyboard(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) onViewport(); });
+// while a field has the focus the keyboard can come and go without an event reaching here (iOS): a slow safety net
+setInterval(() => { if (typing() || kbLast.inset) keyboardInset(); }, 500);
 
 /** The header and the dock are measured, never assumed: everything placed under the header reads --top-h (its height,
  * status-bar inset included) and everything placed above the dock reads --dock-h (its height, home-indicator padding
@@ -665,7 +690,7 @@ function showHome() {
   maybeApplyPending();
 }
 /** Home reads top-down (the food bank, a status card when there is one, the tally, Recent) and always comes back at the top. */
-function homeToTop() { requestAnimationFrame(() => { if (!el.home.hidden) window.scrollTo(0, 0); }); }
+function homeToTop() { requestAnimationFrame(() => { if (!el.home.hidden) { el.main.scrollTop = 0; window.scrollTo(0, 0); } }); }
 /** The best match sits at the bottom of the bottom-anchored results. scrollHeight lands there whether the engine counts
  *  a column-reverse scroller's offset from the bottom (0, negative upward) or from the top. */
 function resultsToBest() { el.results.scrollTop = el.results.scrollHeight; }
@@ -1340,7 +1365,7 @@ function diagnostics() {
   const prev = readJson("sfb.boot.log", null);
   const now = db.log.slice(-25);
   const head = `${BUILD} · ${navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 90)} · ${standalone() ? "home screen" : "browser"} · ${navigator.onLine ? "online" : "offline"}`;
-  return [head, ...now, ...(Array.isArray(prev) && prev.length && prev[prev.length - 1] !== now[now.length - 1] ? ["— previous launch —", ...prev.slice(-12)] : [])].join("\n");
+  return [head, ...now, ...(Array.isArray(prev) && prev.length && prev[prev.length - 1] !== now[now.length - 1] ? ["— previous launch —", ...prev.slice(-12)] : []), ...(vvTrace.length ? ["— keyboard —", ...vvTrace] : [])].join("\n");
 }
 function fillStorage() {
   db.persistenceStatus().then((p) => {
