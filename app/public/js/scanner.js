@@ -20,6 +20,48 @@ const REFIRE_SUPPRESS_MS = 2500;
 
 let enginePromise = null;
 
+// ---------------------------------------------------------------- keeping the camera ready between scans (iPhone)
+// iOS keeps no camera decision for a Home Screen web app, and WebKit asks again once capture has been stopped for about
+// a minute (bugs 215884, 327237); while capture is ongoing it never asks. So on iPhone the camera track is parked
+// instead of stopped when the scanner closes: still running (that is the condition WebKit states, so it is not left to
+// chance), at the lowest rate and size the camera accepts, attached to nothing and read by nothing, until the window
+// ends or iOS ends the track itself. The next scan inside the window takes the parked track back and asks nothing. The
+// phone's camera indicator stays on for the whole window: that is the honest cost of no second prompt.
+const FULL_VIDEO = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+const IDLE_VIDEO = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 2 } };
+let warm = null;   // { stream, track, until, timer }
+
+/** True while a parked camera track is live and inside its window. */
+export function cameraReady() { return !!(warm && warm.track.readyState === "live" && Date.now() < warm.until); }
+/** End a parked camera track (the window ended, the setting was turned off, or the page is going away). */
+export function releaseCamera() {
+  if (!warm) return;
+  clearTimeout(warm.timer);
+  warm.track.onended = null;
+  warm.stream.getTracks().forEach((t) => t.stop());
+  warm = null;
+}
+function parkCamera(stream, track, keepMs) {
+  releaseCamera();
+  if (!(keepMs > 0) || track.readyState !== "live") { stream.getTracks().forEach((t) => t.stop()); return false; }
+  track.enabled = true;   // never disabled: a disabled track may not count as capture, and the grant hangs on that
+  track.onended = () => { if (warm?.track === track) { clearTimeout(warm.timer); warm = null; } };
+  track.applyConstraints(IDLE_VIDEO).catch(() => { /* a camera that keeps its size costs more battery, nothing else */ });
+  warm = { stream, track, until: Date.now() + keepMs, timer: setTimeout(releaseCamera, keepMs) };
+  return true;
+}
+/** The parked track when there is one inside its window, else a fresh getUserMedia (which may prompt). */
+async function takeCamera(constraints) {
+  if (cameraReady()) {
+    const { stream, track } = warm;
+    clearTimeout(warm.timer); track.onended = null; warm = null;
+    try { await track.applyConstraints(FULL_VIDEO); } catch { /* keeps the idle size: still readable at arm's length */ }
+    return { stream, reused: true };
+  }
+  releaseCamera();
+  return { stream: await navigator.mediaDevices.getUserMedia(constraints), reused: false };
+}
+
 /** Draw a UPC-A barcode (for the native self-test). Returns an ImageBitmap. */
 async function syntheticUpcA(digits12) {
   const L = ["0001101", "0011001", "0010011", "0111101", "0100011", "0110001", "0101111", "0111011", "0110111", "0001011"];
@@ -144,18 +186,18 @@ function dropEngine(p) {
  * @param {(info) => void} onStatus   {engine} | {torch} | {error} | {fatal, error}
  */
 export async function startScanner(video, overlay, onHit, onStatus) {
-  const constraints = { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } };
+  const constraints = { audio: false, video: { facingMode: { ideal: "environment" }, ...FULL_VIDEO } };
   // Ask for the camera first and build the decoder alongside it. A refused or missing camera answers at once (the
   // typed path takes over without waiting for the decoder's self-test or worker), and a granted camera does not wait
-  // for the decoder either: the two start together, as before.
-  const streamP = navigator.mediaDevices.getUserMedia(constraints);
+  // for the decoder either: the two start together, as before. A camera parked by the last scan is taken back instead.
+  const streamP = takeCamera(constraints);
   const engineP = getEngine();
   engineP.catch(() => {});   // a decoder that fails while the camera is still starting is reported below, not as unhandled
-  let stream;
-  try { stream = await streamP; } catch (err) { dropEngine(engineP); throw err; }
+  let stream, reused;
+  try { ({ stream, reused } = await streamP); } catch (err) { dropEngine(engineP); throw err; }
   let engine;
   try { engine = await engineP; } catch (err) { stream.getTracks().forEach((t) => t.stop()); throw err; }
-  onStatus?.({ engine: engine.name });
+  onStatus?.({ engine: engine.name, reused });
   video.srcObject = stream;
   await video.play().catch(() => {});
   const track = stream.getVideoTracks()[0];
@@ -253,6 +295,16 @@ export async function startScanner(video, overlay, onHit, onStatus) {
     get running() { return running && !stopped; },
     pause() { running = false; drawPoints(null); },
     resume() { if (stopped) return; if (!running) { running = true; lastValue = null; lastCount = 0; drawPoints(null); tick(); } },
-    stop() { running = false; stopped = true; stream.getTracks().forEach((t) => t.stop()); video.srcObject = null; drawPoints(null); },
+    /** Stop reading. With keepMs the camera is parked for that long (see parkCamera) instead of released; the light
+     *  goes off and the zoom resets first, so the parked camera is plain. */
+    stop({ keepMs = 0 } = {}) {
+      running = false; stopped = true; video.srcObject = null; drawPoints(null);
+      if (keepMs > 0 && (torchOn || zoomed)) {
+        const plain = { advanced: [{ ...(torchOn ? { torch: false } : {}), ...(zoomed ? { zoom: zoomCap?.min || 1 } : {}) }] };
+        track.applyConstraints(plain).catch(() => {});
+        torchOn = false; zoomed = false;
+      }
+      parkCamera(stream, track, keepMs);
+    },
   };
 }

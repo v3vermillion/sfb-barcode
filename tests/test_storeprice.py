@@ -13,6 +13,10 @@ class FakeWM:
         if path.startswith("/stores"):
             return [{"no": 2266, "name": "Strongsville Supercenter", "city": "Strongsville", "zip": "44136"}]
         store = "storeId=2266" in path
+        if path.startswith("/items?upc=") and store:
+            raise RuntimeError("HTTP 400 for " + path + ': {"errors":[{"code":4003,"message":"Results not found"}]}')
+        if path.startswith("/items?upc=") or path.startswith("/items?gtin="):
+            return {"items": [{"itemId": 10416824, "name": "A tin of beans", "salePrice": 1.5, "stock": "Available"}]}
         if path.startswith("/items"):
             ids = [int(i) for i in path.split("ids=")[1].split("&")[0].split(",")]
             return {"items": [{"itemId": i, "name": f"Item {i}", "salePrice": 2.0 if store and i % 2 else 1.0,
@@ -52,7 +56,25 @@ class Probe(unittest.TestCase):
 
     def test_probe_without_a_sample_still_checks_stores_and_pages(self):
         r = self.sp.probe(FakeWM(), "44136", "2266", None)
-        self.assertEqual(r["sample"], 0); self.assertNotIn("items", r); self.assertIn("paginated", r)
+        self.assertEqual(r["sample"], 0); self.assertNotIn("items", r); self.assertIn("paginated", r); self.assertNotIn("lookups", r)
+
+    def test_probe_makes_the_live_checks_lookups_for_a_barcode(self):
+        wm = FakeWM()
+        r = self.sp.probe(wm, "44136", "2266", None, upc="045300001210", item_id="10416824")
+        lk = r["lookups"]
+        self.assertEqual([v["path"] for v in lk.values()],
+                         ["/items?upc=045300001210", "/items?upc=045300001210&storeId=2266",
+                          "/items?gtin=00045300001210&storeId=2266", "/items?ids=10416824&storeId=2266"])
+        self.assertEqual(lk["upc"]["returned"], 1); self.assertEqual(lk["upc"]["first"]["itemId"], 10416824)
+        self.assertIn("HTTP 400", lk["upc+storeId (the live check's form)"]["error"])
+        self.assertEqual(lk["ids+storeId (control)"]["returned"], 1)
+        md = self.sp.markdown(r)
+        self.assertIn("| upc `/items?upc=045300001210` | 1 item(s): 10416824 A tin of beans $1.5 Available |", md)
+        self.assertIn("Results not found", md)
+        # a 13-digit scan of a UPC-A is the same 12-digit upc; a 14-digit GTIN is looked up as gtin only
+        self.assertEqual(self.sp.lookup_forms("0045300001210", "2266")[0][1], "/items?upc=045300001210")
+        self.assertEqual([p for _, p in self.sp.lookup_forms("10045300001217", "2266")],
+                         ["/items?gtin=10045300001217", "/items?gtin=10045300001217&storeId=2266"])
 
 
 if __name__ == "__main__":

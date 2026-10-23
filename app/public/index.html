@@ -84,6 +84,8 @@
   <!-- splash:end -->
   <link rel="preload" href="./fonts/geist-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./fonts/geist-mono-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/manrope-600-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/manrope-700-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./app.css">
   <link rel="modulepreload" href="./js/app.js">
   <link rel="modulepreload" href="./js/db-client.js">
@@ -92,6 +94,18 @@
 </head>
 <body>
   <a class="skip" href="#q">Skip to search</a>
+
+  <!-- boot screen: the iOS launch image (splash/, rendered from this very markup by tools/icon/make_splash.py) turns into
+       this layer without a jump; app.js takes it down when the price list is open (app.css "boot screen") -->
+  <div id="boot" class="boot" aria-hidden="true">
+    <div class="boot-bloom"></div>
+    <div class="boot-stack">
+      <img class="boot-icon" src="./icons/icon-512.png" alt="" width="120" height="120" decoding="sync" draggable="false">
+      <div class="boot-bar"><i></i></div>
+      <p class="boot-name">SFB <b>Value</b></p>
+    </div>
+    <p class="boot-org">Strongsville Emergency Food Bank</p>
+  </div>
 
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
@@ -109,6 +123,7 @@
       <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21V3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V13M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
       <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3.2 2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>

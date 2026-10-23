@@ -84,7 +84,7 @@ test("an 11-digit typed label whose price digits fail is not said to fail a chec
   const r11 = await resolveCode(db, "20123420699");
   assert.equal(r11.kind, "unknown"); assert.equal(r11.badDigits, true); assert.equal(r11.priceCents, null);
   const t11 = notesFor(r11).map((n) => n.text).join(" ");
-  assert.doesNotMatch(t11, /check digit|check-digit/); assert.match(t11, /price digits do not check out/); assert.match(t11, /all 12 digits/);
+  assert.doesNotMatch(t11, /check digit|check-digit/); assert.match(t11, /price digits fail their check/); assert.match(t11, /all 12 digits/);
   const r12 = await resolveCode(db, "201234206991");             // 12 digits, verifier and check digit both wrong
   assert.equal(r12.badDigits, true);
   assert.match(notesFor(r12).map((n) => n.text).join(" "), /failed its check-digit test/);

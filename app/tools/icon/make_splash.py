@@ -1,6 +1,6 @@
 """make_splash.py — the iPhone and iPad launch screens (apple-touch-startup-image), and the <link> tags for them.
 
-    python3 app/tools/icon/make_splash.py      (needs Pillow)
+    python3 app/tools/icon/make_splash.py      (needs Pillow, Node with the app's Playwright and a Chromium)
 
 An app opened from the iOS Home Screen shows a launch image until the page's first paint. iOS ignores the manifest's
 background colour and icons for this (Android builds its splash from them), so without these images the screen stays
@@ -8,27 +8,31 @@ blank white. iOS uses an image only when its <link media> names the device's exa
 is one image per screen size: iPhones in portrait only (the iPhone Home Screen does not rotate, so a Home Screen app
 always starts upright), iPads in both orientations.
 
-Each image is the app icon (public/icons/icon-512.png) centred on the page's own background, light or dark, so the
-launch image turns into the app's first screen without a jump. The light links carry no colour-scheme condition and
-come first; the dark ones add (prefers-color-scheme: dark) and come after, so a dark phone takes the dark image and an
-iOS that ignored the condition would still show the light one, never white. iOS reads these when the app is added to
-the Home Screen, so an app added before they existed shows them once it is removed and added again.
+Each image is the page's own boot screen (index.html #boot, app.css "boot screen": the app icon over its bloom, the
+progress bar and the wordmark), rendered by Chromium at that screen's size and pixel ratio, light
+or dark (tools/icon/render-splash.mjs, with ?splash=1 holding the screen still). The page paints the same markup first,
+so the launch image turns into it without a jump, and its motion then carries on from where the image left off.
+The light links carry no colour-scheme condition and come first; the dark ones add (prefers-color-scheme: dark) and
+come after, so a dark phone takes the dark image and an iOS that ignored the condition would still show the light one,
+never white. iOS reads these when the app is added to the Home Screen, so an app added before they existed shows them
+once it is removed and added again.
 
 The script writes public/splash/*.png and rewrites the block between the splash markers in public/index.html.
 The images are not precached by the service worker (build-site.mjs): a phone fetches only its own when it is added.
 """
+import json
+import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image
 
 APP = Path(__file__).resolve().parents[2]
-ICON = APP / "public/icons/icon-512.png"
+RENDER = APP / "tools/icon/render-splash.mjs"
 OUT = APP / "public/splash"
 INDEX = APP / "public/index.html"
 START, END = "<!-- splash:start (tools/icon/make_splash.py) -->", "<!-- splash:end -->"
 
-# the page's background (app.css --bg, as Chromium renders it): light oklch(97.4% 0.006 85), dark oklch(11.5% 0.012 150)
-THEMES = {"light": (0xF8, 0xF6, 0xF2), "dark": (0x03, 0x06, 0x04)}
 
 # CSS size in portrait (device-width x device-height), pixel ratio. Apple's launch screen sizes (Human Interface
 # Guidelines), reduced to the distinct CSS sizes iOS matches on; the 12 mini and 13 mini report 375x812 at 3x.
@@ -58,7 +62,6 @@ IPADS = [
     (768, 1024, 2),   # iPad 9.7-inch, mini 7.9-inch
     (744, 1133, 2),   # mini 8.3-inch
 ]
-LOGO_PT = {"phone": 120, "tablet": 160}   # the icon's size in CSS points: a third of a phone's width, smaller on an iPad
 
 
 def screens():
@@ -77,17 +80,16 @@ def name(w, h, r, orient, theme):
     return f"{w}x{h}-{r}x-{orient}{'-dark' if theme == 'dark' else ''}.png"
 
 
-def image(kind, w, h, r, orient, theme, icon):
-    pw, ph = (h * r, w * r) if orient == "landscape" else (w * r, h * r)
-    canvas = Image.new("RGB", (pw, ph), THEMES[theme])
-    s = LOGO_PT[kind] * r
-    logo = icon.resize((s, s), Image.LANCZOS)
-    canvas.paste(logo, ((pw - s) // 2, (ph - s) // 2), logo)
-    # 256 colours, dithered: the same picture at about a third of the bytes (the gloss has few distinct colours); the
-    # background must stay the page's exact colour, or the launch image would not blend into the first screen
-    q = canvas.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
-    rgb = q.convert("RGB")
-    return q if all(rgb.getpixel(p) == THEMES[theme] for p in ((0, 0), (pw - 1, ph - 1), (pw // 2, ph // 10))) else canvas
+
+
+def image(rendered, kind, w, h, r, orient, theme):
+    """The rendered screenshot at 256 colours, Floyd-Steinberg dithered on a median-cut palette: flat 256 colours band
+    across the bloom and blotch the icon's gloss, true colour is three times the bytes, and an ordered dither left faint
+    rings and a seam at the icon's box. The layer's own grain already breaks the gradient into noise, so the dithering
+    costs little on top. (kind, w, h, r, orient are the screen; app/tests/splash.test.mjs reads the same geometry.)"""
+    canvas = Image.open(rendered).convert("RGB")
+    palette = canvas.quantize(256, method=Image.Quantize.MEDIANCUT, kmeans=3)
+    return canvas.quantize(256, method=Image.Quantize.MEDIANCUT, palette=palette, dither=Image.Dither.FLOYDSTEINBERG)
 
 
 def media(w, h, r, orient, theme):
@@ -96,17 +98,21 @@ def media(w, h, r, orient, theme):
 
 
 def main():
-    icon = Image.open(ICON).convert("RGBA")
     OUT.mkdir(parents=True, exist_ok=True)
-    for old in OUT.glob("*.png"):
-        old.unlink()
-    links, total = [], 0
-    for theme in ("light", "dark"):
-        for kind, w, h, r, orient in screens():
-            f = OUT / name(w, h, r, orient, theme)
-            image(kind, w, h, r, orient, theme, icon).save(f, optimize=True)
+    jobs = [{"file": name(w, h, r, orient, theme), "kind": kind, "w": w, "h": h, "r": r, "orient": orient, "theme": theme}
+            for theme in ("light", "dark") for kind, w, h, r, orient in screens()]
+    with tempfile.TemporaryDirectory() as tmp:
+        jobs_file = Path(tmp) / "jobs.json"
+        jobs_file.write_text(json.dumps(jobs))
+        subprocess.run(["node", str(RENDER), str(jobs_file), tmp], cwd=APP, check=True)
+        for old in OUT.glob("*.png"):
+            old.unlink()
+        links, total = [], 0
+        for j in jobs:
+            f = OUT / j["file"]
+            image(Path(tmp) / j["file"], j["kind"], j["w"], j["h"], j["r"], j["orient"], j["theme"]).save(f, optimize=True, compress_level=9)
             total += f.stat().st_size
-            links.append(f'  <link rel="apple-touch-startup-image" href="./splash/{f.name}" media="{media(w, h, r, orient, theme)}">')
+            links.append(f'  <link rel="apple-touch-startup-image" href="./splash/{f.name}" media="{media(j["w"], j["h"], j["r"], j["orient"], j["theme"])}">')
     html = INDEX.read_text()
     a, b = html.index(START), html.index(END)
     INDEX.write_text(html[:a] + START + "\n" + "\n".join(links) + "\n  " + html[b:])

@@ -2,8 +2,11 @@ name: store-price-probe
 
 # Manual, read-only: does Walmart's API give this key store-level prices (Strongsville, OH) and from which endpoints?
 # About a dozen calls (crawler/storeprice.py probe): stores near the zip code, the same 20 items without a location,
-# with zipCode and with storeId, and one Food page with and without storeId. Results go to the run summary only;
-# nothing is written to the data-store. Its own concurrency group, so it never queues behind (or cancels) a crawl run.
+# with zipCode and with storeId, and one Food page with and without storeId. With a `upc`, four more: the lookups the
+# pipeline Worker's live price check makes for that barcode (/items?upc= with and without storeId, gtin= with storeId,
+# and ids= with storeId as the control the crawler relies on), status and first item only, so a live check that always
+# answers "unavailable" can be told apart as a key problem, a query Walmart refuses, or an unlisted barcode. Results
+# go to the run summary only; nothing is written to the data-store. Its own concurrency group, so it never queues behind (or cancels) a crawl run.
 
 on:
   workflow_dispatch:
@@ -14,6 +17,14 @@ on:
         type: string
       store_id:
         description: "Walmart store number (blank: the first store the API lists near the ZIP code)"
+        default: ""
+        type: string
+      upc:
+        description: "A barcode (12-digit UPC-A or 13/14-digit GTIN): also make the live check's lookups for it; blank skips them"
+        default: ""
+        type: string
+      item_id:
+        description: "A Walmart item id for the ids+storeId control lookup (with upc)"
         default: ""
         type: string
 
@@ -52,8 +63,12 @@ jobs:
         env:
           ZIP: ${{ inputs.zip }}
           STORE_ID: ${{ inputs.store_id }}
+          UPC: ${{ inputs.upc }}
+          ITEM_ID: ${{ inputs.item_id }}
         run: |
           args=(--zip "$ZIP")
           [ -n "$STORE_ID" ] && args+=(--store-id "$STORE_ID")
+          [ -n "$UPC" ] && args+=(--upc "$UPC")
+          [ -n "$ITEM_ID" ] && args+=(--item-id "$ITEM_ID")
           [ -f sample.jsonl.gz ] && args+=(--sample sample.jsonl.gz)
           python -m crawler.storeprice probe "${args[@]}"

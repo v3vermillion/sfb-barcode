@@ -159,7 +159,9 @@ async function livePrice(req, env, ctx, gtinRaw) {
     const path = (upcA.length === 12 && (raw.length === 12 || raw.length === 13) ? `/items?upc=${upcA}` : `/items?gtin=${gtin}`)
       + (store ? `&storeId=${store}` : "");
     const r = await walmartGet(env, path);
-    if (r.status === 404) payload = { ok: false, reason: "not found", gtin };
+    // Walmart says "no such barcode" as HTTP 400 with error 4023 "UPC not found" / 4037 "GTIN not found" (probed
+    // 2026-10-23), not 404: a barcode it does not list (another chain's store brand) is a plain "not found", never an outage
+    if (r.status === 404 || (r.status === 400 && /\b(?:UPC|GTIN) not found\b/i.test(r.body))) payload = { ok: false, reason: "not found", gtin };
     else if (r.status === 429 || r.status >= 500) { status = 503; ttl = THROTTLE_TTL_SECONDS; payload = { ok: false, reason: "walmart unavailable", gtin }; }
     else if (r.status !== 200) { status = 502; payload = { ok: false, reason: "walmart unavailable", gtin }; }
     else {

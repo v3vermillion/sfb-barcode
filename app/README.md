@@ -19,7 +19,7 @@ app/
     js/resolve.js    resolution engine (exact → label → PLU → equivalent → closest)
     js/scanner.js    camera (1080p, full-resolution decode, try-harder) + native BarcodeDetector (self-tested) or zxing-cpp wasm in a worker; zooms in by itself after 4 s without a read where the camera can; UPC-E in every form a detector reports it
     js/staleness.js  how old the prices are (fresh / amber from 40 days / red from 60) in a volunteer's words
-    vendor/          zxing-wasm 3.1.5 reader (ESM, MIT; the wasm is zxing-cpp, Apache-2.0: both licence texts alongside)   fonts/  Geist + Geist Mono (OFL)
+    vendor/          zxing-wasm 3.1.5 reader (ESM, MIT; the wasm is zxing-cpp, Apache-2.0: both licence texts alongside)   fonts/  Geist + Geist Mono, Manrope for the boot screen wordmark (all OFL)
   tools/
     make_fixture.py  760k-row synthetic snapshot in the crawler's row format (through crawler/normalize.py); its
                      version is a hash of the inputs, so unchanged inputs never make phones re-download
@@ -30,6 +30,7 @@ app/
     shots.mjs        phone-size screenshots (light/dark) + accessibility audit; --browser webkit too
     scroll-check.mjs the scrolling rules (best match by the search box, wheel, keyboard pan, sheets); --browser webkit too
     ui-check.mjs     layout, price-status, walkthrough, accessibility and design rules, one id per defect (docs/UI-AUDIT.md)
+    icon/make_splash.py   the iOS launch images: the page's boot screen rendered at every screen size by icon/render-splash.mjs (Chromium), Floyd-Steinberg dithered to 256 colours
     make-barcode-clip.mjs  a UPC-A .y4m clip for Chromium's fake camera (measure.mjs --video)
     perf-table.mjs   markdown tables of measure/shots results: one browser, or Chromium vs WebKit (app-browsers.yml)
   tests/             node --test: barcode maths, tokenizer, resolution engine, staleness thresholds, storage persistence policy,
@@ -236,13 +237,14 @@ app.js) and checked by `tools/ui-check.mjs` F55/F56 with an Android user agent.
 | Install | Share › Add to Home Screen (the hint on the home screen says so); keeps storage from the 7-day eviction | Chrome and Samsung Internet raise their install prompt (the hint shows an **Install** button); a browser without one (Firefox) is told the menu steps. Installed, Chrome grants persistent storage |
 | Barcode engine | iOS 17+ `BarcodeDetector` when its self-test passes (iOS 18 shipped one that detects nothing), else zxing-cpp wasm | `BarcodeDetector` (ML Kit, through Google Play services) when present and self-tested, else zxing-cpp wasm (phones without Play services, Firefox) |
 | Camera extras | Torch and zoom where iOS exposes them (iOS 17+) | Torch and zoom from the track's capabilities, which Chrome fills in a moment after the camera starts (read twice) |
-| Camera refused | Settings › Apps › Safari › Camera (or the installed app's own entry) | The site's permissions in the browser, or Settings › Apps › SFB Value › Permissions when installed |
+| Camera refused | In a Safari tab, the per-site setting behind the aA button (Website Settings › Camera › Allow) lasts; a Home Screen web app has no Settings entry and keeps no camera decision (WebKit bug 327237), so it simply asks again on the next launch | The site's permissions in the browser, or Settings › Apps › SFB Value › Permissions when installed |
+| Camera between scans | iOS asks again about a minute after capture stops, so the camera track is parked for four hours after the last scan when the scanner closes or the app leaves the foreground (`scanner.js parkCamera`: still running, so WebKit's own rule that an ongoing capture is never re-prompted applies by construction; 320×240 at 2 fps, read by nothing, light off, zoom reset; the phone's indicator stays on) and the next scan takes it back without a prompt; automatic, no setting (owner, 2026-10-23) | The grant persists for an installed app ("While using the app"), so the camera ends when the scanner closes |
 | Vibration on scan | Not available (Safari has no `vibrate`), so the setting is not shown | `navigator.vibrate`, with the setting |
 | Keyboard | Safari pans the page: the fixed bars follow the visual viewport (`keyboardInset`) | Chrome resizes the layout viewport (`interactive-widget=resizes-content`), so nothing moves |
 | Back | The sheet's own close and swipe | The system Back closes the top layer (every sheet and the scanner push a history entry) |
 | Orientation | Rotates with the phone | Rotates with the phone (manifest `orientation: any`, like iOS) |
 | Status bar | `black-translucent`, content under it with safe-area insets | Coloured by `theme-color` per colour scheme |
-| Launch screen | The app icon on the page's own background, light or dark (`apple-touch-startup-image`, one per screen size: `tools/icon/make_splash.py` writes `public/splash/` and the links in index.html; not precached). iOS ignores the manifest for this and appears to read the images when the app is added to the Home Screen, so an app added before 2026-10-22 may show them only after it is removed and added again | Chrome draws it from the manifest: `background_color` and the 512 px icon |
+| Launch screen | The page's boot screen (`#boot`: the app icon over its glow on a deep-green field, a progress bar and the wordmark in Manrope), light or dark, as an `apple-touch-startup-image` per screen size: `tools/icon/make_splash.py` renders the layer in Chromium (`render-splash.mjs`, `?splash=1` holds it still), writes `public/splash/` and the links in index.html; not precached. The page paints the same layer first and fades it when the prices open, so the launch is one picture. iOS ignores the manifest for this and appears to read the images when the app is added to the Home Screen, so an app added before 2026-10-22 may show them only after it is removed and added again | Chrome draws its splash from the manifest (`background_color` and the 512 px icon), then the page's boot screen takes over the same way |
 
 **Google Play.** The same PWA can be listed on Google Play as a Trusted Web Activity (an Android app that opens the site
 full screen): docs/RUNBOOK.md "Google Play" has the steps. The site's half is in place: the manifest, the privacy page

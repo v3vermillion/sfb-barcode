@@ -368,6 +368,63 @@ await scenario(["S1"], "scanner flashlight", async (set) => {
   check("S1", "back from the background with the camera refused: no flashlight without a camera", after.denied && !after.torch, JSON.stringify(after));
 });
 
+// iPhone asks for the camera again about a minute after capture stops (no stored decision for a Home Screen web app), so
+// closing the scanner or leaving the app parks the camera track for four hours instead of ending it, and the next scan
+// inside the window takes it back without asking (owner, 2026-10-23: one prompt per shift, automatic, no setting).
+const COUNTED_CAMERA = {
+  fn: () => {
+    window.__cams = []; window.__constraints = [];
+    navigator.mediaDevices.getUserMedia = async () => {
+      const c = document.createElement("canvas"); c.width = 640; c.height = 480; c.getContext("2d").fillRect(0, 0, 640, 480);
+      const stream = c.captureStream(5), track = stream.getVideoTracks()[0];
+      track.getCapabilities = () => ({ torch: true, zoom: { min: 1, max: 3, step: 0.1 } });
+      track.applyConstraints = async (k) => { window.__constraints.push(k); };
+      window.__cams.push(track);
+      return stream;
+    };
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+    window.__setHidden = (h) => { hidden = h; document.dispatchEvent(new Event("visibilitychange")); };
+  },
+};
+const camState = (page) => page.evaluate(() => ({ asked: window.__cams.length, live: window.__cams.map((t) => t.readyState), enabled: window.__cams.map((t) => t.enabled), ready: window.__sfb.cameraReady(), src: !!document.getElementById("video").srcObject, open: !document.getElementById("scanner").hidden }));
+await scenario(["F68"], "iPhone: the camera is kept ready between scans", async (set) => {
+  const env = set(await open({ ios: true, init: COUNTED_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  let st = await camState(page);
+  check("F68", "the first scan asks for the camera once", st.asked === 1 && st.src && !st.ready, JSON.stringify(st));
+  await page.click("#scanClose"); await settle(page, 500);
+  st = await camState(page);
+  check("F68", "closing the scanner parks the camera: still live and running, detached, kept ready", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === true && !st.src && st.ready && !st.open, JSON.stringify(st));
+  const idle = await page.evaluate(() => window.__constraints.at(-1));
+  check("F68", "the parked camera is asked for its smallest, slowest picture", idle?.frameRate?.ideal === 2 && idle?.width?.ideal === 320, JSON.stringify(idle));
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  st = await camState(page);
+  const full = await page.evaluate(() => window.__constraints.findLast((k) => k?.width)?.width?.ideal);
+  check("F68", "the next scan takes the parked camera back without asking, at the full picture size", st.asked === 1 && st.enabled[0] === true && st.src && !st.ready && full === 1920, JSON.stringify({ ...st, full }));
+  const noted = await page.evaluate(() => window.__sfb.db.log.filter((l) => /camera/.test(l)).map((l) => l.replace(/^[\d.]+s /, "")));
+  check("F68", "diagnostics say whether the camera was opened or taken back", noted.join("|") === "camera opened|camera taken back (kept ready)", noted.join("|"));
+  await page.evaluate(() => window.__setHidden(true)); await settle(page, 300);
+  st = await camState(page);
+  check("F68", "leaving the app with the scanner open parks the camera too", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === true && !st.src && st.ready, JSON.stringify(st));
+  await page.evaluate(() => window.__setHidden(false)); await settle(page, 1200);
+  st = await camState(page);
+  check("F68", "back in the app, the scanner resumes on the same camera", st.asked === 1 && st.enabled[0] === true && st.src && st.open, JSON.stringify(st));
+  await page.click("#scanClose"); await settle(page, 400);
+  const offered = await page.evaluate(async () => { document.getElementById("settingsBtn").click(); await new Promise((r) => setTimeout(r, 400)); return !!document.querySelector("#settings [data-keep]"); });
+  check("F68", "nothing to set: the camera is kept ready on its own (owner, 2026-10-23)", !offered);
+});
+await scenario(["F68"], "Android keeps no camera between scans (the grant persists there)", async (set) => {
+  const env = set(await open({ android: true, init: COUNTED_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  await page.click("#scanClose"); await settle(page, 400);
+  const st = await camState(page);
+  const offered = await page.evaluate(async () => { document.getElementById("settingsBtn").click(); await new Promise((r) => setTimeout(r, 400)); return !!document.querySelector("#settings [data-keep]"); });
+  check("F68", "Android: the camera ends when the scanner closes (its grant persists)", st.live[0] === "ended" && !st.ready && !offered, JSON.stringify({ ...st, offered }));
+});
+
 // Sheets close by a drag on their whole header, not only the 21px handle; a short drag springs back without moving the
 // content; a tap on the header is a tap; a re-render mid-drag (Settings refreshes its price card) is harmless.
 const touchDrag = async (cdp, page, x, y0, y1, { steps = 8, ms = 16, hold = false } = {}) => {
@@ -627,6 +684,51 @@ await scenario(["F63"], "iOS launch screens: served with the page, not precached
   check("F63", "the launch images are served as PNG", got.length === 2 && got.every((g) => /^200 image\/png/.test(g)), got.join(", "));
   const sw = await (await fetch(new URL("sw.js", BASE))).text();
   check("F63", "the service worker precaches none of them (iOS fetches its own once, when the app is added)", !/splash\//.test(sw) && /icons\/icon-512\.png/.test(sw), sw.match(/splash\/[^"]+/)?.[0] || "none listed");
+});
+
+await scenario(["F64"], "boot screen: the launch image carries on as a layer until the price list is open (owner, 2026-10-22)", async (set) => {
+  const env = set(await open({ wait: false }));
+  const { page } = env;
+  const first = await page.evaluate(() => { const b = document.getElementById("boot"); if (!b) return null; const cs = getComputedStyle(b); return { shown: b.getClientRects().length > 0, hidden: b.getAttribute("aria-hidden"), z: Number(cs.zIndex), pos: cs.position, sweep: getComputedStyle(b.querySelector(".boot-bar i")).animationName, icon: b.querySelector(".boot-icon")?.getAttribute("src") }; });
+  check("F64", "the layer is on screen before the price list opens: fixed, above everything, hidden from screen readers, the app icon itself", !!first?.shown && first.hidden === "true" && first.pos === "fixed" && first.z >= 1000 && /icon-512\.png$/.test(first.icon), JSON.stringify(first));
+  check("F64", "its progress bar moves while it is up", first?.sweep === "boot-sweep", first?.sweep);
+  await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 1500);
+  const after = await page.evaluate(() => ({ boot: !!document.getElementById("boot"), why: window.__sfb.perf.boot.splashWhy, at: window.__sfb.perf.boot.splashMs }));
+  check("F64", "once the prices are open the layer is gone from the page (not just hidden), and the boot log says why", !after.boot && typeof after.why === "string" && after.at >= 650, JSON.stringify(after));
+  check("F64", "no page errors", env.errors.length === 0, env.errors.join(" | "));
+});
+await scenario(["F64"], "boot screen: ?splash=1 holds it still (the launch-image renderer, a preview on a phone); reduced motion holds its motion too", async (set) => {
+  const env = set(await open({ query: "tour=0&splash=1" }));
+  const { page } = env;
+  await settle(page, 1200);
+  const held = await page.evaluate(() => { const b = document.getElementById("boot"); return { boot: !!b, flag: document.documentElement.dataset.splash, sweep: b && getComputedStyle(b.querySelector(".boot-bar i")).animationName, bloom: b && getComputedStyle(b.querySelector(".boot-bloom")).animationName }; });
+  check("F64", "with ?splash=1 the layer stays after the prices open, with nothing moving", held.boot && held.flag === "1" && held.sweep === "none" && held.bloom === "none", JSON.stringify(held));
+  // let go of the hold: the motion starts; then prefers-reduced-motion stops it again
+  const motion = await page.evaluate(() => { delete document.documentElement.dataset.splash; return getComputedStyle(document.querySelector("#boot .boot-bloom")).animationName; });
+  await page.emulateMedia({ reducedMotion: "reduce" }); await settle(page, 200);
+  const still = await page.evaluate(() => getComputedStyle(document.querySelector("#boot .boot-bloom")).animationName);
+  check("F64", "under prefers-reduced-motion nothing moves either", motion === "boot-breathe" && still === "none", `${motion} -> ${still}`);
+});
+
+await scenario(["F65"], "privacy page: the app's Appearance setting and a Back control (owner, 2026-10-22)", async (set) => {
+  // the app set to dark while the system is light: the page must be dark too, and offer a way back besides the edge swipe
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: "light" });
+  await ctx.addInitScript(() => { try { localStorage.setItem("sfb.prefs", JSON.stringify({ theme: "dark" })); } catch { /* none */ } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  set({ ctx, page, errors, cdp: null });
+  await page.goto(new URL("privacy.html", BASE).href, { waitUntil: "load" }); await settle(page, 300);
+  const got = await page.evaluate(() => {
+    // the background is an oklch() string: a canvas turns it into the bytes the screen shows
+    const g = document.createElement("canvas").getContext("2d"); g.fillStyle = getComputedStyle(document.body).backgroundColor; g.fillRect(0, 0, 1, 1); const bg = Array.from(g.getImageData(0, 0, 1, 1).data);
+    const back = document.getElementById("back"), r = back?.getBoundingClientRect();
+    return { theme: document.documentElement.dataset.theme, dark: bg[0] < 40 && bg[1] < 40 && bg[2] < 40, font: getComputedStyle(document.body).fontFamily.split(",")[0], back: !!back && r.height >= 44 && r.width >= 44 && back.textContent.trim() === "Back" && back.getAttribute("href") === "./", reset: /Reset app data in Settings removes them/.test(document.body.textContent) };
+  });
+  check("F65", "with the app set to dark on a light system, the page is dark, in the app's own face", got.theme === "dark" && got.dark && /Geist/.test(got.font), JSON.stringify(got));
+  check("F65", "a Back control at the top (44 px, the app's accent) leads to the app", got.back, JSON.stringify(got));
+  check("F65", "the privacy text still says Reset app data removes the remembered matches", got.reset);
+  check("F65", "no page errors", errors.length === 0, errors.join(" | "));
 });
 
 await scenario(["F58"], "a box: one of its pieces, and the product's other sizes in the sheet (owner, 2026-10-21)", async (set) => {

@@ -84,7 +84,7 @@ const state = {
 };
 
 const db = new DbClient();
-window.__sfb = { db, perf, state, prefs, resolveCode: (c, f) => resolveCode(db, c, f, resolveOpts()), openCode, openRank, openScanner, closeScanner, runSearch, version: BUILD };
+window.__sfb = { db, perf, state, prefs, resolveCode: (c, f) => resolveCode(db, c, f, resolveOpts()), openCode, openRank, openScanner, closeScanner, runSearch, cameraReady: () => !!scannerMod?.cameraReady(), version: BUILD };
 
 // ------------------------------------------------------------------ helpers
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -809,7 +809,7 @@ function sheetHtml(res) {
   if (res.kind === "store-label" && res.label.needsConfirm) chips.push("Check against the label");
   const notes = notesFor(res, { priceDateLong: fmtDate(priceDate(), true) });
   const title = res.kind === "exact" || res.kind === "closest" ? boldTitle(it) : res.kind === "live" ? boldTitle({ brand: res.brand, name: res.name }) : esc(res.title);
-  const updated = `Updated ${fmtDate(priceDate(), "mid")}`;
+  const updated = `Updated ${fmtDate(priceDate(), "mid")}`;   // the price list's date, as the pill shows it (owner, 2026-10-17); a carried-over row says so in its note
   const checked = res.kind === "live" ? `${liveSource(res.live)} price, checked ${res.live?.checkedAt ? `at ${fmtTime(res.live.checkedAt)}` : "today"}`
     : res.kind === "store-label" ? "Printed by the store's scale"
     : res.kind === "plu" && res.entry.source === "typical" ? "Typical Walmart price"
@@ -872,7 +872,7 @@ function sheetHtml(res) {
     <p class="price-note" id="sheetPriceNote">${checkedHtml}</p>
     <h2 class="item-title" id="sheetTitle">${title}</h2>
     ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="t">${esc(c)}</span>`).join("")}</div>` : ""}
-    ${notes.length ? `<div id="sheetNotes">${notes.map((n) => `<p class="note${n.tone ? ` note--${n.tone}` : ""}">${esc(n.text)}</p>`).join("")}</div>` : ""}
+    ${notes.length ? `<div id="sheetNotes">${notes.map((n) => `<p class="note${n.tone ? ` note--${n.tone}` : ""}">${n.tone === "warn" ? icon("alert", "ico note-ico") : n.tone === "equiv" ? icon("info", "ico note-ico") : ""}<span>${esc(n.text)}</span></p>`).join("")}</div>` : ""}
     ${liveRow}
     </div><div class="sheet-side">
     ${packSeg}
@@ -1375,6 +1375,32 @@ el.settingsBtn.addEventListener("click", openSettings);
 el.status.addEventListener("click", openSettings);
 el.readyCard.addEventListener("click", () => { if (state.bootStuck && !db.version) retryBoot("tap"); else openSettings(); });
 
+// ------------------------------------------------------------------ boot screen
+// The launch image continues as #boot (index.html, app.css "boot screen") until the price list is open, so a launch is
+// one picture that resolves into the app rather than a logo, then a header, then a list. It leaves at once when the
+// home screen has something to say instead (a first download, offline, a problem) and never later than
+// BOOT_SCREEN_MAX_MS; it stays at least BOOT_SCREEN_MIN_MS from navigation so a warm launch does not flash it.
+// ?splash=1 keeps it up with its motion held (html[data-splash]): the launch-image renderer, and a preview on a phone.
+const BOOT_SCREEN_MIN_MS = 650, BOOT_SCREEN_MAX_MS = 8000;
+const bootScreen = $("boot");
+const splashHeld = new URLSearchParams(location.search).get("splash") === "1";
+if (splashHeld) document.documentElement.dataset.splash = "1";
+let bootScreenClosing = false;
+function closeBootScreen(why) {
+  if (!bootScreen || bootScreenClosing || splashHeld) return;
+  bootScreenClosing = true;   // the first reason wins; the fade itself waits out the minimum
+  setTimeout(() => {
+    bootScreen.classList.add("is-out");
+    perf.boot.splashMs = Math.round(performance.now()); perf.boot.splashWhy = why;
+    const gone = () => bootScreen.remove();
+    bootScreen.addEventListener("transitionend", (e) => { if (e.target === bootScreen && e.propertyName === "opacity") gone(); });
+    setTimeout(gone, 700);   // reduced motion (no transition), or an engine that never fires the event
+  }, Math.max(0, BOOT_SCREEN_MIN_MS - performance.now()));
+}
+db.addEventListener("ready", () => closeBootScreen("ready"));
+db.addEventListener("state", (e) => { if (e.detail.state !== "loading" && e.detail.state !== "ready") closeBootScreen(e.detail.state); });
+setTimeout(() => closeBootScreen("timeout"), BOOT_SCREEN_MAX_MS);
+
 // ------------------------------------------------------------------ boot watchdog
 // The first open on the owner's iPhone (added to the Home Screen, which starts with its own empty storage on iOS) sat on
 // "Loading" for over three minutes until Settings > Check for new prices was tapped, which worked at once. Whatever
@@ -1599,6 +1625,12 @@ window.__sfb.tour = { open: openTour, close: closeTour };
 
 // ------------------------------------------------------------------ scanner
 let scannerMod = null;
+// Keep the camera ready (iPhone): iOS keeps no camera decision for a Home Screen web app and asks again about a minute
+// after capture stops, so the camera is parked, not released, when the scanner closes or the app goes to the background
+// (scanner.js parkCamera), for the length of a shift after the last scan (owner, 2026-10-23: four hours, no setting).
+// Android and desktop browsers remember the grant, so they never hold the camera for this.
+const KEEP_CAMERA_MS = 4 * 3600_000;
+const keepCameraMs = () => (isIOS && navigator.mediaDevices?.getUserMedia ? KEEP_CAMERA_MS : 0);
 async function openScanner({ reuseEntry = false } = {}) {
   if (state.scanOpen) return;
   if (state.tourOpen) { closeTour({ after: () => openScanner() }); return; }
@@ -1626,7 +1658,7 @@ function armSmallHelp() {
     const scan = state.scan;
     if (!state.scanOpen || !scan?.running || !el.scanTypeForm.hidden) return;
     if (scan.hasZoom && !scan.zoom && await scan.setZoom(true) && scan === state.scan && scan.running) el.scanHint.textContent = "Zoomed in for a small barcode. Hold it 4 to 6 inches away";
-    else if (scan === state.scan && scan.running) el.scanHint.textContent = "Small barcode? Hold it 4 to 6 inches away and keep it flat";
+    else if (scan === state.scan && scan.running) el.scanHint.textContent = "Small barcode: hold it 4 to 6 inches away and keep it flat";
   }, SMALL_HELP_MS);
 }
 async function startCamera(gen) {
@@ -1637,6 +1669,7 @@ async function startCamera(gen) {
     const scan = await scannerMod.startScanner(el.video, el.overlay, (hit) => { if (gen === state.scanGen) onScanHit(hit); }, (info) => {
       if (gen !== state.scanGen) return;
       if (info.engine) state.engine = info.engine;
+      if (info.reused != null) db.note(`camera ${info.reused ? "taken back (kept ready)" : "opened"}`);
       if (info.torch != null) el.torchBtn.hidden = !info.torch;
       if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader could not start on this phone. Enter the barcode manually."); }
       else if (info.error) console.warn("scanner:", info.error);
@@ -1649,10 +1682,14 @@ async function startCamera(gen) {
   } catch (err) {
     if (gen !== state.scanGen) return;
     console.warn("camera", err);
-    const where = isIOS ? (standalone() ? "the iPhone's Settings › Apps › SFB Value › Camera" : "the iPhone's Settings › Apps › Safari › Camera")
-      : isAndroid ? (standalone() ? "the phone's Settings › Apps › SFB Value › Permissions › Camera" : "the browser's site settings (the lock icon by the address, then Permissions › Camera)")
-      : "the browser's site settings";
-    scanDenied(err?.name === "NotAllowedError" ? `Camera access is turned off. Allow it in ${where}, or enter the barcode manually.`
+    // iPhone: a web app has no entry under Settings › Apps (owner, 2026-10-23: "SFB Value" is not there), and iOS keeps no
+    // camera decision for a Home Screen web app at all (WebKit bug 327237), so the way back is simply to be asked again;
+    // in a Safari tab the per-site setting behind the aA button is the one that lasts
+    const denied = isIOS ? (standalone() ? "Camera access was declined. Close the app and open it again, then tap Allow when the camera is requested, or enter the barcode manually."
+        : "Camera access was declined. Tap aA in the address bar, then Website Settings › Camera › Allow, or enter the barcode manually.")
+      : isAndroid ? `Camera access is turned off. Allow it in ${standalone() ? "the phone's Settings › Apps › SFB Value › Permissions › Camera" : "the browser's site settings (the lock icon by the address, then Permissions › Camera)"}, or enter the barcode manually.`
+      : "Camera access is turned off. Allow it in the browser's site settings, or enter the barcode manually.";
+    scanDenied(err?.name === "NotAllowedError" ? denied
       : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually."
       : err?.name === "NotReadableError" ? "The camera is in use by another app. Close it and try again, or enter the barcode manually."
       : "The camera could not start. Enter the barcode manually.");
@@ -1671,7 +1708,7 @@ function closeScanner({ fromPop = false } = {}) {
   if (!state.scanOpen) return;
   if (!fromPop && history.state?.modal === "scanner") { history.back(); return; }
   state.scanOpen = false; state.scanGen++;
-  state.scan?.stop(); state.scan = null;
+  state.scan?.stop({ keepMs: keepCameraMs() }); state.scan = null;
   el.scanner.hidden = true;
   el.scanner.querySelector(".scan-denied")?.remove();
   el.torchBtn.setAttribute("aria-pressed", "false");
@@ -1733,8 +1770,9 @@ el.scanTypeForm.addEventListener("submit", async (e) => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    // release the camera at once; the history bookkeeping can wait for the app to come back
-    if (state.scan) { state.scan.stop(); state.scan = null; state.scanPausedByVisibility = state.scanOpen; hideTorch(); }
+    // stop reading at once (parking the camera where the app keeps it ready); the history bookkeeping can wait for the
+    // app to come back
+    if (state.scan) { state.scan.stop({ keepMs: keepCameraMs() }); state.scan = null; state.scanPausedByVisibility = state.scanOpen; hideTorch(); }
   } else if (state.scanPausedByVisibility) {
     state.scanPausedByVisibility = false;
     if (state.scanOpen) startCamera(++state.scanGen);
@@ -1804,6 +1842,7 @@ if (tooOld) {
     : isAndroid ? "This browser is too old to keep prices offline. Update Chrome (or the phone's browser) from the Play Store, then open the app again."
     : "This browser is too old to keep prices offline. Update it, then open the app again.";
   db.state = "error";
+  closeBootScreen("unsupported");
 } else db.start();
 renderStatus();
 syncLearned();

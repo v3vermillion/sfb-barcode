@@ -71,7 +71,7 @@ jobs:
           done
           [ "$RUNS" -ge 1 ] && [ "$CHROMIUM_CPU" -ge 1 ] && [ "$ITEMS" -ge 1000 ] || { echo "::error::runs and chromium_cpu must be >= 1, items >= 1000"; exit 1; }
 
-      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json (playwright ^1.56.1), then the
+      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json (playwright pinned to the version of the tests.yml image), then the
       # one browser this job needs, with its system libraries.
       - name: Install Playwright and ${{ matrix.browser }}
         id: deps

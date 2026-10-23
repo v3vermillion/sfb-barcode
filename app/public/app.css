@@ -1,7 +1,7 @@
 /* SFB Value — one stylesheet, tokens first, then one block per component.
    Every selector is declared once, in its component's block: a later "fix" block that re-declares a selector silently
    overrides the first one (a stale dot stayed green that way), so changes are made in place.
-   Typography: Geist (UI) + Geist Mono (codes). Numbers are always tabular.
+   Typography: Geist (UI) + Geist Mono (codes); Manrope for the boot screen wordmark only. Numbers are always tabular.
    Themes: follows the system; `html[data-theme]` forces light/dark. The scanner is always dark.
    Colour scheme (owner, 2026-10-12): dark is neon green on black, the app icon's own green and gloss; light is warm
    paper with the deep green and the same gloss. --glow is the dark theme's halo on the primary controls and the ready
@@ -9,6 +9,10 @@
 
 @font-face { font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("./fonts/geist-latin-wght.woff2") format("woff2-variations"); }
 @font-face { font-family: "Geist Mono"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("./fonts/geist-mono-latin-wght.woff2") format("woff2-variations"); }
+/* the boot screen's wordmark (owner, 2026-10-22: a more polished face than the UI's Geist for the launch); block, not swap: the
+   layer is the first paint, and a wordmark that changes face a moment later would be the one jump in it */
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: block; src: url("./fonts/manrope-600-latin.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: block; src: url("./fonts/manrope-700-latin.woff2") format("woff2"); }
 
 /* ---------- tokens ---------- */
 :root {
@@ -45,6 +49,12 @@
   --glow-dot: 0 0 0 0 transparent;
   --shadow: 0 1px 2px oklch(20% 0.02 70 / .06), 0 8px 24px -12px oklch(20% 0.02 70 / .18);
   --shadow-lg: 0 -1px 0 oklch(20% 0.02 70 / .04), 0 -24px 60px -24px oklch(20% 0.02 70 / .35);
+  /* boot screen (and the iOS launch image rendered from it): the page background at the top edge, a mint floor, the
+     bloom behind the icon, the progress bar's greens */
+  --boot-top: #f8f6f2; --boot-low: oklch(94.5% 0.024 150); --boot-deep: oklch(90% 0.04 150);
+  --boot-glow: oklch(72% 0.18 146 / .42); --boot-glow-2: oklch(72% 0.18 146 / .14); --boot-glow-3: oklch(74% 0.19 145 / .34); --boot-glow-up: oklch(72% 0.18 146 / .2); --boot-vignette: oklch(40% 0.08 150 / .14);
+  --boot-bar: oklch(52% 0.17 150); --boot-bar-hi: oklch(70% 0.19 150); --boot-track: oklch(30% 0.06 150 / .14); --boot-bloom-blend: normal; --boot-grain: .02;
+  --boot-shadow: 0 26px 44px -18px oklch(30% 0.08 150 / .5);
 
   --r-s: 10px; --r-m: 16px; --r-l: 20px; --r-xl: 28px;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
@@ -77,6 +87,10 @@
     --glow-dot: 0 0 12px 1px color-mix(in oklab, var(--accent) 55%, transparent);
     --shadow: 0 1px 2px oklch(0% 0 0 / .5), 0 8px 24px -12px oklch(0% 0 0 / .7);
     --shadow-lg: 0 -1px 0 oklch(100% 0 0 / .06), 0 -24px 60px -24px oklch(0% 0 0 / .8);
+  --boot-top: #073e11; --boot-low: oklch(20.5% 0.085 143); --boot-deep: oklch(24% 0.095 143); --boot-vignette: oklch(0% 0 0 / .72);
+  --boot-glow: oklch(72% 0.22 141 / .92); --boot-glow-2: oklch(58% 0.19 142 / .12); --boot-glow-3: oklch(80% 0.23 140 / 1); --boot-glow-up: oklch(68% 0.21 141 / .3);
+  --boot-bar: oklch(78% 0.23 148); --boot-bar-hi: var(--accent); --boot-track: oklch(100% 0 0 / .16); --boot-bloom-blend: screen; --boot-grain: .025;
+  --boot-shadow: 0 30px 50px -14px oklch(0% 0 0 / .8);
   }
 }
 :root[data-theme="dark"] {
@@ -95,6 +109,10 @@
   --glow-dot: 0 0 12px 1px color-mix(in oklab, var(--accent) 55%, transparent);
   --shadow: 0 1px 2px oklch(0% 0 0 / .5), 0 8px 24px -12px oklch(0% 0 0 / .7);
   --shadow-lg: 0 -1px 0 oklch(100% 0 0 / .06), 0 -24px 60px -24px oklch(0% 0 0 / .8);
+  --boot-top: #073e11; --boot-low: oklch(20.5% 0.085 143); --boot-deep: oklch(24% 0.095 143); --boot-vignette: oklch(0% 0 0 / .72);
+  --boot-glow: oklch(72% 0.22 141 / .92); --boot-glow-2: oklch(58% 0.19 142 / .12); --boot-glow-3: oklch(80% 0.23 140 / 1); --boot-glow-up: oklch(68% 0.21 141 / .3);
+  --boot-bar: oklch(78% 0.23 148); --boot-bar-hi: var(--accent); --boot-track: oklch(100% 0 0 / .16); --boot-bloom-blend: screen; --boot-grain: .025;
+  --boot-shadow: 0 30px 50px -14px oklch(0% 0 0 / .8);
 }
 @media (prefers-contrast: more) { :root { --ink-2: var(--ink); --ink-3: var(--ink-2); --line: var(--line-2); } }
 
@@ -145,10 +163,84 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 /* one small-caps label style: section headings, the tally card's label, the walkthrough's step count */
 .h2, .tc-label, .tour-step { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 650; }
 .h2 { margin: 0 0 8px; }
-/* a note: one quiet paragraph on a tinted panel (sheets, settings, the Home Screen card) */
+/* a note: one quiet paragraph on a tinted panel (sheets, settings, the Home Screen card). A toned note (warn: check
+   something; equiv: a value that is not Walmart's plain current listing) leads with an icon, so it is seen by its shape
+   and not by its tint alone (reviewer, 2026-10-22), and its text is full ink */
 .note { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.45; }
+.note:where(.note--warn, .note--equiv) { display: flex; align-items: flex-start; gap: 10px; }   /* icon, then the text in one span; a plain note keeps its inline flow */
+.note .note-ico { width: 18px; height: 18px; flex: none; margin-top: 2px; }
 .note--warn { background: color-mix(in oklab, var(--closest) 12%, transparent); color: var(--ink); }
-.note--equiv { background: color-mix(in oklab, var(--equiv) 14%, transparent); }
+.note--warn .note-ico { color: var(--closest); }
+.note--equiv { background: color-mix(in oklab, var(--equiv) 14%, transparent); color: var(--ink); }
+.note--equiv .note-ico { color: var(--equiv); }
+
+/* ---------- boot screen ---------- */
+/* The first thing on screen: the iOS launch image (splash/) is this layer rendered by tools/icon/make_splash.py, so the
+   launch turns into it without a jump; app.js (boot screen section) fades it once the price list is open, or at once
+   when the home screen has something to say (a download, offline, a problem). The app icon itself, untouched, over its
+   bloom, the progress bar and the wordmark on the page's own greens (owner, 2026-10-22: no ribbons). Everything that
+   moves is transform or opacity on its own layer, nothing lays out or repaints; html[data-splash] holds it still (the
+   renderer, and a preview on a phone with ?splash=1). */
+.boot {
+  --boot-lift: calc(3vh + 36px);   /* the icon's centre sits this far above the screen's centre (the bar and the name hang below it) */
+  --boot-icon: 120px;
+  position: fixed; inset: 0; z-index: 1000; overflow: hidden; color: var(--ink);
+  /* the field: a deep green at the top (the draft's, not black) over a darker middle and a slight lift at the bottom,
+     under a vignette that keeps the edges and corners dark so the glow owns the centre */
+  background: radial-gradient(ellipse 80% 70% at 50% 42%, transparent 30%, var(--boot-vignette) 100%), linear-gradient(180deg, var(--boot-top) 0%, var(--boot-low) 45%, var(--boot-deep) 100%);
+  -webkit-user-select: none; user-select: none;
+}
+/* grain: a dark gradient steps one level every ~20px on a 3x screen, which reads as rings; a few levels of noise
+   (boot-grain.png, tiled) hide the steps in the layer and in the launch images */
+.boot::after { content: ""; position: absolute; inset: 0; background: url("./boot-grain.png") 0 0 / 128px 128px repeat; opacity: var(--boot-grain); mix-blend-mode: overlay; pointer-events: none; }
+.boot.is-out { opacity: 0; pointer-events: none; transition: opacity .42s ease-out; }
+.boot.is-out .boot-stack { transform: scale(1.035); transition: transform .42s var(--ease-out); }
+/* the stack hangs from the icon's centre, which the lift token places (make_splash.py and the splash test rely on it) */
+.boot-stack { position: absolute; left: 0; right: 0; top: calc(50% - var(--boot-lift) - var(--boot-icon) / 2); display: flex; flex-direction: column; align-items: center; will-change: transform; }
+/* the bloom: a wide soft halo and a tighter one, centred on the icon */
+.boot-bloom {
+  position: absolute; left: 50%; top: 50%; width: var(--boot-bloom); height: var(--boot-bloom); transform: translate(-50%, calc(-50% - var(--boot-lift))); pointer-events: none; will-change: transform, opacity;
+  /* dark adds its light (screen): at the bloom's faint edge, 8-bit premultiplied rounding would otherwise darken the page by one level, a ring */
+  mix-blend-mode: var(--boot-bloom-blend);
+  /* sized by the closest side and bounded by the screen's height, so the bloom (transparent at 73% of its radius) ends
+     above the solid top band on every screen, a landscape iPad included: 0.73 * box / 2 <= 0.45 * height - lift */
+  --boot-bloom: min(220vmin, 1060px, calc(123vh - 2.74 * var(--boot-lift)));
+  /* core, halo, the light reaching up, and a faint wash, each with a Gaussian tail (no slope break for the eye to read
+     as a ring); tuned to the owner's draft: hot at the icon, down to the field within 1.3 icon widths, further upward */
+  background:
+    radial-gradient(circle closest-side, var(--boot-glow-3) 0%, color-mix(in oklab, var(--boot-glow-3) 70%, transparent) 10%, color-mix(in oklab, var(--boot-glow-3) 25%, transparent) 17%, transparent 24%),
+    radial-gradient(circle closest-side, var(--boot-glow) 0%, color-mix(in oklab, var(--boot-glow) 78%, transparent) 17%, color-mix(in oklab, var(--boot-glow) 24%, transparent) 28%, color-mix(in oklab, var(--boot-glow) 8%, transparent) 36%, color-mix(in oklab, var(--boot-glow) 2%, transparent) 44%, transparent 52%),
+    radial-gradient(ellipse 42% 58% at 50% 36%, var(--boot-glow-up) 0%, color-mix(in oklab, var(--boot-glow-up) 55%, transparent) 30%, color-mix(in oklab, var(--boot-glow-up) 20%, transparent) 55%, color-mix(in oklab, var(--boot-glow-up) 6%, transparent) 75%, transparent 100%),
+    radial-gradient(circle closest-side, var(--boot-glow-2) 0%, var(--boot-glow-2) 20%, color-mix(in oklab, var(--boot-glow-2) 78%, transparent) 36%, color-mix(in oklab, var(--boot-glow-2) 42%, transparent) 48%, color-mix(in oklab, var(--boot-glow-2) 21%, transparent) 57%, color-mix(in oklab, var(--boot-glow-2) 10%, transparent) 64%, color-mix(in oklab, var(--boot-glow-2) 4%, transparent) 69%, transparent 73%);
+}
+.boot-icon {
+  position: relative; display: block; width: var(--boot-icon); height: var(--boot-icon); border-radius: 27%; pointer-events: none; -webkit-touch-callout: none;
+  filter: drop-shadow(0 0 24px color-mix(in oklab, var(--accent) 50%, transparent)) drop-shadow(var(--boot-shadow));
+}
+.boot-bar { position: relative; width: 148px; height: 4px; margin-top: 34px; border-radius: 999px; background: var(--boot-track); overflow: hidden; }
+.boot-bar i {
+  position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 999px; will-change: transform;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--boot-bar) 70%, transparent), var(--boot-bar) 55%, var(--boot-bar-hi));
+  box-shadow: 0 0 12px color-mix(in oklab, var(--boot-bar) 70%, transparent);
+}
+.boot-name { margin: 22px 0 0; font: 600 21px/1.2 "Manrope", var(--font); letter-spacing: -.02em; }
+.boot-name b { font-weight: 700; }
+.boot-org { position: absolute; left: 24px; right: 24px; bottom: max(8vh, calc(var(--safe-b) + 24px)); margin: 0; text-align: center; font: 600 11.5px/1.3 "Manrope", var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+@media (max-width: 359px) { .boot-org { font-size: 10.5px; letter-spacing: .1em; } }
+@media (min-width: 700px) {
+  .boot { --boot-lift: calc(3vh + 48px); --boot-icon: 160px; }
+  .boot-bar { width: 180px; margin-top: 40px; }
+  .boot-name { font-size: 23px; margin-top: 26px; }
+  .boot-org { font-size: 13px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-splash]) .boot-bar i { animation: boot-sweep 2.4s cubic-bezier(.5, 0, .3, 1) infinite; }
+  html:not([data-splash]) .boot-bloom { animation: boot-breathe 3.6s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) { .boot.is-out .boot-stack { transform: none; } }   /* the fade alone */
+/* the segment starts where the launch image drew it, sweeps off to the right and returns from the left */
+@keyframes boot-sweep { 0% { transform: none; } 58% { transform: translateX(265%); } 58.01% { transform: translateX(-108%); } 100% { transform: none; } }
+@keyframes boot-breathe { 50% { transform: translate(-50%, calc(-50% - var(--boot-lift))) scale(1.06); opacity: .86; } }
 
 /* ---------- header ---------- */
 .top {
@@ -555,7 +647,9 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .verse-full { font-style: italic; color: var(--ink-2); font-size: 14.5px; }
 
 /* ---------- scanner (always dark) ---------- */
-.scanner { position: fixed; inset: 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+/* the scanner follows the visible area like the dock: with the barcode keyboard up, iOS pans the page and the keyboard
+   covers the bottom (owner's screenshot, 2026-10-23: the message sat under the status bar and the field under the keys) */
+.scanner { position: fixed; inset: var(--vv-top) 0 var(--kb) 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .scan-top { position: relative; z-index: 2; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-t) + 12px) max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px)); }
@@ -583,7 +677,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 @keyframes sweep { 0%, 100% { top: 14%; } 50% { top: 86%; } }
 @keyframes breathe { 50% { opacity: .6; } }
 .scanner.is-hit .laser { opacity: 0; }
-.scan-bottom { position: relative; z-index: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px max(20px, env(safe-area-inset-right, 0px)) calc(24px + var(--safe-b)) max(20px, env(safe-area-inset-left, 0px)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+.scan-bottom { position: relative; z-index: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px max(20px, env(safe-area-inset-right, 0px)) calc(24px + var(--dock-safe-b, var(--safe-b))) max(20px, env(safe-area-inset-left, 0px)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
 /* the hint sits on its own dark pill, readable over a bright camera frame */
 .scan-hint { margin: 0; padding: 6px 14px; border-radius: 999px; background: rgba(0,0,0,.6); font-size: 16px; font-weight: 500; color: #fff; text-align: center; }
 .scanner .btn--ghost { color: #fff; border-color: rgba(255,255,255,.35); background: rgba(0,0,0,.35); backdrop-filter: blur(10px); }
