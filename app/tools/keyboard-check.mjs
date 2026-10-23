@@ -188,7 +188,8 @@ scenario("S9", "a drag on the results puts the keyboard away: the rows do not ru
   const anchor = () => page.evaluate(() => { const box = document.getElementById("results").getBoundingClientRect(); const row = [...document.querySelectorAll("#list .row")].filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > box.top && b.top < box.bottom; }).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0]; return row ? { id: row.textContent.slice(0, 30), top: Math.round(row.getBoundingClientRect().top - box.top) } : null; });
   const before = await anchor();
   // the drag: a touch that moves 40px (the app blurs the field after 12px); iOS then takes the keyboard down
-  await page.evaluate(() => { const r = document.getElementById("results"); const t = (type, y) => r.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: type === "touchend" ? [] : [new Touch({ identifier: 1, target: r, clientX: 180, clientY: y })] })); t("touchstart", 300); t("touchmove", 280); t("touchmove", 260); t("touchend", 260); });
+  // plain events carrying what the app reads (touches[0].clientY): WebKit on Linux has no Touch constructor
+  await page.evaluate(() => { const r = document.getElementById("results"); const t = (type, y) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [{ identifier: 1, target: r, clientX: 180, clientY: y }] }); r.dispatchEvent(e); }; t("touchstart", 300); t("touchmove", 280); t("touchmove", 260); t("touchend", 260); });
   await settle(page, 100);
   const blurred = await page.evaluate(() => document.activeElement !== document.getElementById("q"));
   check("S9", "the drag took the focus off the field", blurred);
