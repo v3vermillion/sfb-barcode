@@ -1675,10 +1675,14 @@ async function startCamera(gen) {
   } catch (err) {
     if (gen !== state.scanGen) return;
     console.warn("camera", err);
-    const where = isIOS ? (standalone() ? "the iPhone's Settings › Apps › SFB Value › Camera" : "the iPhone's Settings › Apps › Safari › Camera")
-      : isAndroid ? (standalone() ? "the phone's Settings › Apps › SFB Value › Permissions › Camera" : "the browser's site settings (the lock icon by the address, then Permissions › Camera)")
-      : "the browser's site settings";
-    scanDenied(err?.name === "NotAllowedError" ? `Camera access is turned off. Allow it in ${where}, or enter the barcode manually.`
+    // iPhone: a web app has no entry under Settings › Apps (owner, 2026-10-23: "SFB Value" is not there), and iOS keeps no
+    // camera decision for a Home Screen web app at all (WebKit bug 327237), so the way back is simply to be asked again;
+    // in a Safari tab the per-site setting behind the aA button is the one that lasts
+    const denied = isIOS ? (standalone() ? "Camera access was declined. Close the app and open it again, then tap Allow when the camera is requested, or enter the barcode manually."
+        : "Camera access was declined. Tap aA in the address bar, then Website Settings › Camera › Allow, or enter the barcode manually.")
+      : isAndroid ? `Camera access is turned off. Allow it in ${standalone() ? "the phone's Settings › Apps › SFB Value › Permissions › Camera" : "the browser's site settings (the lock icon by the address, then Permissions › Camera)"}, or enter the barcode manually.`
+      : "Camera access is turned off. Allow it in the browser's site settings, or enter the barcode manually.";
+    scanDenied(err?.name === "NotAllowedError" ? denied
       : err?.name === "NotFoundError" ? "No camera was found on this device. Enter the barcode manually."
       : err?.name === "NotReadableError" ? "The camera is in use by another app. Close it and try again, or enter the barcode manually."
       : "The camera could not start. Enter the barcode manually.");

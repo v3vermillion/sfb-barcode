@@ -647,7 +647,9 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 .verse-full { font-style: italic; color: var(--ink-2); font-size: 14.5px; }
 
 /* ---------- scanner (always dark) ---------- */
-.scanner { position: fixed; inset: 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+/* the scanner follows the visible area like the dock: with the barcode keyboard up, iOS pans the page and the keyboard
+   covers the bottom (owner's screenshot, 2026-10-23: the message sat under the status bar and the field under the keys) */
+.scanner { position: fixed; inset: var(--vv-top) 0 var(--kb) 0; z-index: 40; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .scan-top { position: relative; z-index: 2; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-t) + 12px) max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px)); }
@@ -675,7 +677,7 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
 @keyframes sweep { 0%, 100% { top: 14%; } 50% { top: 86%; } }
 @keyframes breathe { 50% { opacity: .6; } }
 .scanner.is-hit .laser { opacity: 0; }
-.scan-bottom { position: relative; z-index: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px max(20px, env(safe-area-inset-right, 0px)) calc(24px + var(--safe-b)) max(20px, env(safe-area-inset-left, 0px)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+.scan-bottom { position: relative; z-index: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px max(20px, env(safe-area-inset-right, 0px)) calc(24px + var(--dock-safe-b, var(--safe-b))) max(20px, env(safe-area-inset-left, 0px)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
 /* the hint sits on its own dark pill, readable over a bright camera frame */
 .scan-hint { margin: 0; padding: 6px 14px; border-radius: 999px; background: rgba(0,0,0,.6); font-size: 16px; font-weight: 500; color: #fff; text-align: center; }
 .scanner .btn--ghost { color: #fff; border-color: rgba(255,255,255,.35); background: rgba(0,0,0,.35); backdrop-filter: blur(10px); }
