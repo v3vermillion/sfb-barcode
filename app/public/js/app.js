@@ -32,8 +32,7 @@ const PREFS_KEY = "sfb.prefs", TALLY_KEY = "sfb.tally", RECENT_KEY = "sfb.recent
 
 const readJson = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const writeJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
-// keepCamera: minutes the camera stays on after the scanner closes so iOS does not ask for it again (0 = off); iPhone only
-const prefs = Object.assign({ theme: "auto", haptics: true, live: true, keepCamera: 240 }, readJson(PREFS_KEY, {}));
+const prefs = Object.assign({ theme: "auto", haptics: true, live: true }, readJson(PREFS_KEY, {}));
 let tally = readJson(TALLY_KEY, []);
 let recent = readJson(RECENT_KEY, []);
 // barcodes nothing knew, matched on this phone by a search by name and added to the tally: gtin14 -> {key, title, at}
@@ -1306,13 +1305,11 @@ function settingsHtml() {
     .map(([k, l, t]) => `<li><span class="kind" data-kind="${k}">${l}</span><span>${t}</span></li>`).join("");
   // vibration exists only where the browser can vibrate (not Safari on iPhone): no switch that does nothing
   const canVibrate = typeof navigator.vibrate === "function";
-  const keepSeg = KEEP_CAMERA_CHOICES.map(([m, l]) => `<button type="button" data-keep="${m}" aria-pressed="${keepCameraMinutes() === m}">${l}</button>`).join("");
   return `<div class="sheet-inner"><div class="sheet-top"><div class="grab" aria-hidden="true"></div>
     <div class="sheet-head"><h2 class="sheet-title" id="settingsTitle">Settings</h2><button class="x-btn" type="button" aria-label="Close">${icon("x")}</button></div></div>
     <div class="setting setting--seg"><div class="lab">Appearance</div><div class="seg" role="group" aria-label="Appearance">${seg}</div></div>
     ${canVibrate ? `<div class="setting"><div class="lab">Vibrate on scan<small>A short vibration when a barcode is read</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.haptics}" data-pref="haptics" aria-label="Vibrate on scan"></button></div>` : ""}
     ${LIVE_URL ? `<div class="setting"><div class="lab">Live price check<small>When online, compare a scanned item with Walmart's current price</small></div><button class="switch" type="button" role="switch" aria-checked="${prefs.live}" data-pref="live" aria-label="Live price check"></button></div>` : ""}
-    ${keepCameraOffered() ? `<div class="setting setting--seg"><div class="lab">Keep the camera ready<small>After a scan the camera stays on, out of sight, for this long, so the phone does not ask for camera access again. Its indicator stays on meanwhile.</small></div><div class="seg" role="group" aria-label="Keep the camera ready">${keepSeg}</div></div>` : ""}
     <h2 class="h2">Prices</h2>
     <section class="data-card" aria-label="Price list">${card}${notes.join("")}
       <button class="btn btn--ghost btn--block" type="button" data-act="update">${icon("refresh")}<span>Check for new prices</span></button>
@@ -1355,13 +1352,6 @@ el.settings.addEventListener("click", async (e) => {
   if (e.target.closest("[data-act=copy-diag]")) { navigator.clipboard?.writeText(diagnostics()).then(() => toast("Diagnostics copied"), () => toast("Could not copy", { iconName: "info" })); return; }
   const th = e.target.closest("[data-theme]");
   if (th) { prefs.theme = th.dataset.theme; writeJson(PREFS_KEY, prefs); applyTheme(); el.settings.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b === th))); return; }
-  const kp = e.target.closest("[data-keep]");
-  if (kp) {
-    prefs.keepCamera = +kp.dataset.keep; writeJson(PREFS_KEY, prefs); haptic(5);
-    el.settings.querySelectorAll("[data-keep]").forEach((b) => b.setAttribute("aria-pressed", String(b === kp)));
-    if (!prefs.keepCamera) scannerMod?.releaseCamera();   // off: a camera kept ready goes off now, not at the window's end
-    return;
-  }
   const sw = e.target.closest("[data-pref]");
   if (sw) { const k = sw.dataset.pref; prefs[k] = !prefs[k]; writeJson(PREFS_KEY, prefs); sw.setAttribute("aria-checked", String(prefs[k])); haptic(5); return; }
   const actBtn = e.target.closest("[data-act]"), act = actBtn?.dataset.act;
@@ -1637,11 +1627,10 @@ window.__sfb.tour = { open: openTour, close: closeTour };
 let scannerMod = null;
 // Keep the camera ready (iPhone): iOS keeps no camera decision for a Home Screen web app and asks again about a minute
 // after capture stops, so the camera is parked, not released, when the scanner closes or the app goes to the background
-// (scanner.js parkCamera). Android and desktop browsers remember the grant, so they never hold the camera for this.
-const KEEP_CAMERA_CHOICES = [[0, "Off"], [15, "15 min"], [60, "1 hr"], [240, "4 hr"]];
-const keepCameraOffered = () => isIOS && !!navigator.mediaDevices?.getUserMedia;
-const keepCameraMinutes = () => (KEEP_CAMERA_CHOICES.some(([m]) => m === +prefs.keepCamera) ? +prefs.keepCamera : 240);
-const keepCameraMs = () => (keepCameraOffered() ? keepCameraMinutes() * 60_000 : 0);
+// (scanner.js parkCamera), for the length of a shift after the last scan (owner, 2026-10-23: four hours, no setting).
+// Android and desktop browsers remember the grant, so they never hold the camera for this.
+const KEEP_CAMERA_MS = 4 * 3600_000;
+const keepCameraMs = () => (isIOS && navigator.mediaDevices?.getUserMedia ? KEEP_CAMERA_MS : 0);
 async function openScanner({ reuseEntry = false } = {}) {
   if (state.scanOpen) return;
   if (state.tourOpen) { closeTour({ after: () => openScanner() }); return; }

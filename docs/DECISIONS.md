@@ -153,6 +153,8 @@ Dated, current decisions; this file wins on conflict. A later entry that replace
 
 - 2026-10-23 — The browser checks run on Playwright's own image. tests.yml's app-ui job installed Chromium, WebKit and their libraries on every run (`playwright install --with-deps`: about 150 apt packages for WebKit alone, 46 s on a good day); on 2026-10-22 from 19:06 and again from 00:20 on 2026-10-23 the runners' apt mirror crawled at tens of KB/s, the install ran past the job's 25 minutes, and the job was cancelled on main (issue #53) and on PR #54 twice, once on a re-run. Now the fixture is built by a small Python job (app-fixture) and handed over as an artifact, and app-ui runs in `mcr.microsoft.com/playwright:<version>-noble`, which carries both browsers and their libraries, so nothing is downloaded but the app's npm packages. Playwright is pinned exactly in app/package.json (1.64.1) because the image tag must match it; bumping one means bumping the other. app-browsers.yml (manual) still installs its browser on the runner.
 
+- 2026-10-23 — The kept-ready camera is automatic, four hours, no setting (owner: "Can't this just be applied automatically without needing a setting? ... 4 hours ... is the length of shifts"). The Settings row (Off / 15 min / 1 hr / 4 hr) is gone; on iPhone the camera is parked for four hours after the last scan whenever the scanner closes or the app leaves the foreground, and closing the app ends it. The privacy page states it. Nothing else changes.
+
 ## Open
 
 - 2026-10-07 — UPC-E: `gtin14()` should expand 8-digit codes starting 0/1 to UPC-A when the UPC-E check digit validates (proposed). Done 2026-10-09 (same expansion as the app's barcode.js).
