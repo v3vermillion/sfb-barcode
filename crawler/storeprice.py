@@ -1,6 +1,6 @@
 """Store-level prices: what Walmart charges at one store (Strongsville, OH), not Walmart.com.
 
-  python -m crawler.storeprice probe --zip 44136 [--store-id N] [--sample raw-part.jsonl.gz]
+  python -m crawler.storeprice probe --zip 44136 [--store-id N] [--sample raw-part.jsonl.gz] [--upc 012345678905 --item-id N]
   python -m crawler.storeprice refresh --budget-min 300     # (ci.py runs this as the `store` job)
 
 The store is data/store.json. `refresh` asks Walmart for the store's price and stock of the snapshot's barcode
@@ -18,9 +18,13 @@ the price this app should show when Walmart returns one.
 `probe` is read-only and costs about a dozen calls: it lists the stores near the zip code, then asks for the same
 items three ways (no location, zipCode, storeId) and for one category page with and without storeId, and prints how
 many prices and stock values differ. It answers, before anything is built on it: does this key get store prices,
-for which store id, and from which endpoints. Nothing is written to the data-store.
+for which store id, and from which endpoints. With `--upc` it also makes the lookups the pipeline Worker's live
+price check makes (`/items?upc=` with and without `storeId`, `gtin=` with `storeId`, and `ids=` with `storeId` as
+the control the crawler relies on), one call each, so a live check that always answers "unavailable" can be told
+apart as a key problem (401/403 on every form), a query Walmart refuses (400 on one form) or a barcode it does not
+list (404). Nothing is written to the data-store.
 """
-import argparse, json, os, random, sys, time
+import argparse, json, os, random, re, sys, time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -90,7 +94,37 @@ def compare(base, other):
             "differ": diff, "examples": examples}
 
 
-def probe(wm, zip_code="44136", store_id=None, part=None, category="976759"):
+def lookup_forms(upc, store_id, item_id=None):
+    """The /items lookups the Worker's live check makes for a barcode (pipeline/src/index.js), and the id form as control."""
+    raw = re.sub(r"\D", "", str(upc or ""))
+    gtin = raw.zfill(14)
+    upc_a = re.sub(r"^0+(?=\d{12}$)", "", gtin)
+    # a UPC-A (12 digits, or 13 when scanned with a leading 0) goes by upc, as in the Worker; anything else by gtin
+    by_upc = len(upc_a) == 12 and len(raw) in (12, 13)
+    forms = [("upc", f"/items?upc={upc_a}")] if by_upc else [("gtin", f"/items?gtin={gtin}")]
+    if store_id:
+        if by_upc:
+            forms.append(("upc+storeId (the live check's form)", f"/items?upc={upc_a}&storeId={store_id}"))
+        forms.append(("gtin+storeId" + ("" if by_upc else " (the live check's form)"), f"/items?gtin={gtin}&storeId={store_id}"))
+        if item_id:
+            forms.append(("ids+storeId (control)", f"/items?ids={item_id}&storeId={store_id}"))
+    return forms
+
+
+def lookups(wm, upc, store_id, item_id=None):
+    out = {}
+    for label, path in lookup_forms(upc, store_id, item_id):
+        page, err = _call(wm, path)
+        if err:
+            out[label] = {"path": path, "error": err}
+            continue
+        items = _items(page)
+        first = items[0] if items else {}
+        out[label] = {"path": path, "returned": len(items), "first": {k: first.get(k) for k in ("itemId", "name", "salePrice", "stock")}}
+    return out
+
+
+def probe(wm, zip_code="44136", store_id=None, part=None, category="976759", upc=None, item_id=None):
     report = {"zip": zip_code, "stores": stores_near(wm, zip_code)}
     if not store_id:
         for v in report["stores"].values():
@@ -123,6 +157,8 @@ def probe(wm, zip_code="44136", store_id=None, part=None, category="976759"):
             "storeId_total_pages": loc.get("totalPages") if isinstance(loc, dict) else None,
             "plain_total_pages": base.get("totalPages") if isinstance(base, dict) else None,
             "vs_plain": compare(_items(base), _items(loc))}
+    if upc:
+        report["lookups"] = lookups(wm, upc, store_id, item_id)
     return report
 
 
@@ -523,6 +559,15 @@ def markdown(r):
             L.append(f"- `/paginated` with storeId: {p['storeId_items']} items, {p['storeId_total_pages']} pages "
                      f"(plain {p['plain_items']}, {p['plain_total_pages']} pages); {c['differ']['salePrice']} prices and "
                      f"{c['differ']['stock']} stock values differ of {c['items_both']}")
+    if r.get("lookups"):
+        L += ["", "Live check lookups (one call per form):", "", "| Form | Answer |", "|---|---|"]
+        for label, v in r["lookups"].items():
+            if v.get("error"):
+                L.append(f"| {label} `{v['path']}` | {v['error'].replace('|', '/')} |")
+            else:
+                f = v["first"]
+                L.append(f"| {label} `{v['path']}` | {v['returned']} item(s)"
+                         + (f": {f.get('itemId')} {str(f.get('name') or '')[:50]} ${f.get('salePrice')} {f.get('stock') or ''}" if v["returned"] else "") + " |")
     return "\n".join(L)
 
 
@@ -533,6 +578,8 @@ def main(argv=None):
     p.add_argument("--zip", default="44136")
     p.add_argument("--store-id", default=None)
     p.add_argument("--sample", default=None, help="a raw crawl part (jsonl.gz) to draw item ids from")
+    p.add_argument("--upc", default=None, help="a barcode: also make the live check's /items lookups for it (status only)")
+    p.add_argument("--item-id", default=None, help="a Walmart item id, the ids+storeId control lookup")
     rf = sub.add_parser("refresh")
     rf.add_argument("--budget-min", type=float, default=60)
     a = ap.parse_args(argv)
@@ -540,7 +587,7 @@ def main(argv=None):
     if a.cmd == "refresh":
         print(json.dumps(refresh(Walmart(), a.budget_min), indent=1))
         return 0
-    r = probe(Walmart(), a.zip, a.store_id or None, Path(a.sample) if a.sample else None)
+    r = probe(Walmart(), a.zip, a.store_id or None, Path(a.sample) if a.sample else None, upc=a.upc or None, item_id=a.item_id or None)
     text = markdown(r)
     print(text)
     print(json.dumps(r, indent=1, default=str)[:20000])
