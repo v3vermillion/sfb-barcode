@@ -142,11 +142,14 @@ function dialogToasts(dlg) {
   if (!h) { h = document.createElement("div"); h.className = "toasts-dlg"; h.setAttribute("aria-live", "polite"); dlg.prepend(h); }
   return h;
 }
-/** Replace a sheet's content, keeping its toast region (and the toasts in it). */
+/** Replace a sheet's content, keeping its toast region (and the toasts in it) where it is: a region taken out and put
+ * back restarts the entry animation of every toast in it, so the toast a re-render follows (Check for new prices, V3)
+ * blinked off and on again. */
 function setDialogHtml(dlg, html) {
   const h = dlg.querySelector(":scope > .toasts-dlg");
-  dlg.innerHTML = html;
-  if (h) dlg.prepend(h);
+  for (const n of [...dlg.childNodes]) if (n !== h) n.remove();
+  const tpl = document.createElement("template"); tpl.innerHTML = html;
+  dlg.append(tpl.content);
 }
 /** Where a toast goes: inside the open sheet, or over the page. `page` is for an action that is about to close the sheet
  * (Add to tally, Clear): its toast must outlive it. */
@@ -1350,7 +1353,9 @@ function refreshSettings() { const y = el.settings.querySelector(".sheet-inner")
 window.__sfb.refreshSettings = refreshSettings;   // the checks re-render Settings mid-drag
 el.settings.addEventListener("click", async (e) => {
   if (e.target.closest("[data-act=copy-diag]")) { navigator.clipboard?.writeText(diagnostics()).then(() => toast("Diagnostics copied"), () => toast("Could not copy", { iconName: "info" })); return; }
-  const th = e.target.closest("[data-theme]");
+  // the control itself, never an ancestor: <html data-theme> carries the chosen theme, so a bare [data-theme] matched
+  // the page for every tap in Settings while Light or Dark was chosen, and nothing else in the sheet answered (F69)
+  const th = e.target.closest("button[data-theme]");
   if (th) { prefs.theme = th.dataset.theme; writeJson(PREFS_KEY, prefs); applyTheme(); el.settings.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b === th))); return; }
   const sw = e.target.closest("[data-pref]");
   if (sw) { const k = sw.dataset.pref; prefs[k] = !prefs[k]; writeJson(PREFS_KEY, prefs); sw.setAttribute("aria-checked", String(prefs[k])); haptic(5); return; }
