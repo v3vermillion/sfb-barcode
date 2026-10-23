@@ -57,34 +57,52 @@ jobs:
       - name: App tests
         run: node --test tests/*.test.mjs
 
+  app-fixture:
+    # the 3,000-item fixture the browser checks run on (python: crawler.normalize), handed to app-ui as an artifact so
+    # the browser job needs no Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r requirements.txt
+      - run: python3 app/tools/make_fixture.py --store app/build/fixture-store --items 3000 --equivalents 300
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fixture-store
+          path: app/build/fixture-store
+          retention-days: 1
+          if-no-files-found: error
+
   app-ui:
     # the layout, price-status and walkthrough rules of the real app in Chromium (app/tools/ui-check.mjs), on a small
-    # fixture: every check is named by the defect it guards (docs/UI-AUDIT.md); scroll-check runs in Chromium and WebKit
+    # fixture: every check is named by the defect it guards (docs/UI-AUDIT.md); scroll-check runs in Chromium and WebKit.
+    # Playwright's own image brings Chromium, WebKit and their libraries: `playwright install --with-deps webkit` pulled
+    # about 150 packages from the runner's apt mirror, which crawled for hours on 2026-10-22 and 23 and timed the job
+    # out (issue #53). The image tag must match the playwright version pinned in app/package.json.
+    needs: app-fixture
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json, then Chromium and WebKit (the
-      # engine of every iPhone browser) with their libraries
-      - name: Install Playwright, Chromium and WebKit
+          name: fixture-store
+          path: app/build/fixture-store
+      # app/ has no package-lock.json, so `npm ci` cannot run: install from package.json (the browsers are in the image)
+      - name: Install the app's packages
+        run: npm install --no-audit --no-fund
+      - name: Build the pack and the site from the fixture
         run: |
           set -eu
-          npm install --no-audit --no-fund
-          npx playwright install --with-deps chromium webkit
-      - name: Build a small fixture, its pack and the site
-        run: |
-          set -eu
-          pip install -q -r ../requirements.txt
-          python3 tools/make_fixture.py --store build/fixture-store --items 3000 --equivalents 300
           node tools/build-db.mjs --store build/fixture-store --out dist/db
           node tools/build-site.mjs
       - name: Serve dist
@@ -107,7 +125,7 @@ jobs:
 
   report:
     # only on main: open or close the tests-failed alert
-    needs: [python, app, app-ui]
+    needs: [python, app, app-fixture, app-ui]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -123,7 +141,7 @@ jobs:
           key: tests-failed
           title: tests failing on main
           body: |
-            The test suite failed on main (python: ${{ needs.python.result }}, app: ${{ needs.app.result }}, app-ui: ${{ needs.app-ui.result }}).
+            The test suite failed on main (python: ${{ needs.python.result }}, app: ${{ needs.app.result }}, app-fixture: ${{ needs.app-fixture.result }}, app-ui: ${{ needs.app-ui.result }}).
             Commit `${{ github.sha }}`. The next green run on main closes this issue.
       - name: Resolve tests-failed
         if: needs.python.result == 'success' && needs.app.result == 'success' && needs.app-ui.result == 'success'
