@@ -155,6 +155,8 @@ Dated, current decisions; this file wins on conflict. A later entry that replace
 
 - 2026-10-23 — The kept-ready camera is automatic, four hours, no setting (owner: "Can't this just be applied automatically without needing a setting? ... 4 hours ... is the length of shifts"). The Settings row (Off / 15 min / 1 hr / 4 hr) is gone; on iPhone the camera is parked for four hours after the last scan whenever the scanner closes or the app leaves the foreground, and closing the app ends it. The privacy page states it. Nothing else changes.
 
+- 2026-10-23 — The parked camera keeps running; nothing is left for a phone test (owner: "Can you take this seriously?", on being asked to confirm the window on an iPhone). The first build parked the track disabled (black frames) to save power, which left one open question, whether iOS still counts a disabled track as capture; the rule WebKit states (bug 215884) is that an ongoing capture is never re-prompted, so the parked track now stays running at its smallest picture, read by nothing, and the window holds by that rule rather than by a test. Diagnostics still log "camera opened" / "camera taken back (kept ready)" so a surprise would be visible, but nothing is asked of the owner.
+
 ## Open
 
 - 2026-10-07 — UPC-E: `gtin14()` should expand 8-digit codes starting 0/1 to UPC-A when the UPC-E check digit validates (proposed). Done 2026-10-09 (same expansion as the app's barcode.js).

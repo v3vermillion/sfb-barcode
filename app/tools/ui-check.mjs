@@ -396,7 +396,7 @@ await scenario(["F68"], "iPhone: the camera is kept ready between scans", async 
   check("F68", "the first scan asks for the camera once", st.asked === 1 && st.src && !st.ready, JSON.stringify(st));
   await page.click("#scanClose"); await settle(page, 500);
   st = await camState(page);
-  check("F68", "closing the scanner parks the camera: still live, disabled, detached, kept ready", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === false && !st.src && st.ready && !st.open, JSON.stringify(st));
+  check("F68", "closing the scanner parks the camera: still live and running, detached, kept ready", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === true && !st.src && st.ready && !st.open, JSON.stringify(st));
   const idle = await page.evaluate(() => window.__constraints.at(-1));
   check("F68", "the parked camera is asked for its smallest, slowest picture", idle?.frameRate?.ideal === 2 && idle?.width?.ideal === 320, JSON.stringify(idle));
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
@@ -407,7 +407,7 @@ await scenario(["F68"], "iPhone: the camera is kept ready between scans", async 
   check("F68", "diagnostics say whether the camera was opened or taken back", noted.join("|") === "camera opened|camera taken back (kept ready)", noted.join("|"));
   await page.evaluate(() => window.__setHidden(true)); await settle(page, 300);
   st = await camState(page);
-  check("F68", "leaving the app with the scanner open parks the camera too", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === false && !st.src && st.ready, JSON.stringify(st));
+  check("F68", "leaving the app with the scanner open parks the camera too", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === true && !st.src && st.ready, JSON.stringify(st));
   await page.evaluate(() => window.__setHidden(false)); await settle(page, 1200);
   st = await camState(page);
   check("F68", "back in the app, the scanner resumes on the same camera", st.asked === 1 && st.enabled[0] === true && st.src && st.open, JSON.stringify(st));

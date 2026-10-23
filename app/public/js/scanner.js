@@ -22,10 +22,11 @@ let enginePromise = null;
 
 // ---------------------------------------------------------------- keeping the camera ready between scans (iPhone)
 // iOS keeps no camera decision for a Home Screen web app, and WebKit asks again once capture has been stopped for about
-// a minute (bugs 215884, 327237). So, where the app asks for it, the camera track is parked instead of stopped when the
-// scanner closes: disabled (black frames), at the lowest rate and size the camera accepts, until the window ends, the
-// setting is turned off, or iOS ends the track itself. The next scan inside the window takes the parked track back and
-// asks nothing. The phone's camera indicator stays on for the whole window: that is the honest cost of no second prompt.
+// a minute (bugs 215884, 327237); while capture is ongoing it never asks. So on iPhone the camera track is parked
+// instead of stopped when the scanner closes: still running (that is the condition WebKit states, so it is not left to
+// chance), at the lowest rate and size the camera accepts, attached to nothing and read by nothing, until the window
+// ends or iOS ends the track itself. The next scan inside the window takes the parked track back and asks nothing. The
+// phone's camera indicator stays on for the whole window: that is the honest cost of no second prompt.
 const FULL_VIDEO = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
 const IDLE_VIDEO = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 2 } };
 let warm = null;   // { stream, track, until, timer }
@@ -43,7 +44,7 @@ export function releaseCamera() {
 function parkCamera(stream, track, keepMs) {
   releaseCamera();
   if (!(keepMs > 0) || track.readyState !== "live") { stream.getTracks().forEach((t) => t.stop()); return false; }
-  track.enabled = false;
+  track.enabled = true;   // never disabled: a disabled track may not count as capture, and the grant hangs on that
   track.onended = () => { if (warm?.track === track) { clearTimeout(warm.timer); warm = null; } };
   track.applyConstraints(IDLE_VIDEO).catch(() => { /* a camera that keeps its size costs more battery, nothing else */ });
   warm = { stream, track, until: Date.now() + keepMs, timer: setTimeout(releaseCamera, keepMs) };
@@ -54,7 +55,6 @@ async function takeCamera(constraints) {
   if (cameraReady()) {
     const { stream, track } = warm;
     clearTimeout(warm.timer); track.onended = null; warm = null;
-    track.enabled = true;
     try { await track.applyConstraints(FULL_VIDEO); } catch { /* keeps the idle size: still readable at arm's length */ }
     return { stream, reused: true };
   }
