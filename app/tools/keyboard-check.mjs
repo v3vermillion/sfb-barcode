@@ -2,11 +2,13 @@
 // of iOS. Chromium has no on-screen keyboard and never pans the visual viewport, so the page gets a scripted
 // visualViewport (installed before the app runs) that behaves as iOS does: the keyboard shrinks the visual viewport
 // over several frames, iOS may pan the layout viewport to reveal the focused field (offsetTop), the user can pan it
-// further by dragging, a final resize event can go missing, and window.scrollTo(0, 0) brings the pan back to 0 (in
-// WebKit window.scrollY is the visual viewport's position). Every scenario asserts the same invariants in visual
-// coordinates (layout coordinates minus the pan): the header's top edge is the visible top, the dock's bottom edge is
-// the keyboard's top, the panel between them (home or results) fills exactly that room, and nothing is drawn outside.
-// Exit code 1 when any check fails.
+// further by dragging, a final resize event can go missing, window.scrollTo(0, 0) brings the pan back to 0 (in
+// WebKit window.scrollY is the visual viewport's position), innerHeight is clipped to the document once the page is
+// panned into the keyboard's room, and a caret drag runs WebKit's selection autoscroll, which reveals the finger's
+// point through the document every 50 ms, grown by the root's scroll-padding. Every scenario asserts the same
+// invariants in visual coordinates (layout coordinates minus the pan): the header's top edge is the visible top, the
+// dock's bottom edge is the keyboard's top, the panel between them (home or results) fills exactly that room, and
+// nothing is drawn outside. Exit code 1 when any check fails.
 //   node tools/keyboard-check.mjs [--url http://127.0.0.1:8787/] [--browser chromium|webkit] [--only S1,S4]
 import { chromium, webkit } from "playwright";
 
@@ -26,7 +28,14 @@ const settle = (page, ms = 250) => page.waitForTimeout(ms);
 const IOS_VV = () => {
   const st = { h: 0, top: 0, scale: 1, raf: null };
   const fake = new EventTarget();
-  const H = () => window.innerHeight;
+  // the layout viewport's height: what innerHeight reads with no pan
+  const realInnerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight")?.get;
+  const H = () => (realInnerHeight ? realInnerHeight.call(window) : window.innerHeight);
+  // iOS clips innerHeight to the document once the page is panned into the keyboard's room: WKWebView intersects the
+  // unobscured rect with the content before reporting it (WKWebViewIOS.mm, the visible-rect update), and
+  // LocalDOMWindow::innerHeight is that rect's height. At the bottom of a 336 px pan an 852 px page reads 516, the
+  // visible height, which looks like a keyboard that has gone (owner's recording, 2026-10-23).
+  if (realInnerHeight) Object.defineProperty(window, "innerHeight", { get: () => H() - st.top, configurable: true });
   Object.defineProperties(fake, {
     width: { get: () => window.innerWidth }, height: { get: () => (st.h || H()) },
     offsetTop: { get: () => st.top }, offsetLeft: { get: () => 0 },
@@ -65,6 +74,25 @@ const IOS_VV = () => {
     },
     /** The user drags: the visual viewport pans within the layout viewport, as far as the keyboard's height. */
     pan(dy) { const max = Math.max(0, H() - fake.height); st.top = Math.max(0, Math.min(Math.max(max, dy), st.top + dy)); log.push(["pan", st.top]); fire("scroll"); },
+    /** WebKit's selection autoscroll, one tick of its 50 ms timer during a caret drag: a 1 px point at the finger is
+     *  revealed through the document (RenderLayer::autoscroll → LocalFrameView::scrollRectToVisibleInTopLevelView),
+     *  grown by the root element's scroll-padding, scrolled to the nearest edge only when not already in view
+     *  (ScrollableArea::getRectToExposeForScrollIntoView with alignToEdgeIfNeeded), the scroll clamped to the room the
+     *  keyboard leaves. `y` is the finger in visual coordinates. Returns the pan afterwards. */
+    autoscrollTick(y) {
+      const cs = getComputedStyle(document.documentElement);
+      const padTop = parseFloat(cs.scrollPaddingTop) || 0, padBottom = parseFloat(cs.scrollPaddingBottom) || 0;
+      const docY = y + st.top, top = docY - padTop, bottom = docY + 1 + padBottom, h = bottom - top;
+      const vTop = st.top, vBottom = st.top + fake.height, visible = Math.max(0, Math.min(vBottom, bottom) - Math.max(vTop, top));
+      let target = st.top;
+      if (visible !== h && visible !== fake.height) {   // not fully in view, and not covering the whole view
+        const alignBottom = (bottom > vBottom && h < fake.height) || (bottom < vBottom && h > fake.height);
+        target = alignBottom ? bottom - fake.height : top;
+      }
+      target = Math.max(0, Math.min(Math.max(0, H() - fake.height), Math.round(target)));
+      if (target !== st.top) { st.top = target; log.push(["autoscroll", st.top]); fire("scroll"); }
+      return st.top;
+    },
   };
   // iOS's reveal: a field that takes the focus where the keyboard will cover it makes iOS pan the page up to show it,
   // judged from the field's position at the moment of focus. In a Home Screen app the visual viewport gets its final
@@ -122,7 +150,7 @@ const geometry = (page) => page.evaluate(() => {
   const r = (sel) => { const e = document.querySelector(sel); if (!e || e.hidden || !e.getClientRects().length) return null; const b = e.getBoundingClientRect(); return { t: b.top - pan, b: b.bottom - pan, l: b.left, r: b.right }; };
   const cs = getComputedStyle(document.documentElement);
   const rows = [...document.querySelectorAll("#list .row")].map((e) => { const b = e.getBoundingClientRect(); return { t: b.top - pan, b: b.bottom - pan }; });
-  return { pan, vvh, ih: innerHeight, kb: cs.getPropertyValue("--kb").trim(), vvTop: cs.getPropertyValue("--vv-top").trim(),
+  return { pan, vvh, ih: innerHeight, kb: cs.getPropertyValue("--kb").trim(), vvTop: cs.getPropertyValue("--vv-top").trim(), dataKb: document.documentElement.dataset.kb === "1",
     top: r("#top"), dock: r("#dock"), results: r("#results"), home: r("#home"), main: r("#main"), empty: r("#home .empty, #home .prompt, #home h2, #home .empty-title"), input: r("#q"),
     rows, bestRow: rows.length ? rows.reduce((a, b) => (b.b > a.b ? b : a)) : null, scrollTop: document.getElementById("results").scrollTop, active: document.activeElement?.id || document.activeElement?.tagName };
 });
@@ -253,6 +281,53 @@ scenario("S11", "a tap on the search box opens the keyboard without iOS sliding 
   const back = await page.evaluate(() => getComputedStyle(document.getElementById("q")).transform);
   check("S11", "the field is back in place on the next frame", back === "none", back);
   invariants("S11", "after the tap", await geometry(page));
+});
+
+scenario("S12", "the cursor is held and dragged in the search box: WebKit's autoscroll reveals the finger's point through the document, and nothing fights it (owner's recording, 2026-10-23)", async (page) => {
+  await page.focus("#q"); await settle(page, 100);
+  await page.evaluate(() => window.__ios.open(336)); await settle(page, 300);
+  await page.type("#q", "pea"); await page.waitForSelector("#results:not([hidden]) .row", { timeout: 20000 }); await settle(page, 500);
+  // the finger goes down on the field's text and stays; WebKit's autoscroll timer fires every 50 ms for a second, and
+  // every frame is sampled in visual coordinates
+  const { y, dockTop, frames } = await page.evaluate(() => new Promise((resolve) => {
+    const field = document.getElementById("q"); const pan0 = window.__ios.state.top;
+    const r = field.getBoundingClientRect(); const y = Math.round((r.top + r.bottom) / 2 - pan0);
+    const dockTop = Math.round(document.getElementById("dock").getBoundingClientRect().top - pan0);
+    const e = new Event("touchstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(e, "touches", { value: [{ identifier: 1, target: field, clientX: 120, clientY: y }] });
+    field.dispatchEvent(e);
+    let ticks = 0; const tick = () => { window.__ios.autoscrollTick(y); if (++ticks < 20) setTimeout(tick, 50); }; setTimeout(tick, 50);
+    const frames = [];
+    const sample = () => {
+      const { top: pan, h } = window.__ios.state;
+      const top = document.getElementById("top").getBoundingClientRect(), dock = document.getElementById("dock").getBoundingClientRect();
+      frames.push({ pan, headerTop: Math.round(top.top - pan), dockBottom: Math.round(dock.bottom - pan), keyboardTop: h, innerHeight });
+      if (frames.length < 72) requestAnimationFrame(sample); else resolve({ y, dockTop, frames });
+    };
+    requestAnimationFrame(sample);
+  }));
+  check("S12", "the finger is on the search box, above the keyboard", y > dockTop && y < frames[0].keyboardTop, `finger ${y}, dock top ${dockTop}, keyboard top ${frames[0].keyboardTop}`);
+  const maxPan = Math.max(...frames.map((f) => f.pan));
+  check("S12", "the reveal finds the finger's point already in view: the page never pans, in any frame", maxPan === 0, `largest pan ${maxPan} (the root's scroll-padding grows the point past the keyboard)`);
+  const headerOff = frames.filter((f) => f.headerTop !== 0);
+  check("S12", "the header stays at the visible top in every frame", headerOff.length === 0, JSON.stringify(headerOff.slice(0, 3)));
+  const dockOff = frames.filter((f) => Math.abs(f.dockBottom - f.keyboardTop) > 1);
+  check("S12", "the dock sits on the keyboard in every frame", dockOff.length === 0, JSON.stringify(dockOff.slice(0, 3)));
+  // whatever else iOS scrolls while the finger is down (here: a pan to the bottom, where innerHeight reads as the
+  // visible height) is followed, never undone, so nothing on screen moves against the finger
+  await page.evaluate(() => window.__ios.pan(336)); await settle(page, 450);
+  const held = await geometry(page);
+  check("S12", "a pan made while the finger is down is left alone (no tug of war)", held.pan === 336, `pan ${held.pan}`);
+  check("S12", "at the bottom of the pan innerHeight reads as the visible height, and the keyboard is still known", held.ih === held.vvh && held.dataKb, JSON.stringify({ innerHeight: held.ih, vvh: held.vvh, dataKb: held.dataKb, kb: held.kb, vvTop: held.vvTop }));
+  invariants("S12", "panned, finger down", held);
+  // the finger lifts: the pan is undone once, with the layout written for pan 0 in the same frame
+  await page.evaluate(() => { const field = document.getElementById("q"); const e = new Event("touchend", { bubbles: true, cancelable: true }); Object.defineProperty(e, "touches", { value: [] }); field.dispatchEvent(e); });
+  await settle(page, 450);
+  const after = await geometry(page);
+  check("S12", "once the finger lifts the pan is undone", after.pan === 0, `pan ${after.pan}`);
+  invariants("S12", "after the drag", after);
+  const panned = await page.evaluate(() => window.__ios.log.filter((l) => l[0] === "autoscroll").length);
+  check("S12", "WebKit's autoscroll never had to scroll", panned === 0, `${panned} autoscroll ticks scrolled`);
 });
 
 for (const s of scenarios) {
