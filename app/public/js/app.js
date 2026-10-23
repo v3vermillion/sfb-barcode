@@ -1522,13 +1522,16 @@ function closeBootScreen(why) {
   if (!bootScreen || bootScreenClosing || splashHeld) return;
   bootScreenClosing = true;   // the first reason wins; the fade itself waits out the minimum
   if (why === "ready") setBootFill(1);
-  setTimeout(() => {
+  const fade = () => {
+    // a timer can fire a fraction of a millisecond early by performance.now(): wait out the rest, so the minimum holds
+    if (performance.now() < BOOT_SCREEN_MIN_MS) return setTimeout(fade, Math.ceil(BOOT_SCREEN_MIN_MS - performance.now()));
     bootScreen.classList.add("is-out");
     perf.boot.splashMs = Math.round(performance.now()); perf.boot.splashWhy = why;
     const gone = () => bootScreen.remove();
     bootScreen.addEventListener("transitionend", (e) => { if (e.target === bootScreen && e.propertyName === "opacity") gone(); });
     setTimeout(gone, 700);   // reduced motion (no transition), or an engine that never fires the event
-  }, Math.max(0, BOOT_SCREEN_MIN_MS - performance.now()));
+  };
+  setTimeout(fade, Math.max(0, BOOT_SCREEN_MIN_MS - performance.now()));
 }
 db.addEventListener("ready", () => closeBootScreen("ready"));
 db.addEventListener("state", (e) => { if (e.detail.state !== "loading" && e.detail.state !== "ready") closeBootScreen(e.detail.state); });
