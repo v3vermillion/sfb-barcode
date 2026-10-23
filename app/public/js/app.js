@@ -732,7 +732,7 @@ el.searchForm.addEventListener("submit", async (e) => {
 });
 /** Home or results: one switch, so the header's tally pill (results only; home has the tally card) always follows. */
 function setView(view) {
-  el.home.hidden = view !== "home"; el.results.hidden = view !== "results";
+  el.home.hidden = view !== "home"; el.results.hidden = view !== "results"; el.resultsMeta.hidden = view !== "results";
   renderTallyPill();
 }
 function showHome() {

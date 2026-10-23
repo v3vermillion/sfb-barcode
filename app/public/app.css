@@ -410,11 +410,13 @@ html:not([data-splash]) .boot { animation: boot-expire .5s ease 12s forwards; }
 .results {
   position: fixed; left: 0; right: 0; top: calc(var(--vv-top) + var(--top-h) + var(--banner-h)); bottom: calc(var(--dock-h) + var(--kb));
   overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-  display: flex; flex-direction: column-reverse; justify-content: flex-start; padding: 12px 16px 10px; margin: 0;
+  display: flex; flex-direction: column-reverse; justify-content: flex-start; padding: 12px 16px 44px; margin: 0;   /* 44px: the count line's strip */
 }
 /* the result count / "Closest matches" flag sits at the thumb end of the list and stays visible while scrolling */
 /* whole-pixel line boxes: a fractional height left the bottom-anchored list 1px short of its best match */
-.results-meta { order: -1; flex: none; position: sticky; bottom: 0; z-index: 1; padding: 8px 4px 6px; min-height: 34px; font-size: 14px; line-height: 20px; color: var(--ink-3); background: color-mix(in oklab, var(--bg) 94%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+/* the count / "Closest matches" line: a strip of its own just above the dock, outside the scroller (a sticky element at
+   the bottom of a column-reverse scroller does not stay put in WebKit); the list keeps room for it under its last row */
+.results-meta { position: fixed; left: 0; right: 0; bottom: calc(var(--dock-h) + var(--kb)); z-index: 1; padding: 8px 20px 6px; min-height: 34px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: var(--ink-3); background: color-mix(in oklab, var(--bg) 94%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .results-meta b { color: var(--ink-2); font-weight: 600; }
 .results-meta .warn { color: var(--closest); font-weight: 600; }
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column-reverse; gap: 6px; }
@@ -779,7 +781,7 @@ body:has(.tour:not([hidden])) .home-empty { visibility: hidden; }
 /* ---------- motion, wide screens, print ---------- */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (min-width: 720px) {
-  .main, .dock, .top, .stale { max-width: 720px; margin-inline: auto; left: 0; right: 0; }
+  .main, .dock, .top, .stale, .results-meta { max-width: 720px; margin-inline: auto; left: 0; right: 0; }
   .top { padding-left: 20px; }
   /* the results scroller spans the whole width (a wheel anywhere beside the column scrolls it); the column stays 720px */
   .results { max-width: none; margin-inline: 0; padding-inline: max(16px, calc((100% - 720px) / 2 + 16px)); }

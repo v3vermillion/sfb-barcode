@@ -60,7 +60,7 @@ try {
     check("the same search re-run keeps the place", (await scrollTop(page)) < -200);
     // the count line is sticky at the scroller's bottom edge: scrolled up, it must still sit on the dock, not float mid-list
     const meta = await page.evaluate(() => { const m = document.getElementById("resultsMeta").getBoundingClientRect(), r = document.getElementById("results").getBoundingClientRect(); return { metaBottom: m.bottom, boxBottom: r.bottom }; });
-    check("the count line stays on the box's bottom edge while scrolled up", Math.abs(meta.metaBottom - meta.boxBottom) <= 12, JSON.stringify(meta));
+    check("the count line stays on the box's bottom edge while scrolled up", Math.abs(meta.metaBottom - meta.boxBottom) <= 1, JSON.stringify(meta));
     await search(page, "peanut butter creamy");
     check("a refined search reopens at its best match", (await scrollTop(page)) === 0 && (await bestVisible(page)));
     await search(page, "peanut butter");   // enough rows to scroll on any fixture size (the refined search may fit one screen)
