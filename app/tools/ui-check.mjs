@@ -368,6 +368,73 @@ await scenario(["S1"], "scanner flashlight", async (set) => {
   check("S1", "back from the background with the camera refused: no flashlight without a camera", after.denied && !after.torch, JSON.stringify(after));
 });
 
+// iPhone asks for the camera again about a minute after capture stops (no stored decision for a Home Screen web app), so
+// with "Keep the camera ready" on, closing the scanner or leaving the app parks the camera track instead of ending it,
+// and the next scan inside the window takes it back without asking (owner, 2026-10-23: one prompt per shift, 4 hours).
+const COUNTED_CAMERA = {
+  fn: () => {
+    window.__cams = []; window.__constraints = [];
+    navigator.mediaDevices.getUserMedia = async () => {
+      const c = document.createElement("canvas"); c.width = 640; c.height = 480; c.getContext("2d").fillRect(0, 0, 640, 480);
+      const stream = c.captureStream(5), track = stream.getVideoTracks()[0];
+      track.getCapabilities = () => ({ torch: true, zoom: { min: 1, max: 3, step: 0.1 } });
+      track.applyConstraints = async (k) => { window.__constraints.push(k); };
+      window.__cams.push(track);
+      return stream;
+    };
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+    window.__setHidden = (h) => { hidden = h; document.dispatchEvent(new Event("visibilitychange")); };
+  },
+};
+const camState = (page) => page.evaluate(() => ({ asked: window.__cams.length, live: window.__cams.map((t) => t.readyState), enabled: window.__cams.map((t) => t.enabled), ready: window.__sfb.cameraReady(), src: !!document.getElementById("video").srcObject, open: !document.getElementById("scanner").hidden }));
+await scenario(["F68"], "iPhone: the camera is kept ready between scans", async (set) => {
+  const env = set(await open({ ios: true, init: COUNTED_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  let st = await camState(page);
+  check("F68", "the first scan asks for the camera once", st.asked === 1 && st.src && !st.ready, JSON.stringify(st));
+  await page.click("#scanClose"); await settle(page, 500);
+  st = await camState(page);
+  check("F68", "closing the scanner parks the camera: still live, disabled, detached, kept ready", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === false && !st.src && st.ready && !st.open, JSON.stringify(st));
+  const idle = await page.evaluate(() => window.__constraints.at(-1));
+  check("F68", "the parked camera is asked for its smallest, slowest picture", idle?.frameRate?.ideal === 2 && idle?.width?.ideal === 320, JSON.stringify(idle));
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  st = await camState(page);
+  const full = await page.evaluate(() => window.__constraints.findLast((k) => k?.width)?.width?.ideal);
+  check("F68", "the next scan takes the parked camera back without asking, at the full picture size", st.asked === 1 && st.enabled[0] === true && st.src && !st.ready && full === 1920, JSON.stringify({ ...st, full }));
+  const noted = await page.evaluate(() => window.__sfb.db.log.filter((l) => /camera/.test(l)).map((l) => l.replace(/^[\d.]+s /, "")));
+  check("F68", "diagnostics say whether the camera was opened or taken back", noted.join("|") === "camera opened|camera taken back (kept ready)", noted.join("|"));
+  await page.evaluate(() => window.__setHidden(true)); await settle(page, 300);
+  st = await camState(page);
+  check("F68", "leaving the app with the scanner open parks the camera too", st.asked === 1 && st.live[0] === "live" && st.enabled[0] === false && !st.src && st.ready, JSON.stringify(st));
+  await page.evaluate(() => window.__setHidden(false)); await settle(page, 1200);
+  st = await camState(page);
+  check("F68", "back in the app, the scanner resumes on the same camera", st.asked === 1 && st.enabled[0] === true && st.src && st.open, JSON.stringify(st));
+  await page.click("#scanClose"); await settle(page, 400);
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 400);
+  const row = await page.evaluate(() => { const b = [...document.querySelectorAll("#settings [data-keep]")]; return { labels: b.map((x) => x.textContent), pressed: b.find((x) => x.getAttribute("aria-pressed") === "true")?.dataset.keep, tall: b.every((x) => x.getBoundingClientRect().height >= 44) }; });
+  check("F68", "Settings offers Off, 15 min, 1 hr and 4 hr, 4 hr by default, every choice a 44px target", row.labels.join(",") === "Off,15 min,1 hr,4 hr" && row.pressed === "240" && row.tall, JSON.stringify(row));
+  await page.click("#settings [data-keep='0']"); await settle(page, 300);
+  st = await camState(page);
+  const pref = await page.evaluate(() => JSON.parse(localStorage.getItem("sfb.prefs")).keepCamera);
+  check("F68", "Off ends the parked camera at once and is remembered", st.live[0] === "ended" && !st.ready && pref === 0, JSON.stringify({ ...st, pref }));
+  await page.keyboard.press("Escape"); await settle(page, 400);
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  await page.click("#scanClose"); await settle(page, 400);
+  st = await camState(page);
+  check("F68", "with the setting off, closing the scanner releases the camera as before", st.asked === 2 && st.live[1] === "ended" && !st.ready, JSON.stringify(st));
+});
+await scenario(["F68"], "Android keeps no camera between scans (the grant persists there)", async (set) => {
+  const env = set(await open({ android: true, init: COUNTED_CAMERA }));
+  const { page } = env;
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  await page.click("#scanClose"); await settle(page, 400);
+  const st = await camState(page);
+  const offered = await page.evaluate(async () => { document.getElementById("settingsBtn").click(); await new Promise((r) => setTimeout(r, 400)); return !!document.querySelector("#settings [data-keep]"); });
+  check("F68", "Android: the camera ends when the scanner closes, and the setting is not offered", st.live[0] === "ended" && !st.ready && !offered, JSON.stringify({ ...st, offered }));
+});
+
 // Sheets close by a drag on their whole header, not only the 21px handle; a short drag springs back without moving the
 // content; a tap on the header is a tap; a re-render mid-drag (Settings refreshes its price card) is harmless.
 const touchDrag = async (cdp, page, x, y0, y1, { steps = 8, ms = 16, hold = false } = {}) => {
