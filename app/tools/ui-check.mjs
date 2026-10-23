@@ -689,20 +689,40 @@ await scenario(["F63"], "iOS launch screens: served with the page, not precached
 await scenario(["F64"], "boot screen: the launch image carries on as a layer until the price list is open (owner, 2026-10-22)", async (set) => {
   const env = set(await open({ wait: false }));
   const { page } = env;
-  const first = await page.evaluate(() => { const b = document.getElementById("boot"); if (!b) return null; const cs = getComputedStyle(b); return { shown: b.getClientRects().length > 0, hidden: b.getAttribute("aria-hidden"), z: Number(cs.zIndex), pos: cs.position, sweep: getComputedStyle(b.querySelector(".boot-bar i")).animationName, icon: b.querySelector(".boot-icon")?.getAttribute("src") }; });
+  const first = await page.evaluate(() => { const b = document.getElementById("boot"); if (!b) return null; const cs = getComputedStyle(b); return { shown: b.getClientRects().length > 0, hidden: b.getAttribute("aria-hidden"), z: Number(cs.zIndex), pos: cs.position, sweep: getComputedStyle(b.querySelector(".boot-bar i")).animationName, fill: window.__sfb?.perf?.boot?.fill, icon: b.querySelector(".boot-icon")?.getAttribute("src") }; });
   check("F64", "the layer is on screen before the price list opens: fixed, above everything, hidden from screen readers, the app icon itself", !!first?.shown && first.hidden === "true" && first.pos === "fixed" && first.z >= 1000 && /icon-512\.png$/.test(first.icon), JSON.stringify(first));
-  check("F64", "its progress bar moves while it is up", first?.sweep === "boot-sweep", first?.sweep);
+  check("F64", "its bar never sweeps", first?.sweep === "none", first?.sweep);
   await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 1500);
-  const after = await page.evaluate(() => ({ boot: !!document.getElementById("boot"), why: window.__sfb.perf.boot.splashWhy, at: window.__sfb.perf.boot.splashMs }));
+  const after = await page.evaluate(() => ({ boot: !!document.getElementById("boot"), why: window.__sfb.perf.boot.splashWhy, at: window.__sfb.perf.boot.splashMs, fills: window.__sfb.perf.boot.fills }));
   check("F64", "once the prices are open the layer is gone from the page (not just hidden), and the boot log says why", !after.boot && typeof after.why === "string" && after.at >= 650, JSON.stringify(after));
+  const mono = (f) => Array.isArray(f) && f.length > 0 && f.every(([, v], i) => i === 0 || v > f[i - 1][1]);
+  check("F72", "first launch: the bar starts at the script's mark and only ever grows, and the layer gives way to the download card", mono(after.fills) && after.fills[0][1] === 0.48 && after.why === "downloading", JSON.stringify(after));
+  // a warm launch (the pack is on the phone): the bar follows the shards opening and is full before the fade
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector("html[data-ready='1']", { timeout: 60000 }); await settle(page, 1500);
+  const warm = await page.evaluate(() => ({ boot: !!document.getElementById("boot"), why: window.__sfb.perf.boot.splashWhy, fills: window.__sfb.perf.boot.fills }));
+  check("F72", "warm launch: the bar fills from the script's mark to full as the price list opens, then the layer goes", mono(warm.fills) && warm.fills[0][1] === 0.48 && warm.fills.at(-1)[1] === 1 && warm.why === "ready" && !warm.boot, JSON.stringify(warm));
   check("F64", "no page errors", env.errors.length === 0, env.errors.join(" | "));
+});
+// The layer stayed up for minutes on the owner's iPhone (2026-10-23): the page was the new build's, the script the
+// previous build's (the old worker served from both builds' caches), and the old script knew no boot layer. The worker
+// now reads its own cache only (sw.test), and the layer leaves by itself when no script takes it down.
+await scenario(["F71"], "boot screen: without the app script the layer still leaves on its own", async (set) => {
+  const env = set(await open({ wait: false, routes: [["**/js/app.js", (route) => route.abort()]] }));
+  const { page } = env;
+  await settle(page, 1500);
+  const up = await page.evaluate(() => { const b = document.getElementById("boot"); const cs = b && getComputedStyle(b); return b ? { vis: cs.visibility, op: Number(cs.opacity), anim: cs.animationName, delay: cs.animationDelay } : null; });
+  check("F71", "the layer is up and armed to expire at 12 s, with no script at all", !!up && up.vis === "visible" && up.op === 1 && up.anim === "boot-expire" && up.delay === "12s", JSON.stringify(up));
+  await settle(page, 11500);
+  const down = await page.evaluate(() => { const b = document.getElementById("boot"); const cs = b && getComputedStyle(b); return b ? { vis: cs.visibility, op: Number(cs.opacity) } : null; });
+  check("F71", "after 12 s it is out of the way (hidden, no pointer target) so the page underneath can be seen", !!down && down.vis === "hidden" && down.op === 0, JSON.stringify(down));
 });
 await scenario(["F64"], "boot screen: ?splash=1 holds it still (the launch-image renderer, a preview on a phone); reduced motion holds its motion too", async (set) => {
   const env = set(await open({ query: "tour=0&splash=1" }));
   const { page } = env;
   await settle(page, 1200);
-  const held = await page.evaluate(() => { const b = document.getElementById("boot"); return { boot: !!b, flag: document.documentElement.dataset.splash, sweep: b && getComputedStyle(b.querySelector(".boot-bar i")).animationName, bloom: b && getComputedStyle(b.querySelector(".boot-bloom")).animationName }; });
-  check("F64", "with ?splash=1 the layer stays after the prices open, with nothing moving", held.boot && held.flag === "1" && held.sweep === "none" && held.bloom === "none", JSON.stringify(held));
+  const held = await page.evaluate(() => { const b = document.getElementById("boot"); return { boot: !!b, flag: document.documentElement.dataset.splash, sweep: b && getComputedStyle(b.querySelector(".boot-bar i")).animationName, bloom: b && getComputedStyle(b.querySelector(".boot-bloom")).animationName, bar: b && Math.round(100 * parseFloat(getComputedStyle(b.querySelector(".boot-bar i")).width) / b.querySelector(".boot-bar").getBoundingClientRect().width), expire: b && getComputedStyle(b).animationName }; });
+  check("F64", "with ?splash=1 the layer stays after the prices open, with nothing moving and the bar where the launch image draws it", held.boot && held.flag === "1" && held.sweep === "none" && held.bloom === "none" && held.bar === 40 && held.expire === "none", JSON.stringify(held));
   // let go of the hold: the motion starts; then prefers-reduced-motion stops it again
   const motion = await page.evaluate(() => { delete document.documentElement.dataset.splash; return getComputedStyle(document.querySelector("#boot .boot-bloom")).animationName; });
   await page.emulateMedia({ reducedMotion: "reduce" }); await settle(page, 200);
@@ -986,6 +1006,45 @@ await scenario(["V3"], "Settings: Check for new prices", async (set) => {
   await page.focus("#settings [data-act=update]"); await page.keyboard.press("Enter"); await settle(page, 1500);
   const st = await page.evaluate(() => ({ toast: [...document.querySelectorAll("#settings .toasts-dlg .toast")].map((t) => t.textContent).join(" | "), focus: document.activeElement?.dataset?.act || document.activeElement?.tagName }));
   check("V3", "the result toast stays and the focus stays on the button", /up to date|price list/i.test(st.toast) && st.focus === "update", JSON.stringify(st));
+});
+
+// <html data-theme> carries the chosen theme, and the Settings tap handler looked for the nearest [data-theme] from the
+// tap: with Light or Dark chosen that was the page itself, so every other control in the sheet went dead (owner's
+// iPhone, 2026-10-23: the live-check switch would not move until System was chosen again).
+await scenario(["F69"], "Settings: the switches and buttons still answer while Light or Dark is chosen", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 600);
+  const sw = '#settings [data-pref="haptics"]';
+  const state = () => page.evaluate((sel) => ({ theme: document.documentElement.dataset.theme || "auto", aria: document.querySelector(sel)?.getAttribute("aria-checked"), stored: JSON.parse(localStorage.getItem("sfb.prefs") || "{}").haptics ?? true, pressed: document.querySelector("#settings [data-theme][aria-pressed=true]")?.dataset.theme }), sw);
+  await page.click(sw); await settle(page, 200);
+  const a = await state();
+  check("F69", "System: the switch moves", a.aria === "false" && a.stored === false, JSON.stringify(a));
+  await page.click('#settings [data-theme="dark"]'); await settle(page, 400);
+  await page.click(sw); await settle(page, 200);
+  const b = await state();
+  check("F69", "Dark: the switch moves and is stored", b.theme === "dark" && b.aria === "true" && b.stored === true && b.pressed === "dark", JSON.stringify(b));
+  await page.click("#settings [data-act=update]"); await settle(page, 1500);
+  const toast = await visibleText(page, "#settings .toasts-dlg");
+  check("F69", "Dark: Check for new prices still checks", /up to date|price list/i.test(toast), toast);
+  await page.click('#settings [data-theme="light"]'); await settle(page, 400);
+  await page.click(sw); await settle(page, 200);
+  const c = await state();
+  check("F69", "Light: the switch moves and is stored", c.theme === "light" && c.aria === "false" && c.stored === false && c.pressed === "light", JSON.stringify(c));
+  await page.click('#settings [data-theme="auto"]'); await settle(page, 300);
+  check("F69", "System again: the page carries no theme attribute", (await state()).theme === "auto");
+});
+
+// The result toast of Check for new prices blinked: the re-render that follows the check took the sheet's toast
+// region out and put it back, which restarts the entry animation of every toast in it (owner's iPhone, 2026-10-23).
+await scenario(["F70"], "Settings: the result toast of Check for new prices shows once, without a blink", async (set) => {
+  const env = set(await open({}));
+  const { page } = env;
+  await page.click("#settingsBtn"); await page.waitForSelector("#settings[open]"); await settle(page, 600);
+  await page.evaluate(() => { window.__hostMoves = 0; new MutationObserver((ms) => { for (const m of ms) if ([...m.removedNodes].some((n) => n.classList?.contains("toasts-dlg"))) window.__hostMoves++; }).observe(document.getElementById("settings"), { childList: true }); });
+  await page.click("#settings [data-act=update]"); await settle(page, 1500);
+  const st = await page.evaluate(() => { const t = document.querySelector("#settings .toasts-dlg .toast"); const a = t?.getAnimations()[0]; return { moves: window.__hostMoves, toasts: document.querySelectorAll("#settings .toasts-dlg .toast").length, text: t?.textContent, anim: a ? { state: a.playState, t: Math.round(a.currentTime) } : null, host: document.getElementById("settings").firstElementChild?.className }; });
+  check("F70", "the toast region stays in place through the re-render, so the toast animates in once", st.moves === 0 && st.toasts === 1 && /up to date|price list/i.test(st.text || "") && st.host === "toasts-dlg" && (!st.anim || st.anim.state === "finished"), JSON.stringify(st));
 });
 
 await scenario(["V6"], "result sheet in phone landscape shows the item and the button together", async (set) => {

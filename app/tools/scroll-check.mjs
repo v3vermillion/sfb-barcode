@@ -58,6 +58,9 @@ try {
     check("the results scroll all the way up", await topRowVisible(page));
     await page.evaluate(() => window.__sfb.runSearch(window.__sfb.state.query)); await settle(page, 600);
     check("the same search re-run keeps the place", (await scrollTop(page)) < -200);
+    // the count line is sticky at the scroller's bottom edge: scrolled up, it must still sit on the dock, not float mid-list
+    const meta = await page.evaluate(() => { const m = document.getElementById("resultsMeta").getBoundingClientRect(), r = document.getElementById("results").getBoundingClientRect(); return { metaBottom: m.bottom, boxBottom: r.bottom }; });
+    check("the count line stays on the box's bottom edge while scrolled up", Math.abs(meta.metaBottom - meta.boxBottom) <= 1, JSON.stringify(meta));
     await search(page, "peanut butter creamy");
     check("a refined search reopens at its best match", (await scrollTop(page)) === 0 && (await bestVisible(page)));
     await search(page, "peanut butter");   // enough rows to scroll on any fixture size (the refined search may fit one screen)
@@ -98,8 +101,8 @@ try {
       await page.locator("#list .row").first().click(); await page.waitForSelector("#sheet[open]"); await settle(page, 300);
       await page.click("#sheet [data-act=add]"); await page.waitForSelector("#sheet:not([open])", { state: "attached" }); await settle(page, 300);
     }
-    const home = await page.evaluate(() => ({ y: scrollY, max: document.documentElement.scrollHeight - innerHeight }));
-    check("Home comes back at the top", home.y === 0, JSON.stringify(home));
+    const home = await page.evaluate(() => ({ y: scrollY, panel: document.getElementById("main").scrollTop, max: document.documentElement.scrollHeight - innerHeight }));
+    check("Home comes back at the top", home.y === 0 && home.panel === 0 && home.max <= 0, JSON.stringify(home));
     await page.click("#tallyCard"); await page.waitForSelector("#tallySheet[open]"); await settle(page, 700);   // home shows the tally card (the header pill is for results)
     await page.mouse.move(180, 500); await page.mouse.wheel(0, 300);
     // WebKit animates a wheel scroll: measure once it has come to rest, not part-way (281 of 300 was read once)

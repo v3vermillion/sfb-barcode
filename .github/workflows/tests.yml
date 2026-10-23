@@ -122,6 +122,13 @@ jobs:
       - name: Scrolling and touch checks (WebKit)
         if: ${{ !cancelled() }}
         run: node tools/scroll-check.mjs --browser webkit
+      # the keyboard and visual-viewport rules against a scripted model of iOS (app/tools/keyboard-check.mjs)
+      - name: Keyboard checks (Chromium)
+        if: ${{ !cancelled() }}
+        run: node tools/keyboard-check.mjs --browser chromium
+      - name: Keyboard checks (WebKit)
+        if: ${{ !cancelled() }}
+        run: node tools/keyboard-check.mjs --browser webkit
 
   report:
     # only on main: open or close the tests-failed alert
