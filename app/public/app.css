@@ -218,8 +218,10 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
   filter: drop-shadow(0 0 24px color-mix(in oklab, var(--accent) 50%, transparent)) drop-shadow(var(--boot-shadow));
 }
 .boot-bar { position: relative; width: 148px; height: 4px; margin-top: 34px; border-radius: 999px; background: var(--boot-track); overflow: hidden; }
+/* the lit segment is the real progress: the launch image draws it at 40% (the shell is up); the script moves it on as
+   the price list's shards open (app.js setBootFill) and fills it before the fade */
 .boot-bar i {
-  position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 999px; will-change: transform;
+  position: absolute; inset: 0 auto 0 0; width: var(--boot-fill, 40%); border-radius: 999px; transition: width .4s ease-out;
   background: linear-gradient(90deg, color-mix(in oklab, var(--boot-bar) 70%, transparent), var(--boot-bar) 55%, var(--boot-bar-hi));
   box-shadow: 0 0 12px color-mix(in oklab, var(--boot-bar) 70%, transparent);
 }
@@ -234,12 +236,14 @@ input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-
   .boot-org { font-size: 13px; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  html:not([data-splash]) .boot-bar i { animation: boot-sweep 2.4s cubic-bezier(.5, 0, .3, 1) infinite; }
   html:not([data-splash]) .boot-bloom { animation: boot-breathe 3.6s ease-in-out infinite; }
 }
 @media (prefers-reduced-motion: reduce) { .boot.is-out .boot-stack { transform: none; } }   /* the fade alone */
-/* the segment starts where the launch image drew it, sweeps off to the right and returns from the left */
-@keyframes boot-sweep { 0% { transform: none; } 58% { transform: translateX(265%); } 58.01% { transform: translateX(-108%); } 100% { transform: none; } }
+/* Whatever happens to the script (it never loads, an older copy that knows no boot layer, an error before it runs),
+   the layer leaves on its own after 12 s and the home screen's own card says what is going on. app.js takes it down
+   sooner, at 8 s at the latest. */
+html:not([data-splash]) .boot { animation: boot-expire .5s ease 12s forwards; }
+@keyframes boot-expire { to { opacity: 0; visibility: hidden; } }
 @keyframes boot-breathe { 50% { transform: translate(-50%, calc(-50% - var(--boot-lift))) scale(1.06); opacity: .86; } }
 
 /* ---------- header ---------- */

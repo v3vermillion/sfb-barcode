@@ -24,6 +24,11 @@ self.addEventListener("message", (e) => { if (e.data?.type === "SKIP_WAITING") s
 
 const scope = new URL(self.registration.scope);
 const INDEX = scope.href;                                         // the page lives at the scope root (see build-site.mjs)
+// Only this build's cache is ever read. A search across every cache would also see the next build's precache while
+// its worker sits installed-but-waiting, so a page could be served the new index.html with this build's script
+// (2026-10-19: unstyled parts; 2026-10-23: the new boot layer that the old script never took down, for minutes,
+// until the app was closed and the waiting worker took over). One worker, one build, nothing mixed.
+const shell = (req) => caches.open(SHELL).then((c) => c.match(req, { ignoreSearch: true }));
 
 self.addEventListener("fetch", (e) => {
   const req = e.request;
@@ -41,14 +46,14 @@ self.addEventListener("fetch", (e) => {
     // the app. (Audit W9-01, 2026-10-21: the app opened instead of the privacy page.)
     const rel = url.pathname.slice(scope.pathname.length);
     if (rel === "privacy.html" || rel === "privacy") {
-      e.respondWith(caches.match(new URL("privacy.html", scope).href, { ignoreSearch: true })
+      e.respondWith(shell(new URL("privacy.html", scope).href)
         .then((r) => (r ? new Response(r.body, { status: 200, statusText: "OK", headers: r.headers }) : fetch(req))));
       return;
     }
-    e.respondWith(caches.match(INDEX, { ignoreSearch: true }).then((r) => r || fetch(req)));
+    e.respondWith(shell(INDEX).then((r) => r || fetch(req)));
     return;
   }
-  e.respondWith(caches.match(req, { ignoreSearch: true }).then((r) => r || fetch(req)));
+  e.respondWith(shell(req).then((r) => r || fetch(req)));
 });
 
 async function networkFirst(req) {

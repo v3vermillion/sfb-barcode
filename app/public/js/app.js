@@ -1390,10 +1390,26 @@ const BOOT_SCREEN_MIN_MS = 650, BOOT_SCREEN_MAX_MS = 8000;
 const bootScreen = $("boot");
 const splashHeld = new URLSearchParams(location.search).get("splash") === "1";
 if (splashHeld) document.documentElement.dataset.splash = "1";
+// The bar is the real progress (owner, 2026-10-23: a bar that fills, so a stalled start can be seen for what it is):
+// 40% is the launch image (the shell is up), 48% this script running, and the rest the price list's shards opening in
+// the worker (the "load" progress events); it fills before the fade. Only forwards, never back.
+const BOOT_FILL_SCRIPT = 0.48;
+let bootFill = 0.4;
+function setBootFill(f) {
+  if (!bootScreen || splashHeld) return;
+  f = Math.min(1, Math.max(bootFill, f));
+  if (f === bootFill) return;
+  bootFill = f; perf.boot.fill = Math.round(f * 100) / 100;
+  (perf.boot.fills ||= []).push([Math.round(performance.now()), perf.boot.fill]);   // the bar's path, for the checks and a report
+  bootScreen.style.setProperty("--boot-fill", `${(f * 100).toFixed(1)}%`);
+}
+setBootFill(BOOT_FILL_SCRIPT);
+db.addEventListener("progress", (e) => { const d = e.detail; if (d.phase === "load" && d.total > 0) setBootFill(BOOT_FILL_SCRIPT + (0.97 - BOOT_FILL_SCRIPT) * Math.min(1, d.done / d.total)); });
 let bootScreenClosing = false;
 function closeBootScreen(why) {
   if (!bootScreen || bootScreenClosing || splashHeld) return;
   bootScreenClosing = true;   // the first reason wins; the fade itself waits out the minimum
+  if (why === "ready") setBootFill(1);
   setTimeout(() => {
     bootScreen.classList.add("is-out");
     perf.boot.splashMs = Math.round(performance.now()); perf.boot.splashWhy = why;
