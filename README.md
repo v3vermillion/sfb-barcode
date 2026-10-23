@@ -5,12 +5,26 @@ Built for the volunteers of the Strongsville Emergency Food Bank (Strongsville, 
 receive. Prices come from the Walmart I/O Affiliate API and, where the Strongsville Supercenter reports one, that store's
 own shelf price.
 
-<p>
-  <img src="docs/screens/light-390x844-10-home-recent.png" width="180" alt="Home screen: the food bank, the donation tally and Recent">
-  <img src="docs/screens/light-390x844-2-results.png" width="180" alt="Search results: brand, size, pack and price for each match">
-  <img src="docs/screens/light-390x844-3-sheet.png" width="180" alt="Item sheet: the price, the exact item, the price date and Add to tally">
-  <img src="docs/screens/light-390x844-8-tally.png" width="180" alt="Tally: every item added, the total, and Share">
-</p>
+<table>
+  <tr>
+    <th>Home</th>
+    <th>Search results</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screens/dark-390x844-10-home-recent.png" width="320" alt="Home screen: the food bank, the donation tally and Recent"></td>
+    <td><img src="docs/screens/dark-390x844-2-results.png" width="320" alt="Search results: brand, size and price for each match, the best match by the search box"></td>
+  </tr>
+  <tr>
+    <th>The item</th>
+    <th>The tally</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screens/dark-390x844-3-sheet.png" width="320" alt="Item sheet: the Strongsville store's shelf price and its date, the live check, the quantity and Add to tally"></td>
+    <td><img src="docs/screens/dark-390x844-8-tally.png" width="320" alt="Tally: every item added, the total, and Share"></td>
+  </tr>
+</table>
+
+<sub>The live app on an iPhone 15/16-sized screen in dark mode, with the real price list (<code>app/tools/readme-shots.mjs</code>).</sub>
 
 ## How volunteers use it
 
@@ -22,12 +36,16 @@ own shelf price.
 The app never answers with a blank. A barcode finds the exact item (retired barcodes included, since donors give old
 stock); a store-printed price label is decoded on the spot; a produce sticker gives the price per pound; a barcode Walmart
 does not sell is valued at the closest Walmart equivalent and labelled as such; a typed search that has to drop a word says
-which one. When the phone is online, an unknown barcode is also checked live. Every result says where its price comes from:
-prices from the price list carry its date, a live price the time it was checked, a store label its own printed price.
+which one. When the phone is online, the item on screen is also checked against Walmart's current price (a switch in
+Settings turns this off), and a barcode the price list does not know is looked up live. Every result says where its price
+comes from: prices from the price list carry its date, a live price the time it was checked, a store label its own printed
+price.
 
 It is a progressive web app: volunteers open it once, add it to the Home Screen (iPhone: Share › Add to Home Screen;
 Android: the browser's Install button), and it then works offline on the phone already in their hand, iPhone (iOS 16.4 or
-later) or Android (Chrome 111 or later). There is nothing to install from an app store and nothing to pay for; a Google
+later) or Android (Chrome 111 or later). It opens on its own launch screen, follows the phone's light or dark setting (or
+the one chosen in Settings), and on an iPhone keeps the camera ready for four hours after a scan so the phone asks for
+camera access once per shift rather than at every scan. There is nothing to install from an app store and nothing to pay for; a Google
 Play listing of the same app is possible (docs/RUNBOOK.md "Google Play").
 
 ## What is inside
@@ -72,8 +90,10 @@ pip install -r requirements.txt
 python -m unittest discover tests          # crawler, gates, cadence, review, orchestration
 
 cd app && npm install
-npm test                                   # barcode maths, tokenizer, resolution, the Worker's routes
+npm test                                   # barcode maths, tokenizer, resolution, the service worker, the Worker's routes
 npm run fixture && npm run build && npm run serve   # the app on a synthetic 760k-item snapshot at http://127.0.0.1:8787/
+node tools/ui-check.mjs                    # layout and behaviour rules in a browser; also scroll-check.mjs and
+                                           # keyboard-check.mjs (both with --browser webkit), as CI runs them
 ```
 
 The crawler also runs locally with `WM_CONSUMER_ID` and `WM_PRIVATE_KEY` set and `SFB_STORE` pointing at a checkout of the
@@ -82,15 +102,19 @@ Actions secrets, Cloudflare Worker secrets and the owner's password manager.
 
 ## Status
 
-The first real snapshot is published and the app serves it. Remaining before volunteers install it: the food bank's own
-address for the app, a test on real phones from that address, and the two one-time operator steps listed in
-[READINESS](docs/READINESS.md).
+The real price list is published (about 2.4 million listings, prices of October 21, 2026) and the app serves it. The
+one-time operator steps are done: the schedule watchdog has its GitHub token and the sample review has its Anthropic key.
+Remaining before volunteers install it: the food bank's own address for the app, a test on real phones from that address,
+and a named person who receives the alerts after the owner ([READINESS](docs/READINESS.md)).
+
+Open now: the Office Supplies refresh of October 21 is held by its gates (issue #51). While a refresh is held the pipeline
+starts nothing new, so it needs the owner's decision before the next monthly refresh comes due.
 
 ## License
 
 [MIT](LICENSE). Use it for your own food bank; see "Another food bank" in [docs/READINESS.md](docs/READINESS.md) for
-what to change. Bundled third-party components keep their own licences (zxing-wasm MIT, wrapping zxing-cpp Apache-2.0; Geist OFL); the Open
-Food Facts data is ODbL.
+what to change. Bundled third-party components keep their own licences (zxing-wasm MIT, wrapping zxing-cpp Apache-2.0; Geist and Manrope
+OFL); the Open Food Facts data is ODbL.
 
 ## Acknowledgements
 
@@ -99,4 +123,5 @@ Prices from the [Walmart I/O Affiliate API](https://walmart.io/). Barcodes Walma
 Service; public domain), [Open Food Facts](https://world.openfoodfacts.org/), [Open Beauty Facts](https://world.openbeautyfacts.org/) and
 [Open Products Facts](https://world.openproductsfacts.org/) (ODbL). The scanner uses
 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (MIT), a WebAssembly build of [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) (Apache-2.0), where the browser has no barcode detector of its own; the
-typeface is [Geist](https://vercel.com/font) (OFL). Built for and with the Strongsville Emergency Food Bank.
+typefaces are [Geist](https://vercel.com/font) and, for the launch screen's wordmark,
+[Manrope](https://fonts.google.com/specimen/Manrope) (both OFL). Built for and with the Strongsville Emergency Food Bank.

@@ -28,6 +28,7 @@ app/
     serve.mjs        local static server that mirrors production headers
     measure.mjs      the performance numbers below (Playwright, 4× CPU throttle, fake camera); --browser webkit for iPhone's engine
     shots.mjs        phone-size screenshots (light/dark) + accessibility audit; --browser webkit too
+    readme-shots.mjs the README's four dark screens from the live site and its real price list (into docs/screens)
     scroll-check.mjs the scrolling rules (best match by the search box, wheel, keyboard pan, sheets); --browser webkit too
     ui-check.mjs     layout, price-status, walkthrough, accessibility and design rules, one id per defect (docs/UI-AUDIT.md)
     icon/make_splash.py   the iOS launch images: the page's boot screen rendered at every screen size by icon/render-splash.mjs (Chromium), Floyd-Steinberg dithered to 256 colours

@@ -214,7 +214,7 @@ const safeTop = () => safeProbe.offsetHeight;
 // smaller, and a page not installed reports them in innerHeight too.
 const KEYBOARD_MIN_PX = 100;
 const KEYBOARD_SETTLE_MS = 150;   // no change of the visible height for this long: the keyboard's animation is over
-let kbLast = { inset: 0, top: 0, height: 0, heightAt: 0, pinAt: 0 };
+let kbLast = { inset: 0, top: 0, height: 0, heightAt: 0, pinAt: 0, rawPan: 0 };
 const vvTrace = [];   // the last viewport readings, for Diagnostics (Settings › About)
 const traceVv = (text) => { vvTrace.push(`${(performance.now() / 1000).toFixed(1)}s ${text}`); if (vvTrace.length > 24) vvTrace.shift(); };
 function keyboardInset() {
@@ -224,11 +224,15 @@ function keyboardInset() {
   const zoomed = !!vv && vv.scale > 1.01;
   const vvh = vv ? Math.round(vv.height) : window.innerHeight;
   const now = performance.now();
-  if (vvh !== kbLast.height) { kbLast.height = vvh; kbLast.heightAt = now; }
+  const rawPan = vv ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+  // settled: neither the height nor the pan has moved for a while. In a Home Screen app iOS gives the visual viewport
+  // its final height at once and then animates the pan; undoing on the height alone cut into that animation
+  // (owner's recording, 2026-10-23: the page slid up, then snapped down half a second later)
+  if (vvh !== kbLast.height || rawPan !== kbLast.rawPan) { kbLast.height = vvh; kbLast.rawPan = rawPan; kbLast.heightAt = now; }
   const settled = now - kbLast.heightAt >= KEYBOARD_SETTLE_MS;
   const shrink = window.innerHeight - vvh;
   const keyboard = !!vv && !zoomed && (shrink >= KEYBOARD_MIN_PX || (typing() && shrink > 0));
-  let pan = vv ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+  let pan = rawPan;
   // iOS opens the keyboard by panning the page up (offsetTop) to reveal the field, and a drag with the keyboard up can
   // pan it further. While the keyboard animates, everything fixed follows the pan (--vv-top) so nothing on screen
   // moves; once it has settled the pan is undone (window.scrollTo moves the visual viewport in WebKit) with the
@@ -697,6 +701,25 @@ async function checkNow(btn = null) {
 
 // ------------------------------------------------------------------ search
 const PLACEHOLDER = el.q.placeholder;
+// iOS slides the whole page up to reveal a field it thinks the keyboard will cover, judged from where the field is
+// at the moment it takes the focus; a field in a bottom bar always qualifies, so every tap on the search box slid
+// the page up, and the app then had to bring it back down (owner's screen recording, 2026-10-23: the header off the
+// top, the keyboard over the search box, then a snap back, in half a second). So a tap on a text field that is not
+// focused yet takes the focus itself: the tap's own default is cancelled, the field is moved far above the screen for
+// that instant, focused without scrolling, and put back on the next frame. iOS sees nothing to reveal and only raises
+// the keyboard, which the dock rides up on (--kb, read every frame). The pattern of React Aria's usePreventScroll.
+// A field that already has the focus is left alone, so taps that move the caret or select text work as before.
+function focusWithoutReveal(e) {
+  const field = e.currentTarget;
+  if (document.activeElement === field || field.disabled || e.touches?.length) return;
+  e.preventDefault();
+  field.style.transform = "translateY(-2000px)";
+  field.focus({ preventScroll: true });
+  requestAnimationFrame(() => { field.style.transform = ""; });
+  pollKeyboard(1200);
+}
+for (const field of [el.q, el.scanTypeInput]) field.addEventListener("touchend", focusWithoutReveal, { passive: false });
+
 // One search per animation frame: a burst of keystrokes (or backspaces) searches and renders once, for the text as it
 // stands when the frame comes, instead of once per key with every intermediate list drawn and thrown away.
 let searchFrame = 0;
@@ -1499,13 +1522,16 @@ function closeBootScreen(why) {
   if (!bootScreen || bootScreenClosing || splashHeld) return;
   bootScreenClosing = true;   // the first reason wins; the fade itself waits out the minimum
   if (why === "ready") setBootFill(1);
-  setTimeout(() => {
+  const fade = () => {
+    // a timer can fire a fraction of a millisecond early by performance.now(): wait out the rest, so the minimum holds
+    if (performance.now() < BOOT_SCREEN_MIN_MS) return setTimeout(fade, Math.ceil(BOOT_SCREEN_MIN_MS - performance.now()));
     bootScreen.classList.add("is-out");
     perf.boot.splashMs = Math.round(performance.now()); perf.boot.splashWhy = why;
     const gone = () => bootScreen.remove();
     bootScreen.addEventListener("transitionend", (e) => { if (e.target === bootScreen && e.propertyName === "opacity") gone(); });
     setTimeout(gone, 700);   // reduced motion (no transition), or an engine that never fires the event
-  }, Math.max(0, BOOT_SCREEN_MIN_MS - performance.now()));
+  };
+  setTimeout(fade, Math.max(0, BOOT_SCREEN_MIN_MS - performance.now()));
 }
 db.addEventListener("ready", () => closeBootScreen("ready"));
 db.addEventListener("state", (e) => { if (e.detail.state !== "loading" && e.detail.state !== "ready") closeBootScreen(e.detail.state); });

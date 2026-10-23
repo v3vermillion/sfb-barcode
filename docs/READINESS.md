@@ -21,8 +21,9 @@ through `pipeline-alert` issues.
 ### Before volunteers install it
 1. **The app's permanent address** (`value.strongsvillefoodbank.org`, pending the food bank's approval, else a domain of the
    owner's). Volunteers must install from the final address only: offline data does not survive an address change.
-2. **One-time operator steps**: the Worker secret `GH_DISPATCH_TOKEN` for the schedule watchdog, and a small Anthropic credit
-   load for the sample review (RUNBOOK).
+2. ~~**One-time operator steps**: the Worker secret `GH_DISPATCH_TOKEN` for the schedule watchdog, and a small Anthropic credit
+   load for the sample review (RUNBOOK).~~ Done: the watchdog dispatches the pipeline every hour it sits idle, and the sample
+   review ran on 2026-10-22 (checked 2026-10-23).
 3. **A test on real phones** from the final address: an older iPhone and an Android phone, installed to the Home Screen,
    airplane mode, one shift of scanning.
 4. **Who receives alerts after the owner**: a named person on the repository's issue notifications and the one-page alert

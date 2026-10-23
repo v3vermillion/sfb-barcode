@@ -66,6 +66,35 @@ const IOS_VV = () => {
     /** The user drags: the visual viewport pans within the layout viewport, as far as the keyboard's height. */
     pan(dy) { const max = Math.max(0, H() - fake.height); st.top = Math.max(0, Math.min(Math.max(max, dy), st.top + dy)); log.push(["pan", st.top]); fire("scroll"); },
   };
+  // iOS's reveal: a field that takes the focus where the keyboard will cover it makes iOS pan the page up to show it,
+  // judged from the field's position at the moment of focus. In a Home Screen app the visual viewport gets its final
+  // height at once and the pan is then animated (owner's screen recording, 2026-10-23).
+  let focusRect = null;
+  document.addEventListener("focusin", (e) => { if (e.target?.tagName === "INPUT") { const r = e.target.getBoundingClientRect(); focusRect = { top: r.top, bottom: r.bottom }; } }, true);
+  /** A finger taps the field (touchstart, touchend; the browser focuses it unless the app cancelled the touchend),
+   *  then the keyboard of height k opens with the reveal iOS would make. Resolves with every frame's geometry. */
+  window.__ios.tapAndOpen = (sel, k, frames = 10) => new Promise((resolve) => {
+    const field = document.querySelector(sel);
+    const touch = (type) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [{ identifier: 1, target: field, clientX: 100, clientY: 100 }] }); return field.dispatchEvent(e); };
+    focusRect = null;
+    touch("touchstart");
+    if (touch("touchend")) field.focus();          // not cancelled: the browser's own focus
+    const visibleBottom = H() - k;
+    const reveal = focusRect && focusRect.bottom > visibleBottom ? Math.min(k, Math.round(focusRect.bottom - visibleBottom + 12)) : 0;
+    const trace = [{ reveal, focusTop: focusRect && Math.round(focusRect.top) }];
+    st.h = H() - k; fire("resize");
+    let i = 0;
+    const step = () => {
+      i++;
+      if (reveal) { st.top = Math.round(reveal * Math.min(1, i / frames)); fire("scroll"); }
+      requestAnimationFrame(() => {
+        const top = document.getElementById("top").getBoundingClientRect(), dock = document.getElementById("dock").getBoundingClientRect();
+        trace.push({ i, pan: st.top, headerTop: Math.round(top.top - st.top), dockBottom: Math.round(dock.bottom - st.top), keyboardTop: fake.height });
+        if (i < frames + 6) step(); else resolve(trace);
+      });
+    };
+    requestAnimationFrame(step);
+  });
   // WebKit: window.scrollTo moves the visual viewport when the layout viewport has nowhere to go
   const scrollTo = window.scrollTo.bind(window);
   window.scrollTo = (x, y) => { let top = y; if (x && typeof x === "object") top = x.top; if (top === 0 && st.top !== 0) { st.top = 0; log.push(["scrollTo0"]); fire("scroll"); } return scrollTo(typeof x === "object" ? x : x, typeof x === "object" ? undefined : y); };
@@ -206,6 +235,24 @@ scenario("S10", "the keyboard closes but iOS leaves the page panned (iOS 26.0 le
   await page.evaluate(() => window.__ios.close({ frames: 3 })); await page.evaluate(() => window.__ios.pan(24)); await settle(page, 600);
   const g = await geometry(page);
   check("S10", "no pan is left behind, and the dock and header sit on the screen's edges", g.pan === 0 && near(g.dock.b, g.ih) && near(g.top.t, 0), JSON.stringify({ pan: g.pan, dock: g.dock, top: g.top }));
+});
+
+scenario("S11", "a tap on the search box opens the keyboard without iOS sliding the page (owner's recording, 2026-10-23)", async (page) => {
+  const trace = await page.evaluate(() => window.__ios.tapAndOpen("#q", 336));
+  const [head, ...frames] = trace;
+  const focused = await page.evaluate(() => document.activeElement?.id);
+  check("S11", "the tap focuses the search box", focused === "q", focused);
+  check("S11", "iOS finds nothing to reveal: the field was out of its sight at the moment of focus", head.reveal === 0, JSON.stringify(head));
+  const maxPan = Math.max(...frames.map((f) => f.pan));
+  check("S11", "the page never pans, in any frame", maxPan === 0, `largest pan ${maxPan}`);
+  const off = frames.filter((f) => f.headerTop !== 0);
+  check("S11", "the header stays at the top in every frame", off.length === 0, JSON.stringify(off.slice(0, 3)));
+  const late = frames.slice(2).filter((f) => Math.abs(f.dockBottom - f.keyboardTop) > 1);
+  check("S11", "from the second frame on, the dock sits on the keyboard in every frame", late.length === 0, JSON.stringify(late.slice(0, 3)));
+  await settle(page, 300);
+  const back = await page.evaluate(() => getComputedStyle(document.getElementById("q")).transform);
+  check("S11", "the field is back in place on the next frame", back === "none", back);
+  invariants("S11", "after the tap", await geometry(page));
 });
 
 for (const s of scenarios) {
