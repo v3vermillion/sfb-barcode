@@ -169,4 +169,4 @@ These behaviours depend on iOS itself and cannot be produced in Chromium:
 
 ## Screens
 
-`docs/screens/` holds the current screenshots (`node tools/shots.mjs`). They also back the README images.
+`docs/screens/` holds the README's four screens, dark, taken from the live site with the real price list (`node tools/readme-shots.mjs`, run in `app/`). The full set at every size, light and dark, with the accessibility audit, comes from `node tools/shots.mjs` into `app/build/shots`.
