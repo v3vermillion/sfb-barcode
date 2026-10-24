@@ -78,7 +78,9 @@ const IOS_VV = () => {
      *  revealed through the document (RenderLayer::autoscroll → LocalFrameView::scrollRectToVisibleInTopLevelView),
      *  grown by the root element's scroll-padding, scrolled to the nearest edge only when not already in view
      *  (ScrollableArea::getRectToExposeForScrollIntoView with alignToEdgeIfNeeded), the scroll clamped to the room the
-     *  keyboard leaves. `y` is the finger in visual coordinates. Returns the pan afterwards. */
+     *  keyboard leaves. `y` is the finger in visual coordinates. Returns the pan afterwards. Not modelled: WebKit's edge band
+     *  (a push of up to 40 px per tick once the finger is within 100 px of the unobscured rect's bottom), which at pan 0
+     *  lies at the screen's bottom, below the search box; it only reaches a finger on the box once the page is deep-panned. */
     autoscrollTick(y) {
       const cs = getComputedStyle(document.documentElement);
       const padTop = parseFloat(cs.scrollPaddingTop) || 0, padBottom = parseFloat(cs.scrollPaddingBottom) || 0;
