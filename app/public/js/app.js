@@ -214,17 +214,25 @@ const safeTop = () => safeProbe.offsetHeight;
 // smaller, and a page not installed reports them in innerHeight too.
 const KEYBOARD_MIN_PX = 100;
 const KEYBOARD_SETTLE_MS = 150;   // no change of the visible height for this long: the keyboard's animation is over
-// A finger on the screen can still be driving a scroll of iOS's own (the autoscroll of a caret drag, a pan), so while
-// one is down a pan is followed, never undone: an undo mid-gesture is fought back within a frame or two and the screen
-// flickers between the two layouts (owner's recording, 2026-10-23: the cursor held in the search box). The hold expires
-// on its own, in case the end of a touch never reaches the page; the worst case is then one undo during a long hold.
-const TOUCH_HOLD_MAX_MS = 2500;
-let touchesDown = 0, touchesAt = 0;
-const touching = () => touchesDown > 0 && performance.now() - touchesAt < TOUCH_HOLD_MAX_MS;
+// A pan is never fought. iOS can keep one going on its own: during a caret drag WebKit's selection autoscroll
+// re-applies it every 50 ms whenever the finger's point is outside the visible area (a thumb that slides onto the
+// keyboard), so an undo made then is put back within a frame or two, and undoing again is a tug of war the screen
+// shows as flicker (owner's recording, 2026-10-23: the cursor held in the search box). So, while the keyboard is up:
+// a pan is followed, not undone, while a finger is on the screen; and an undo that iOS puts back is not repeated: the
+// pan is followed until a finger lifts, the pan goes back to 0 by itself, or the keyboard goes. A pan left behind once
+// the keyboard has gone is always undone (nothing can re-apply it then: the layout and visible heights are equal).
+const UNDO_PUT_BACK_MS = 1500;   // a pan that grows again this soon after an undo was put back by iOS, not left over
+let kbLast = { inset: 0, top: 0, height: 0, heightAt: 0, pinAt: 0, rawPan: 0, undoAt: -Infinity, lowSinceUndo: 0, yielding: false };
+let touchesDown = 0;   // fingers on the screen, from the last touch event (a stale count is corrected by the next touch)
+const touching = () => touchesDown > 0;
+function yieldToPan(why) { if (!kbLast.yielding) traceVv(`pan back after an undo (${why}): followed, not undone`); kbLast.yielding = true; }
 for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) {
-  window.addEventListener(type, (e) => { touchesDown = e.touches?.length || 0; touchesAt = performance.now(); if (!touchesDown) pollKeyboard(); }, { capture: true, passive: true });
+  window.addEventListener(type, (e) => {
+    const was = touchesDown;
+    touchesDown = e.touches?.length || 0;
+    if (!touchesDown) { if (was) kbLast.yielding = false; pollKeyboard(); }   // the gesture is over: one undo may follow
+  }, { capture: true, passive: true });
 }
-let kbLast = { inset: 0, top: 0, height: 0, heightAt: 0, pinAt: 0, rawPan: 0 };
 const vvTrace = [];   // the last viewport readings, for Diagnostics (Settings › About)
 const traceVv = (text) => { vvTrace.push(`${(performance.now() / 1000).toFixed(1)}s ${text}`); if (vvTrace.length > 24) vvTrace.shift(); };
 function keyboardInset() {
@@ -251,17 +259,27 @@ function keyboardInset() {
   const keyboard = !!vv && !zoomed && (shrink >= KEYBOARD_MIN_PX || (typing() && shrink > 0));
   let pan = rawPan;
   // iOS opens the keyboard by panning the page up (offsetTop) to reveal the field, and a drag with the keyboard up can
-  // pan it further. While the keyboard animates, and while a finger is down, everything fixed follows the pan
-  // (--vv-top) so nothing on screen moves; once it has settled and the finger has lifted the pan is undone
-  // (window.scrollTo moves the visual viewport in WebKit) with the layout already written for pan 0 in the same frame,
-  // so the page never has a reason to slide again: the dock is above the keyboard by --kb, which is all iOS wanted.
-  // A residual pan after the keyboard has gone (iOS 26.0 left 24 px) is undone the same way.
+  // pan it further. While the keyboard animates, everything fixed follows the pan (--vv-top) so nothing on screen
+  // moves; once it has settled the pan is undone (window.scrollTo moves the visual viewport in WebKit) with the layout
+  // already written for pan 0 in the same frame, so the page never has a reason to slide again: the dock is above the
+  // keyboard by --kb, which is all iOS wanted. A residual pan after the keyboard has gone (iOS 26.0 left 24 px) is
+  // undone the same way. The undo never fights iOS (UNDO_PUT_BACK_MS above): a finger down, or an undo put back, and
+  // the pan is followed instead.
+  if (!keyboard || rawPan === 0) kbLast.yielding = false;   // the keyboard has gone, or iOS put the page back itself
+  const sinceUndo = now - kbLast.undoAt;
+  if (keyboard && sinceUndo < UNDO_PUT_BACK_MS) {
+    if (rawPan > kbLast.lowSinceUndo) yieldToPan("the pan grew again after the undo");
+    kbLast.lowSinceUndo = Math.min(kbLast.lowSinceUndo, rawPan);
+  }
   let undo = false;
-  if (pan > 0 && settled && !touching() && now - kbLast.pinAt > 120) { undo = true; pan = 0; kbLast.pinAt = now; }
+  if (pan > 0 && settled && now - kbLast.pinAt > 120 && (!keyboard || (!touching() && !kbLast.yielding))) {
+    if (keyboard && sinceUndo < UNDO_PUT_BACK_MS) yieldToPan("a second undo this soon");
+    else { undo = true; pan = 0; kbLast.pinAt = now; kbLast.undoAt = now; kbLast.lowSinceUndo = rawPan; }
+  }
   const inset = keyboard ? Math.max(0, Math.round(layoutH - vvh - pan)) : 0;
   const top = keyboard ? pan : 0;
   if (inset !== kbLast.inset || top !== kbLast.top) {
-    traceVv(`kb ${inset} pan ${top} (vv ${vvh}/${window.innerHeight}${layoutH !== window.innerHeight ? `, layout ${layoutH}` : ""}${typing() ? ", typing" : ""}${touching() ? ", touching" : ""}${undo ? ", pan undone" : ""})`);
+    traceVv(`kb ${inset} pan ${top} (vv ${vvh}/${window.innerHeight}${layoutH !== window.innerHeight ? `, layout ${layoutH}` : ""}${typing() ? ", typing" : ""}${touching() ? ", touching" : ""}${kbLast.yielding ? ", following" : ""}${undo ? ", pan undone" : ""})`);
     kbLast.inset = inset; kbLast.top = top;
   }
   withResultsRowHeld(() => {

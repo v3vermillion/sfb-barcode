@@ -318,7 +318,8 @@ scenario("S12", "the cursor is held and dragged in the search box: WebKit's auto
   await page.evaluate(() => window.__ios.pan(336)); await settle(page, 450);
   const held = await geometry(page);
   check("S12", "a pan made while the finger is down is left alone (no tug of war)", held.pan === 336, `pan ${held.pan}`);
-  check("S12", "at the bottom of the pan innerHeight reads as the visible height, and the keyboard is still known", held.ih === held.vvh && held.dataKb, JSON.stringify({ innerHeight: held.ih, vvh: held.vvh, dataKb: held.dataKb, kb: held.kb, vvTop: held.vvTop }));
+  check("S12", "the model clips innerHeight to the visible height at the bottom of the pan, as iOS does", held.ih === held.vvh, JSON.stringify({ innerHeight: held.ih, vvh: held.vvh }));
+  check("S12", "with innerHeight clipped, the keyboard is still known", held.dataKb, JSON.stringify({ dataKb: held.dataKb, kb: held.kb, vvTop: held.vvTop }));
   invariants("S12", "panned, finger down", held);
   // the finger lifts: the pan is undone once, with the layout written for pan 0 in the same frame
   await page.evaluate(() => { const field = document.getElementById("q"); const e = new Event("touchend", { bubbles: true, cancelable: true }); Object.defineProperty(e, "touches", { value: [] }); field.dispatchEvent(e); });
@@ -328,6 +329,53 @@ scenario("S12", "the cursor is held and dragged in the search box: WebKit's auto
   invariants("S12", "after the drag", after);
   const panned = await page.evaluate(() => window.__ios.log.filter((l) => l[0] === "autoscroll").length);
   check("S12", "WebKit's autoscroll never had to scroll", panned === 0, `${panned} autoscroll ticks scrolled`);
+});
+
+// The thumb slides down onto the keyboard while it holds the cursor. The finger's point is then below the visible area,
+// so WebKit's autoscroll pans the page with no scroll-padding involved, about 40 px more every 50 ms up to the
+// keyboard's height. Nothing can stop that pan; the app must follow it and never fight it, whether the page still gets
+// the finger's touch events (S13) or UIKit's loupe cancels them when it starts (S14: the page then never sees the lift).
+for (const [id, cancel] of [["S13", false], ["S14", true]]) scenario(id, `the cursor is held with the finger slid onto the keyboard${cancel ? ", the page's touches cancelled as the loupe starts" : ""}: WebKit's autoscroll pans the page; it is followed, never fought`, async (page) => {
+  await page.focus("#q"); await settle(page, 100);
+  await page.evaluate(() => window.__ios.open(336)); await settle(page, 300);
+  await page.type("#q", "pea"); await page.waitForSelector("#results:not([hidden]) .row", { timeout: 20000 }); await settle(page, 500);
+  const out = await page.evaluate((cancel) => new Promise((resolve) => {
+    const field = document.getElementById("q");
+    const y = window.__ios.state.h + 40;   // 40 px down onto the keyboard, in visual coordinates
+    const touch = (type, touches) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, "touches", { value: touches }); field.dispatchEvent(e); };
+    touch("touchstart", [{ identifier: 1, target: field, clientX: 120, clientY: y }]);
+    if (cancel) setTimeout(() => touch("touchcancel", []), 120);
+    const t0 = performance.now();
+    const tick = () => { window.__ios.autoscrollTick(y); if (performance.now() - t0 < 4000) setTimeout(tick, 50); };
+    setTimeout(tick, 50);
+    const frames = [];
+    const sample = () => {
+      const { top: pan, h } = window.__ios.state;
+      const top = document.getElementById("top").getBoundingClientRect(), dock = document.getElementById("dock").getBoundingClientRect();
+      frames.push({ t: Math.round(performance.now() - t0), pan, headerTop: Math.round(top.top - pan), dockBottom: Math.round(dock.bottom - pan), keyboardTop: h });
+      if (performance.now() - t0 < 4200) requestAnimationFrame(sample); else resolve({ frames, log: window.__ios.log.slice() });
+    };
+    requestAnimationFrame(sample);
+  }), cancel);
+  const autos = out.log.filter((l) => l[0] === "autoscroll").length, undos = out.log.filter((l) => l[0] === "scrollTo0").length;
+  check(id, "WebKit's autoscroll pans the page for a point below the visible area (the model)", autos > 0 && Math.max(...out.frames.map((f) => f.pan)) === 336, `${autos} autoscroll steps, largest pan ${Math.max(...out.frames.map((f) => f.pan))}`);
+  if (cancel) check(id, "with no touch events the pan is undone at most once: an undo iOS puts back is not repeated", undos <= 1, `${undos} undos in 4 s`);
+  else check(id, "the pan is never undone while the finger is down", undos === 0, `${undos} undos in 4 s`);
+  const off = out.frames.filter((f) => f.headerTop !== 0 || Math.abs(f.dockBottom - f.keyboardTop) > 1);
+  check(id, "the header and the dock stay put in every frame of the hold", off.length === 0, `${off.length}/${out.frames.length} frames off: ${JSON.stringify(off.slice(0, 3))}`);
+  invariants(id, "end of the hold, pan followed", await geometry(page));
+  // the lift: S13's touchend reaches the page; S14's does not, and the next tap on the page is what ends the gesture
+  await page.evaluate((cancel) => {
+    const el = cancel ? document.getElementById("results") : document.getElementById("q");
+    const touch = (type, touches) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, "touches", { value: touches }); el.dispatchEvent(e); };
+    if (cancel) touch("touchstart", [{ identifier: 2, target: el, clientX: 200, clientY: 200 }]);
+    touch("touchend", []);
+  }, cancel);
+  await settle(page, 450);
+  const after = await geometry(page);
+  const undosAfter = await page.evaluate(() => window.__ios.log.filter((l) => l[0] === "scrollTo0").length);
+  check(id, `once ${cancel ? "a later tap ends the gesture" : "the finger lifts"} the pan is undone, once`, after.pan === 0 && undosAfter === undos + 1, `pan ${after.pan}, undos ${undos} -> ${undosAfter}`);
+  invariants(id, "after the hold", after);
 });
 
 for (const s of scenarios) {
