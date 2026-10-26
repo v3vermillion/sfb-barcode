@@ -21,12 +21,15 @@ const REFIRE_SUPPRESS_MS = 2500;
 let enginePromise = null;
 
 // ---------------------------------------------------------------- keeping the camera ready between scans (iPhone)
-// iOS keeps no camera decision for a Home Screen web app, and WebKit asks again once capture has been stopped for about
-// a minute (bugs 215884, 327237); while capture is ongoing it never asks. So on iPhone the camera track is parked
-// instead of stopped when the scanner closes: still running (that is the condition WebKit states, so it is not left to
-// chance), at the lowest rate and size the camera accepts, attached to nothing and read by nothing, until the window
-// ends or iOS ends the track itself. The next scan inside the window takes the parked track back and asks nothing. The
-// phone's camera indicator stays on for the whole window: that is the honest cost of no second prompt.
+// iOS keeps no camera decision for a Home Screen web app from one launch to the next (WebKit bug 327237), and within a
+// launch WebKit asks again 10 minutes after capture stops (1 minute for a request made outside a tap; 299600@main);
+// while capture is ongoing it never asks. So on iPhone the camera track is parked instead of stopped when the scanner
+// closes: still running, at the lowest rate and size the camera accepts, attached to nothing and read by nothing, until
+// the window ends or iOS ends the track itself. The next scan inside the window takes the parked track back without a
+// new request, so nothing is asked. iOS pauses the camera while the app is in the background and resumes the same track
+// when it returns. The window lasts only as long as the page: closing the app from the App Switcher, iOS ending it in
+// the background, a cold start or the app's own reload (an update, Reset) starts a new page, which asks again, and no
+// page can change that. The phone's camera indicator stays on for the whole window: the honest cost.
 const FULL_VIDEO = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
 const IDLE_VIDEO = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 2 } };
 let warm = null;   // { stream, track, until, timer }
@@ -41,11 +44,15 @@ export function releaseCamera() {
   warm.stream.getTracks().forEach((t) => t.stop());
   warm = null;
 }
-function parkCamera(stream, track, keepMs) {
+function parkCamera(stream, track, keepMs, plain = null) {
   releaseCamera();
   if (!(keepMs > 0) || track.readyState !== "live") { stream.getTracks().forEach((t) => t.stop()); return false; }
   track.enabled = true;   // never disabled: a disabled track may not count as capture, and the grant hangs on that
   track.onended = () => { if (warm?.track === track) { clearTimeout(warm.timer); warm = null; } };
+  // The normal view and the light off first, then the idle size, as two calls. WebKit applies the calls in order and a
+  // call that names no zoom keeps the zoom it finds, but it drops the zoom of a call whose frame rate the camera cannot
+  // give at that size, and Chrome refuses a call that mixes zoom or light with size or rate.
+  if (plain) track.applyConstraints({ advanced: [plain] }).catch(() => { /* the next scan puts the camera back to the normal view anyway */ });
   track.applyConstraints(IDLE_VIDEO).catch(() => { /* a camera that keeps its size costs more battery, nothing else */ });
   warm = { stream, track, until: Date.now() + keepMs, timer: setTimeout(releaseCamera, keepMs) };
   return true;
@@ -201,23 +208,52 @@ export async function startScanner(video, overlay, onHit, onStatus) {
   video.srcObject = stream;
   await video.play().catch(() => {});
   const track = stream.getVideoTracks()[0];
-  let hasTorch = false, zoomCap = null, zoomLevel = 1;
-  // the camera's own zoom (iOS 17+, Android): a small barcode fills more of the frame while the phone stays at a distance
-  // the lens can focus on; the app zooms in by itself after a few seconds without a read
+  let running = true, stopped = false, busy = false, torchOn = false, zoomed = false, errors = 0;
+  let hasTorch = false, zoomCap = null, zoomLevel = 1, baseZoom = 1, zoomWant = null;
+  // The camera's own zoom (iOS 17+, Android): a small barcode fills more of the frame while the phone stays at a distance
+  // the lens can focus on; the app zooms in by itself after a few seconds without a read. The zoom belongs to the camera,
+  // not to this scanner: a kept-ready track (parkCamera) or a phone that kept its last zoom can hand over a camera that is
+  // already zoomed, and a flag of this scanner's own said nothing about that, so nothing ever zoomed it back out (owner,
+  // 2026-10-26: zoomed for good, even after closing and reopening the app). So the zoom is read from the camera where the
+  // browser reports it, and the camera is put back to the normal view whenever it is not reading: at the start, on a
+  // read, on a pause, on a resume and when it is parked.
+  const zoomNow = () => { const z = track.getSettings?.().zoom; return typeof z === "number" ? z : null; };
+  async function zoomTo(z) {
+    if (!zoomCap || stopped) return false;
+    zoomWant = z;
+    // The zoom alone: WebKit keeps the picture size for a call that names no size, and Chrome refuses a call that mixes
+    // the zoom (an image-capture setting, like the light and focus) with size or frame rate. WebKit's getSettings()
+    // reports the zoom it was asked for rather than the lens, so the check below catches a call the browser dropped,
+    // not a lens that did not move; the resets at every start, read, pause and resume cover that.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { await track.applyConstraints({ advanced: [{ zoom: z }] }); } catch { /* checked below */ }
+      if (zoomWant !== z || stopped) return false;   // a newer request took over, or the scanner closed
+      const now = zoomNow();
+      if (now == null || Math.abs(now - z) < 0.05) { zoomed = z > baseZoom + 0.05; return true; }   // not reported: trust the call
+    }
+    zoomed = (zoomNow() ?? baseZoom) > baseZoom + 0.05;
+    return false;
+  }
+  const zoomOut = () => { if (zoomCap) zoomTo(baseZoom).catch(() => {}); };
   const readCaps = () => {
     const caps = track.getCapabilities?.() || {};
     hasTorch = hasTorch || !!caps.torch;
-    if (!zoomCap && caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5) { zoomCap = caps.zoom; zoomLevel = Math.min(ZOOM_LEVEL, zoomCap.max); }
+    if (!zoomCap && caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5) {
+      zoomCap = caps.zoom; zoomLevel = Math.min(ZOOM_LEVEL, zoomCap.max);
+      // The normal view is 1x. It is not the range's minimum: on an iPhone with an ultra-wide lens WebKit reports 0.5
+      // (the ultra-wide), and the old zoom-out aimed there.
+      baseZoom = zoomCap.min <= 1 ? 1 : zoomCap.min;
+      zoomOut();   // whatever zoom the camera came with
+    }
     onStatus?.({ engine: engine.name, torch: hasTorch, zoom: !!zoomCap });
   };
+  // try to focus continuously (Chrome; WebKit has no focusMode constraint and ignores the call), alone in its call
+  try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { /* optional */ }
   readCaps();
   // Chrome on Android reports torch and zoom only once the track has run for a moment: read them again shortly, without
   // holding the first frames back
   setTimeout(() => { if (!stopped && (!hasTorch || !zoomCap)) readCaps(); }, 900);
-  // try to focus continuously; harmless when unsupported
-  try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { /* optional */ }
 
-  let running = true, stopped = false, busy = false, torchOn = false, zoomed = false, errors = 0;
   let lastValue = null, lastCount = 0, lastT = 0;
   let acceptedValue = null, acceptedT = 0;
   const g = overlay.getContext("2d");
@@ -262,6 +298,7 @@ export async function startScanner(video, overlay, onHit, onStatus) {
               const gtin = toGtin14(digits, hit.format, { scanned: true });
               acceptedValue = digits; acceptedT = now;
               running = false;
+              zoomOut();   // the read is in: the camera goes back to the normal view behind the price
               onHit({ gtin, raw: digits, format: hit.format, points: hit.points, ms: Math.round(now - t0), engine: engine.name });
               return;
             }
@@ -290,21 +327,21 @@ export async function startScanner(video, overlay, onHit, onStatus) {
     get torch() { return torchOn; },
     get hasZoom() { return !!zoomCap; },
     get zoomLevel() { return zoomLevel; },
-    async setZoom(on) { if (!zoomCap) return false; try { await track.applyConstraints({ advanced: [{ zoom: on ? zoomLevel : (zoomCap.min || 1) }] }); zoomed = !!on; return zoomed; } catch { return zoomed; } },
-    get zoom() { return zoomed; },
+    /** Zoom in (true) or back to the normal view (false). Resolves with whether the camera is zoomed in afterwards. */
+    async setZoom(on) { if (!zoomCap) return false; await zoomTo(on ? zoomLevel : baseZoom); return this.zoom; },
+    /** Zoomed in, as the camera reports it where it can. */
+    get zoom() { const z = zoomNow(); return z != null && zoomCap ? z > baseZoom + 0.05 : zoomed; },
     get running() { return running && !stopped; },
-    pause() { running = false; drawPoints(null); },
-    resume() { if (stopped) return; if (!running) { running = true; lastValue = null; lastCount = 0; drawPoints(null); tick(); } },
-    /** Stop reading. With keepMs the camera is parked for that long (see parkCamera) instead of released; the light
-     *  goes off and the zoom resets first, so the parked camera is plain. */
+    pause() { running = false; drawPoints(null); zoomOut(); },
+    resume() { if (stopped) return; zoomOut(); if (!running) { running = true; lastValue = null; lastCount = 0; drawPoints(null); tick(); } },
+    /** Stop reading. With keepMs the camera is parked for that long (see parkCamera) instead of released; it is parked
+     *  plain: light off, the normal view, then its idle size. */
     stop({ keepMs = 0 } = {}) {
-      running = false; stopped = true; video.srcObject = null; drawPoints(null);
-      if (keepMs > 0 && (torchOn || zoomed)) {
-        const plain = { advanced: [{ ...(torchOn ? { torch: false } : {}), ...(zoomed ? { zoom: zoomCap?.min || 1 } : {}) }] };
-        track.applyConstraints(plain).catch(() => {});
-        torchOn = false; zoomed = false;
-      }
-      parkCamera(stream, track, keepMs);
+      running = false; video.srcObject = null; drawPoints(null);
+      // one advanced set with every key: WebKit applies only one advanced set per call, so a second set (the light) was lost
+      const plain = zoomCap || hasTorch ? { ...(zoomCap ? { zoom: baseZoom } : {}), ...(hasTorch ? { torch: false } : {}) } : null;
+      stopped = true; zoomWant = null; torchOn = false; zoomed = false;
+      parkCamera(stream, track, keepMs, plain);
     },
   };
 }

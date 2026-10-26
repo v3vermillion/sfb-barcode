@@ -372,7 +372,7 @@ const modals = {
     if (dlg._closeTimer) { clearTimeout(dlg._closeTimer); dlg._closeTimer = 0; dlg.classList.remove("is-closing"); if (dlg.open) dlg.close(); }
     setDialogHtml(dlg, html);
     dialogToasts(dlg);   // the live region exists before its first toast, so screen readers announce it
-    if (state.scanOpen) state.scan?.pause();
+    if (state.scanOpen) { stopSmallHelp(); state.scan?.pause(); }
     if (!dlg.open) dlg.showModal();
     history.pushState({ modal: dlg.id, n: (history.state?.n || 0) + 1 }, "");
     dlg.querySelector(".sheet-inner").scrollTop = 0;
@@ -1796,9 +1796,10 @@ window.__sfb.tour = { open: openTour, close: closeTour };
 
 // ------------------------------------------------------------------ scanner
 let scannerMod = null;
-// Keep the camera ready (iPhone): iOS keeps no camera decision for a Home Screen web app and asks again about a minute
-// after capture stops, so the camera is parked, not released, when the scanner closes or the app goes to the background
+// Keep the camera ready (iPhone): iOS keeps no camera decision for a Home Screen web app and asks again 10 minutes after
+// capture stops, so the camera is parked, not released, when the scanner closes or the app goes to the background
 // (scanner.js parkCamera), for the length of a shift after the last scan (owner, 2026-10-23: four hours, no setting).
+// It lasts only while this page does: a cold start or an app iOS has ended asks again (2026-10-26).
 // Android and desktop browsers remember the grant, so they never hold the camera for this.
 const KEEP_CAMERA_MS = 4 * 3600_000;
 const keepCameraMs = () => (isIOS && navigator.mediaDevices?.getUserMedia ? KEEP_CAMERA_MS : 0);
@@ -1820,17 +1821,33 @@ async function openScanner({ reuseEntry = false } = {}) {
 function hideTorch() { el.torchBtn.hidden = true; el.torchBtn.setAttribute("aria-pressed", "false"); }
 // A barcode that has not read after a few seconds is usually a small one (a water bottle's): the camera zooms in by
 // itself where it can (nothing for the volunteer to find or tap; owner's call, 2026-10-20), and the hint says what helps.
-// The zoom resets whenever scanning resumes, so the next item starts at the full view.
-const SMALL_HELP_MS = 4000;
+// The zoom never stays (owner, 2026-10-26: after a read, or a barcode that would not read, it stayed zoomed with no way
+// out): the scanner puts the camera back to the normal view whenever it is not reading (a read, a pause, a resume, a
+// close: scanner.js), and here a zoom that has not read either goes back to the full view after a few seconds, then
+// the cycle repeats, so neither view is ever the only one.
+const SMALL_HELP_MS = 4000;   // no read at the full view for this long: zoom in
+const ZOOM_HOLD_MS = 6000;    // no read zoomed in for this long: back to the full view
 let smallHelpTimer = 0;
-function armSmallHelp() {
-  clearTimeout(smallHelpTimer);
+function stopSmallHelp() { clearTimeout(smallHelpTimer); smallHelpTimer = 0; }
+function armSmallHelp(zoomedIn = false) {
+  stopSmallHelp();
   smallHelpTimer = setTimeout(async () => {
     const scan = state.scan;
-    if (!state.scanOpen || !scan?.running || !el.scanTypeForm.hidden) return;
-    if (scan.hasZoom && !scan.zoom && await scan.setZoom(true) && scan === state.scan && scan.running) el.scanHint.textContent = "Zoomed in for a small barcode. Hold it 4 to 6 inches away";
-    else if (scan === state.scan && scan.running) el.scanHint.textContent = "Small barcode: hold it 4 to 6 inches away and keep it flat";
-  }, SMALL_HELP_MS);
+    const reading = () => state.scanOpen && scan === state.scan && scan.running && el.scanTypeForm.hidden;
+    if (!reading()) return;
+    if (!scan.hasZoom) { el.scanHint.textContent = "Small barcode: hold it 4 to 6 inches away and keep it flat"; return; }
+    if (!zoomedIn) {
+      const inNow = await scan.setZoom(true);
+      if (!reading()) return;
+      if (inNow) { el.scanHint.textContent = "Zoomed in for a small barcode. Hold it 4 to 6 inches away"; armSmallHelp(true); }
+      else el.scanHint.textContent = "Small barcode: hold it 4 to 6 inches away and keep it flat";
+    } else {
+      await scan.setZoom(false);
+      if (!reading()) return;
+      el.scanHint.textContent = "Back to the full view. Still not reading? Enter the barcode manually";
+      armSmallHelp(false);
+    }
+  }, zoomedIn ? ZOOM_HOLD_MS : SMALL_HELP_MS);
 }
 async function startCamera(gen) {
   hideTorch();   // a restart (back from the background) shows it again only when the new camera has a light
@@ -1845,7 +1862,7 @@ async function startCamera(gen) {
       if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader could not start on this phone. Enter the barcode manually."); }
       else if (info.error) console.warn("scanner:", info.error);
     });
-    if (gen !== state.scanGen || !state.scanOpen) { scan.stop(); return; }   // closed (or reopened) while the camera was starting
+    if (gen !== state.scanGen || !state.scanOpen) { scan.stop({ keepMs: keepCameraMs() }); return; }   // closed (or reopened) while the camera was starting: kept ready like any close
     state.scan?.stop();
     armSmallHelp();
     state.scan = scan;
@@ -1874,11 +1891,12 @@ function scanDenied(msg) {
   el.scanner.insertBefore(d, el.scanner.querySelector(".scan-bottom"));
   showScanType();
 }
-function showScanType() { el.scanTypeForm.hidden = false; el.scanTypeBtn.hidden = true; el.scanTypeInput.value = ""; state.scan?.pause(); el.scanTypeInput.focus(); }
+function showScanType() { el.scanTypeForm.hidden = false; el.scanTypeBtn.hidden = true; el.scanTypeInput.value = ""; stopSmallHelp(); state.scan?.pause(); el.scanTypeInput.focus(); }
 function closeScanner({ fromPop = false } = {}) {
   if (!state.scanOpen) return;
   if (!fromPop && history.state?.modal === "scanner") { history.back(); return; }
   state.scanOpen = false; state.scanGen++;
+  stopSmallHelp();
   state.scan?.stop({ keepMs: keepCameraMs() }); state.scan = null;
   el.scanner.hidden = true;
   el.scanner.querySelector(".scan-denied")?.remove();
@@ -1890,8 +1908,7 @@ function closeScanner({ fromPop = false } = {}) {
 function resumeScan() {
   if (!state.scanOpen || !state.scan) return;
   el.scanner.classList.remove("is-hit"); el.scanHint.textContent = "Center the barcode in the frame";
-  if (state.scan.zoom) state.scan.setZoom(false).catch(() => {});
-  state.scan.resume(); armSmallHelp();
+  state.scan.resume(); armSmallHelp();   // resume() puts the camera back to the full view first
 }
 /** Resolves when the other departments have joined the search (the "more" event), or after `ms`. */
 const moreArrives = (ms) => new Promise((resolve) => { const done = () => { clearTimeout(t); db.removeEventListener("more", done); resolve(); }; const t = setTimeout(done, ms); db.addEventListener("more", done); });
@@ -1907,6 +1924,7 @@ async function resolveWithPending(raw, format, opts, onWait) {
   return res;
 }
 async function onScanHit(hit) {
+  stopSmallHelp();   // the scanner has already put the camera back to the full view
   if (anyModalOpen()) { state.scan?.pause(); return; }   // the tally or settings is open over the camera: never stack a result on it
   const t0 = performance.now();
   haptic(20);
@@ -1943,6 +1961,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     // stop reading at once (parking the camera where the app keeps it ready); the history bookkeeping can wait for the
     // app to come back
+    stopSmallHelp();
     if (state.scan) { state.scan.stop({ keepMs: keepCameraMs() }); state.scan = null; state.scanPausedByVisibility = state.scanOpen; hideTorch(); }
   } else if (state.scanPausedByVisibility) {
     state.scanPausedByVisibility = false;
