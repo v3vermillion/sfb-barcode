@@ -343,10 +343,10 @@ await scenario(["F53", "F54"], "scanner: automatic zoom for a small barcode; no 
   const { page } = env;
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1500);
   const early = await page.evaluate(() => ({ zoom: window.__zoom.slice(), ctl: !!document.getElementById("zoomBtn") }));
-  check("F53", "nothing zooms while a read may still come, and there is no 2x control to find", early.zoom.length === 0 && !early.ctl, JSON.stringify(early));
+  check("F53", "nothing zooms in while a read may still come, and there is no 2x control to find", early.zoom.every((z) => z <= 1) && !early.ctl, JSON.stringify(early));
   await settle(page, 3200);
   const late = await page.evaluate(() => ({ zoom: window.__zoom.slice(), hint: document.getElementById("scanHint").textContent }));
-  check("F53", "after four seconds without a read the camera zooms in by itself and the hint says so", late.zoom[0] === 2 && /Zoomed in for a small barcode/.test(late.hint), JSON.stringify(late));
+  check("F53", "after four seconds without a read the camera zooms in by itself and the hint says so", late.zoom.at(-1) === 2 && /Zoomed in for a small barcode/.test(late.hint), JSON.stringify(late));
   const sel = await page.evaluate(() => ({ view: getComputedStyle(document.getElementById("overlay")).userSelect, hint: getComputedStyle(document.getElementById("scanHint")).userSelect, input: getComputedStyle(document.getElementById("scanTypeInput")).userSelect }));
   check("F54", "a long press on the camera view selects nothing; the typed number still can be", sel.view === "none" && sel.hint === "none" && sel.input === "text", JSON.stringify(sel));
 });
@@ -423,6 +423,88 @@ await scenario(["F68"], "Android keeps no camera between scans (the grant persis
   const st = await camState(page);
   const offered = await page.evaluate(async () => { document.getElementById("settingsBtn").click(); await new Promise((r) => setTimeout(r, 400)); return !!document.querySelector("#settings [data-keep]"); });
   check("F68", "Android: the camera ends when the scanner closes (its grant persists)", st.live[0] === "ended" && !st.ready && !offered, JSON.stringify({ ...st, offered }));
+});
+
+// The zoom never stays (owner, 2026-10-26: after a read, or a barcode that would not read, the camera stayed zoomed with
+// no way out, even after closing and reopening the app). The camera keeps its own zoom, as a phone's does: it can come
+// back zoomed (the kept-ready track, a phone that kept its last zoom), so the scanner reads the zoom from the camera and
+// puts it back to the full view at the start, on a read, after a few seconds zoomed without one, on a pause and when
+// it is parked, and the small-barcode zoom cycles instead of sticking.
+const ZOOM_CAMERA = {
+  fn: () => {
+    window.__cam = { zoom: 2, calls: [], tracks: [] };   // the first camera is handed over already zoomed in
+    const upc = (canvas, digits) => {
+      const L = ["0001101", "0011001", "0010011", "0111101", "0100011", "0110001", "0101111", "0111011", "0110111", "0001011"];
+      const R = L.map((p) => p.replace(/[01]/g, (c) => (c === "0" ? "1" : "0")));
+      let bits = "101"; for (let i = 0; i < 6; i++) bits += L[+digits[i]]; bits += "01010"; for (let i = 6; i < 12; i++) bits += R[+digits[i]]; bits += "101";
+      const g = canvas.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, canvas.width, canvas.height); g.fillStyle = "#000";
+      const mod = 4, x0 = (canvas.width - bits.length * mod) / 2;
+      for (let i = 0; i < bits.length; i++) if (bits[i] === "1") g.fillRect(x0 + i * mod, 90, mod, 300);
+    };
+    navigator.mediaDevices.getUserMedia = async () => {
+      const c = document.createElement("canvas"); c.width = 640; c.height = 480; c.getContext("2d").fillRect(0, 0, 640, 480);
+      const stream = c.captureStream(10), track = stream.getVideoTracks()[0];
+      track.getCapabilities = () => ({ torch: true, zoom: { min: 1, max: 3, step: 0.1 } });
+      track.getSettings = () => ({ width: 640, height: 480, zoom: window.__cam.zoom });
+      track.applyConstraints = async (k) => {
+        window.__cam.calls.push({ t: Math.round(performance.now()), k });
+        for (const set of k?.advanced || []) if (typeof set.zoom === "number") window.__cam.zoom = Math.min(3, Math.max(1, set.zoom));
+      };
+      window.__cam.tracks.push(track);
+      window.__showBarcode = (digits) => upc(c, digits);
+      window.__hideBarcode = () => { const g = c.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, c.width, c.height); };
+      return stream;
+    };
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+    window.__setHidden = (h) => { hidden = h; document.dispatchEvent(new Event("visibilitychange")); };
+  },
+};
+await scenario(["F76"], "scanner: the camera never stays zoomed in", async (set) => {
+  const env = set(await open({ ios: true, init: ZOOM_CAMERA }));
+  const { page } = env;
+  const cam = () => page.evaluate(() => ({ zoom: window.__cam.zoom, hint: document.getElementById("scanHint").textContent, sheet: document.getElementById("sheet").open, asked: window.__cam.tracks.length }));
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  let st = await cam();
+  check("F76", "a camera handed over zoomed in starts at the full view", st.zoom === 1, JSON.stringify(st));
+  await settle(page, 3400);
+  st = await cam();
+  check("F76", "after four seconds without a read it zooms in, and the hint says so", st.zoom === 2 && /Zoomed in/.test(st.hint), JSON.stringify(st));
+  await settle(page, 6200);
+  st = await cam();
+  check("F76", "after six more seconds zoomed in without a read it goes back to the full view, and says how to go on", st.zoom === 1 && /Back to the full view/.test(st.hint) && /Enter the barcode manually/.test(st.hint), JSON.stringify(st));
+  await settle(page, 4200);
+  st = await cam();
+  check("F76", "the cycle repeats: zoomed in again four seconds later", st.zoom === 2, JSON.stringify(st));
+  await page.evaluate(() => window.__showBarcode("036000291452"));
+  await page.waitForFunction(() => document.getElementById("scanner").classList.contains("is-hit") || document.getElementById("sheet").open, null, { timeout: 15000 });
+  await settle(page, 300);
+  st = await cam();
+  check("F76", "a read puts the camera back to the full view at once, behind the price", st.zoom === 1, JSON.stringify(st));
+  await page.evaluate(() => window.__hideBarcode());
+  await page.waitForSelector("#sheet[open]", { timeout: 10000 }).catch(() => {});
+  await page.keyboard.press("Escape"); await settle(page, 700);
+  st = await cam();
+  check("F76", "back to scanning after the price: still the full view", st.zoom === 1 && !st.sheet, JSON.stringify(st));
+  await settle(page, 4000);
+  await page.click("#scanClose"); await settle(page, 500);
+  const park = await page.evaluate(() => window.__cam.calls.at(-1)?.k);
+  st = await cam();
+  check("F76", "closing the scanner zoomed in parks the camera at the full view, in the same call as its idle size", st.zoom === 1 && park?.width?.ideal === 320 && park?.advanced?.some((a) => a.zoom === 1), JSON.stringify({ zoom: st.zoom, park }));
+  await page.evaluate(() => { window.__cam.zoom = 2.5; });   // whatever left the kept-ready camera zoomed
+  await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
+  st = await cam();
+  check("F76", "the kept-ready camera taken back zoomed starts at the full view (closing and reopening never keeps a zoom)", st.zoom === 1 && st.asked === 1, JSON.stringify(st));
+  await settle(page, 3400);
+  await page.evaluate(() => window.__setHidden(true)); await settle(page, 300);
+  const hiddenZoom = await page.evaluate(() => window.__cam.zoom);
+  await settle(page, 6500);
+  const later = await page.evaluate(() => window.__cam.zoom);
+  check("F76", "leaving the app zoomed in parks the camera at the full view, and no timer zooms it while away", hiddenZoom === 1 && later === 1, JSON.stringify({ hiddenZoom, later }));
+  await page.evaluate(() => window.__setHidden(false)); await settle(page, 1200);
+  st = await cam();
+  check("F76", "back in the app the scanner starts at the full view", st.zoom === 1, JSON.stringify(st));
+  check("F76", "no page errors", env.errors.length === 0, env.errors.join(" | "));
 });
 
 // Sheets close by a drag on their whole header, not only the 21px handle; a short drag springs back without moving the

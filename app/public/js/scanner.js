@@ -41,12 +41,13 @@ export function releaseCamera() {
   warm.stream.getTracks().forEach((t) => t.stop());
   warm = null;
 }
-function parkCamera(stream, track, keepMs) {
+function parkCamera(stream, track, keepMs, plain = []) {
   releaseCamera();
   if (!(keepMs > 0) || track.readyState !== "live") { stream.getTracks().forEach((t) => t.stop()); return false; }
   track.enabled = true;   // never disabled: a disabled track may not count as capture, and the grant hangs on that
   track.onended = () => { if (warm?.track === track) { clearTimeout(warm.timer); warm = null; } };
-  track.applyConstraints(IDLE_VIDEO).catch(() => { /* a camera that keeps its size costs more battery, nothing else */ });
+  // the idle size, the normal view and the light off in one call, so no later call can leave a zoom behind
+  track.applyConstraints({ ...IDLE_VIDEO, ...(plain.length ? { advanced: plain } : {}) }).catch(() => { /* a camera that keeps its size costs more battery, nothing else */ });
   warm = { stream, track, until: Date.now() + keepMs, timer: setTimeout(releaseCamera, keepMs) };
   return true;
 }
@@ -201,23 +202,47 @@ export async function startScanner(video, overlay, onHit, onStatus) {
   video.srcObject = stream;
   await video.play().catch(() => {});
   const track = stream.getVideoTracks()[0];
-  let hasTorch = false, zoomCap = null, zoomLevel = 1;
-  // the camera's own zoom (iOS 17+, Android): a small barcode fills more of the frame while the phone stays at a distance
-  // the lens can focus on; the app zooms in by itself after a few seconds without a read
+  let running = true, stopped = false, busy = false, torchOn = false, zoomed = false, errors = 0;
+  let hasTorch = false, zoomCap = null, zoomLevel = 1, baseZoom = 1, zoomWant = null;
+  // The camera's own zoom (iOS 17+, Android): a small barcode fills more of the frame while the phone stays at a distance
+  // the lens can focus on; the app zooms in by itself after a few seconds without a read. The zoom belongs to the camera,
+  // not to this scanner: a kept-ready track (parkCamera) or a phone that kept its last zoom can hand over a camera that is
+  // already zoomed, and a flag of this scanner's own said nothing about that, so nothing ever zoomed it back out (owner,
+  // 2026-10-26: zoomed for good, even after closing and reopening the app). So the zoom is read from the camera where the
+  // browser reports it, and the camera is put back to the normal view whenever it is not reading: at the start, on a
+  // read, on a pause, on a resume and when it is parked.
+  const zoomNow = () => { const z = track.getSettings?.().zoom; return typeof z === "number" ? z : null; };
+  async function zoomTo(z) {
+    if (!zoomCap || stopped) return false;
+    zoomWant = z;
+    // the full picture size goes with every zoom: a call that names only the zoom lets a browser pick another size
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { await track.applyConstraints({ ...FULL_VIDEO, advanced: [{ zoom: z }] }); } catch { /* checked below */ }
+      if (zoomWant !== z || stopped) return false;   // a newer request took over, or the scanner closed
+      const now = zoomNow();
+      if (now == null || Math.abs(now - z) < 0.05) { zoomed = z > baseZoom + 0.05; return true; }   // not reported: trust the call
+    }
+    zoomed = (zoomNow() ?? baseZoom) > baseZoom + 0.05;
+    return false;
+  }
+  const zoomOut = () => { if (zoomCap) zoomTo(baseZoom).catch(() => {}); };
   const readCaps = () => {
     const caps = track.getCapabilities?.() || {};
     hasTorch = hasTorch || !!caps.torch;
-    if (!zoomCap && caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5) { zoomCap = caps.zoom; zoomLevel = Math.min(ZOOM_LEVEL, zoomCap.max); }
+    if (!zoomCap && caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max >= 1.5) {
+      zoomCap = caps.zoom; zoomLevel = Math.min(ZOOM_LEVEL, zoomCap.max);
+      baseZoom = zoomCap.min <= 1 ? 1 : zoomCap.min;   // the normal view: 1x (a range that starts lower adds a wider lens)
+      zoomOut();   // whatever zoom the camera came with
+    }
     onStatus?.({ engine: engine.name, torch: hasTorch, zoom: !!zoomCap });
   };
+  // try to focus continuously (harmless when unsupported), with the full picture size in the same call
+  try { await track.applyConstraints({ ...FULL_VIDEO, advanced: [{ focusMode: "continuous" }] }); } catch { /* optional */ }
   readCaps();
   // Chrome on Android reports torch and zoom only once the track has run for a moment: read them again shortly, without
   // holding the first frames back
   setTimeout(() => { if (!stopped && (!hasTorch || !zoomCap)) readCaps(); }, 900);
-  // try to focus continuously; harmless when unsupported
-  try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { /* optional */ }
 
-  let running = true, stopped = false, busy = false, torchOn = false, zoomed = false, errors = 0;
   let lastValue = null, lastCount = 0, lastT = 0;
   let acceptedValue = null, acceptedT = 0;
   const g = overlay.getContext("2d");
@@ -262,6 +287,7 @@ export async function startScanner(video, overlay, onHit, onStatus) {
               const gtin = toGtin14(digits, hit.format, { scanned: true });
               acceptedValue = digits; acceptedT = now;
               running = false;
+              zoomOut();   // the read is in: the camera goes back to the normal view behind the price
               onHit({ gtin, raw: digits, format: hit.format, points: hit.points, ms: Math.round(now - t0), engine: engine.name });
               return;
             }
@@ -290,21 +316,20 @@ export async function startScanner(video, overlay, onHit, onStatus) {
     get torch() { return torchOn; },
     get hasZoom() { return !!zoomCap; },
     get zoomLevel() { return zoomLevel; },
-    async setZoom(on) { if (!zoomCap) return false; try { await track.applyConstraints({ advanced: [{ zoom: on ? zoomLevel : (zoomCap.min || 1) }] }); zoomed = !!on; return zoomed; } catch { return zoomed; } },
-    get zoom() { return zoomed; },
+    /** Zoom in (true) or back to the normal view (false). Resolves with whether the camera is zoomed in afterwards. */
+    async setZoom(on) { if (!zoomCap) return false; await zoomTo(on ? zoomLevel : baseZoom); return this.zoom; },
+    /** Zoomed in, as the camera reports it where it can. */
+    get zoom() { const z = zoomNow(); return z != null && zoomCap ? z > baseZoom + 0.05 : zoomed; },
     get running() { return running && !stopped; },
-    pause() { running = false; drawPoints(null); },
-    resume() { if (stopped) return; if (!running) { running = true; lastValue = null; lastCount = 0; drawPoints(null); tick(); } },
-    /** Stop reading. With keepMs the camera is parked for that long (see parkCamera) instead of released; the light
-     *  goes off and the zoom resets first, so the parked camera is plain. */
+    pause() { running = false; drawPoints(null); zoomOut(); },
+    resume() { if (stopped) return; zoomOut(); if (!running) { running = true; lastValue = null; lastCount = 0; drawPoints(null); tick(); } },
+    /** Stop reading. With keepMs the camera is parked for that long (see parkCamera) instead of released; it is parked
+     *  plain, in the same call that sets its idle size: light off, the normal view. */
     stop({ keepMs = 0 } = {}) {
-      running = false; stopped = true; video.srcObject = null; drawPoints(null);
-      if (keepMs > 0 && (torchOn || zoomed)) {
-        const plain = { advanced: [{ ...(torchOn ? { torch: false } : {}), ...(zoomed ? { zoom: zoomCap?.min || 1 } : {}) }] };
-        track.applyConstraints(plain).catch(() => {});
-        torchOn = false; zoomed = false;
-      }
-      parkCamera(stream, track, keepMs);
+      running = false; video.srcObject = null; drawPoints(null);
+      const plain = [...(zoomCap ? [{ zoom: baseZoom }] : []), ...(hasTorch ? [{ torch: false }] : [])];
+      stopped = true; zoomWant = null; torchOn = false; zoomed = false;
+      parkCamera(stream, track, keepMs, plain);
     },
   };
 }
