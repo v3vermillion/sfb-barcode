@@ -446,9 +446,16 @@ const ZOOM_CAMERA = {
       const stream = c.captureStream(10), track = stream.getVideoTracks()[0];
       track.getCapabilities = () => ({ torch: true, zoom: { min: 1, max: 3, step: 0.1 } });
       track.getSettings = () => ({ width: 640, height: 480, zoom: window.__cam.zoom });
+      // as the engines do: Chrome refuses a call that mixes image-capture settings (zoom, light, focus) with size or rate,
+      // and WebKit applies only the first advanced set of a call
       track.applyConstraints = async (k) => {
         window.__cam.calls.push({ t: Math.round(performance.now()), k });
-        for (const set of k?.advanced || []) if (typeof set.zoom === "number") window.__cam.zoom = Math.min(3, Math.max(1, set.zoom));
+        const capture = (k?.advanced || []).some((a) => "zoom" in a || "torch" in a || "focusMode" in a);
+        const size = ["width", "height", "frameRate", "aspectRatio"].some((key) => key in (k || {}));
+        if (capture && size) { window.__cam.mixed = (window.__cam.mixed || 0) + 1; throw new DOMException("Mixing ImageCapture and non-ImageCapture constraints is not currently supported", "NotSupportedError"); }
+        const set = k?.advanced?.[0];
+        if (typeof set?.zoom === "number") window.__cam.zoom = Math.min(3, Math.max(1, set.zoom));
+        if (typeof set?.torch === "boolean") window.__cam.torch = set.torch;
       };
       window.__cam.tracks.push(track);
       window.__showBarcode = (digits) => upc(c, digits);
@@ -488,9 +495,9 @@ await scenario(["F76"], "scanner: the camera never stays zoomed in", async (set)
   check("F76", "back to scanning after the price: still the full view", st.zoom === 1 && !st.sheet, JSON.stringify(st));
   await settle(page, 4000);
   await page.click("#scanClose"); await settle(page, 500);
-  const park = await page.evaluate(() => window.__cam.calls.at(-1)?.k);
+  const park = await page.evaluate(() => window.__cam.calls.slice(-2).map((c) => c.k));
   st = await cam();
-  check("F76", "closing the scanner zoomed in parks the camera at the full view, in the same call as its idle size", st.zoom === 1 && park?.width?.ideal === 320 && park?.advanced?.some((a) => a.zoom === 1), JSON.stringify({ zoom: st.zoom, park }));
+  check("F76", "closing the scanner zoomed in parks the camera at the full view with the light off (one set), then at its idle size", st.zoom === 1 && park[0]?.advanced?.length === 1 && park[0].advanced[0].zoom === 1 && park[0].advanced[0].torch === false && park[1]?.width?.ideal === 320, JSON.stringify({ zoom: st.zoom, park }));
   await page.evaluate(() => { window.__cam.zoom = 2.5; });   // whatever left the kept-ready camera zoomed
   await page.click("#scanBtn"); await page.waitForSelector("#scanner:not([hidden])"); await settle(page, 1200);
   st = await cam();
@@ -504,6 +511,8 @@ await scenario(["F76"], "scanner: the camera never stays zoomed in", async (set)
   await page.evaluate(() => window.__setHidden(false)); await settle(page, 1200);
   st = await cam();
   check("F76", "back in the app the scanner starts at the full view", st.zoom === 1, JSON.stringify(st));
+  const mixed = await page.evaluate(() => window.__cam.mixed || 0);
+  check("F76", "no call mixes the zoom, light or focus with size or rate (Chrome refuses those)", mixed === 0, `${mixed} refused calls`);
   check("F76", "no page errors", env.errors.length === 0, env.errors.join(" | "));
 });
 

@@ -1796,9 +1796,10 @@ window.__sfb.tour = { open: openTour, close: closeTour };
 
 // ------------------------------------------------------------------ scanner
 let scannerMod = null;
-// Keep the camera ready (iPhone): iOS keeps no camera decision for a Home Screen web app and asks again about a minute
-// after capture stops, so the camera is parked, not released, when the scanner closes or the app goes to the background
+// Keep the camera ready (iPhone): iOS keeps no camera decision for a Home Screen web app and asks again 10 minutes after
+// capture stops, so the camera is parked, not released, when the scanner closes or the app goes to the background
 // (scanner.js parkCamera), for the length of a shift after the last scan (owner, 2026-10-23: four hours, no setting).
+// It lasts only while this page does: a cold start or an app iOS has ended asks again (2026-10-26).
 // Android and desktop browsers remember the grant, so they never hold the camera for this.
 const KEEP_CAMERA_MS = 4 * 3600_000;
 const keepCameraMs = () => (isIOS && navigator.mediaDevices?.getUserMedia ? KEEP_CAMERA_MS : 0);
@@ -1861,7 +1862,7 @@ async function startCamera(gen) {
       if (info.fatal) { console.warn("scanner:", info.error); state.scan?.stop(); state.scan = null; scanDenied("The barcode reader could not start on this phone. Enter the barcode manually."); }
       else if (info.error) console.warn("scanner:", info.error);
     });
-    if (gen !== state.scanGen || !state.scanOpen) { scan.stop(); return; }   // closed (or reopened) while the camera was starting
+    if (gen !== state.scanGen || !state.scanOpen) { scan.stop({ keepMs: keepCameraMs() }); return; }   // closed (or reopened) while the camera was starting: kept ready like any close
     state.scan?.stop();
     armSmallHelp();
     state.scan = scan;
